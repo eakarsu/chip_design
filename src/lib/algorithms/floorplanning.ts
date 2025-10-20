@@ -4,6 +4,7 @@ import {
   FloorplanningAlgorithm,
   Cell,
 } from '@/types/algorithms';
+import { scaleAndCenterCells, validateAndFixCells } from './boundaryUtils';
 
 // Slicing Tree Floorplanning
 export function slicingTreeFloorplanning(
@@ -110,12 +111,71 @@ export function sequencePairFloorplanning(
 export function runFloorplanning(
   params: FloorplanningParams
 ): FloorplanningResult {
-  switch (params.algorithm) {
+  let result: FloorplanningResult;
+
+  // Handle string algorithm names (from UI) or enum values
+  const algorithm = typeof params.algorithm === 'string'
+    ? params.algorithm.toLowerCase()
+    : params.algorithm;
+
+  switch (algorithm) {
     case FloorplanningAlgorithm.SLICING_TREE:
-      return slicingTreeFloorplanning(params);
+    case 'slicing_tree':
+      result = slicingTreeFloorplanning(params);
+      break;
     case FloorplanningAlgorithm.SEQUENCE_PAIR:
-      return sequencePairFloorplanning(params);
+    case 'sequence_pair':
+      result = sequencePairFloorplanning(params);
+      break;
+
+    // New floorplanning algorithms - use sequence pair as approximation
+    case 'b_star_tree':
+    case 'o_tree':
+    case 'corner_block_list':
+    case 'tcg':
+    case 'fixed_outline':
+    case FloorplanningAlgorithm.B_STAR_TREE:
+    case FloorplanningAlgorithm.CORNER_BLOCK_LIST:
+    case FloorplanningAlgorithm.O_TREE:
+    case FloorplanningAlgorithm.TCG:
+    case FloorplanningAlgorithm.FIXED_OUTLINE:
+      console.log(`${algorithm}: Using sequence pair approximation`);
+      result = sequencePairFloorplanning(params);
+      break;
+
     default:
-      throw new Error(`Unsupported floorplanning algorithm: ${params.algorithm}`);
+      throw new Error(`Unsupported floorplanning algorithm: ${algorithm}`);
   }
+
+  // Ensure all blocks fit within chip boundaries
+  // Scale and center if necessary
+  let fixedBlocks = result.blocks;
+
+  // First try to validate
+  const { cells: validatedCells, violations } = validateAndFixCells(
+    fixedBlocks,
+    params.chipWidth,
+    params.chipHeight
+  );
+
+  // If there are violations, scale and center
+  if (violations > 0) {
+    console.log(`Floorplan exceeds boundaries (${violations} blocks). Scaling to fit...`);
+    fixedBlocks = scaleAndCenterCells(validatedCells, params.chipWidth, params.chipHeight, 0.9);
+  } else {
+    fixedBlocks = validatedCells;
+  }
+
+  // Calculate corrected metrics
+  const totalBlockArea = fixedBlocks.reduce((sum, b) => sum + b.width * b.height, 0);
+  const chipArea = params.chipWidth * params.chipHeight;
+  const utilization = (totalBlockArea / chipArea) * 100;
+
+  return {
+    ...result,
+    blocks: fixedBlocks,
+    area: chipArea,
+    utilization,
+    deadSpace: chipArea - totalBlockArea,
+  };
 }

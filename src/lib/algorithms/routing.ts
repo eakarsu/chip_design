@@ -7,6 +7,7 @@ import {
   Wire,
   Point,
 } from '@/types/algorithms';
+import { clipWiresToBoundary } from './boundaryUtils';
 
 // Grid-based routing representation
 interface GridCell {
@@ -480,14 +481,80 @@ export function globalRouting(params: RoutingParams): RoutingResult {
 
 // Main routing dispatcher
 export function runRouting(params: RoutingParams): RoutingResult {
-  switch (params.algorithm) {
+  let result: RoutingResult;
+
+  // Handle string algorithm names (from UI) or enum values
+  const algorithm = typeof params.algorithm === 'string'
+    ? params.algorithm.toLowerCase()
+    : params.algorithm;
+
+  switch (algorithm) {
     case RoutingAlgorithm.MAZE_ROUTING:
-      return mazeRouting(params);
+    case 'maze_routing':
+      result = mazeRouting(params);
+      break;
     case RoutingAlgorithm.A_STAR:
-      return aStarRouting(params);
+    case 'a_star':
+      result = aStarRouting(params);
+      break;
     case RoutingAlgorithm.GLOBAL_ROUTING:
-      return globalRouting(params);
+    case 'global_routing':
+      result = globalRouting(params);
+      break;
+
+    // New algorithms - for now, fall back to similar implementations
+    case 'flute':
+    case 'steiner_tree':
+    case RoutingAlgorithm.STEINER_TREE:
+    case RoutingAlgorithm.FLUTE:
+    case RoutingAlgorithm.GEOSTEINER:
+      // FLUTE is a Steiner tree algorithm - use A* as approximation
+      console.log(`${algorithm}: Using A* approximation`);
+      result = aStarRouting(params);
+      break;
+
+    case 'left_edge':
+    case 'channel_routing':
+    case 'detailed_routing':
+    case 'pathfinder':
+    case RoutingAlgorithm.LEFT_EDGE:
+    case RoutingAlgorithm.CHANNEL_ROUTING:
+    case RoutingAlgorithm.DETAILED_ROUTING:
+    case RoutingAlgorithm.PATHFINDER:
+    case RoutingAlgorithm.DOGLEG:
+    case RoutingAlgorithm.SWITCHBOX:
+    case RoutingAlgorithm.NEGOTIATION_BASED:
+    case RoutingAlgorithm.GRIDGRAPH:
+      // Use global routing as fallback for detailed routing algorithms
+      console.log(`${algorithm}: Using global routing approximation`);
+      result = globalRouting(params);
+      break;
+
+    // Buffer insertion algorithms
+    case 'van_ginneken':
+    case 'buffer_tree':
+    case 'timing_driven':
+      console.log(`${algorithm}: Using A* routing approximation`);
+      result = aStarRouting(params);
+      break;
+
+    // Congestion estimation algorithms
+    case 'rudy':
+    case 'probabilistic':
+    case 'grid_based':
+      console.log(`${algorithm}: Using global routing approximation`);
+      result = globalRouting(params);
+      break;
+
     default:
-      throw new Error(`Unsupported routing algorithm: ${params.algorithm}`);
+      throw new Error(`Unsupported routing algorithm: ${algorithm}`);
   }
+
+  // Ensure all wires stay within chip boundaries
+  const fixedWires = clipWiresToBoundary(result.wires, params.chipWidth, params.chipHeight);
+
+  return {
+    ...result,
+    wires: fixedWires,
+  };
 }

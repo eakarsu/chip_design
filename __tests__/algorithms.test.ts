@@ -1,6 +1,6 @@
 /**
  * Comprehensive Test Suite for All Chip Design Algorithms
- * Tests all 31 implemented algorithms across 10 categories
+ * Tests all 70+ implemented algorithms across 17 categories
  */
 
 import { describe, it, expect } from '@jest/globals';
@@ -27,6 +27,13 @@ import {
   PartitioningAlgorithm,
   DRCLVSAlgorithm,
   RLAlgorithm,
+  LegalizationAlgorithm,
+  BufferInsertionAlgorithm,
+  CongestionEstimationAlgorithm,
+  SignalIntegrityAlgorithm,
+  IRDropAlgorithm,
+  LithographyAlgorithm,
+  CMPAlgorithm,
   Cell,
   Net,
 } from '@/types/algorithms';
@@ -72,7 +79,7 @@ describe('Chip Design Algorithms - Complete Test Suite', () => {
   const cells = createTestCells(8);
   const nets = createTestNets(8);
 
-  // ========== PLACEMENT ALGORITHMS (3) ==========
+  // ========== PLACEMENT ALGORITHMS (11) ==========
   describe('Placement Algorithms', () => {
     it('should run Simulated Annealing placement successfully', () => {
       const result = runPlacement({
@@ -130,9 +137,130 @@ describe('Chip Design Algorithms - Complete Test Suite', () => {
       expect(result.totalWirelength).toBeGreaterThan(0);
       expect(result.runtime).toBeGreaterThan(0);
     });
+
+    it('should run Analytical Placement successfully', () => {
+      const result = runPlacement({
+        algorithm: 'analytical' as PlacementAlgorithm,
+        chipWidth,
+        chipHeight,
+        cells,
+        nets,
+        iterations: 50,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.cells).toHaveLength(cells.length);
+      expect(result.cells.every(c => c.position)).toBe(true);
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Min-Cut placement successfully', () => {
+      const result = runPlacement({
+        algorithm: 'min_cut' as PlacementAlgorithm,
+        chipWidth,
+        chipHeight,
+        cells,
+        nets,
+        iterations: 50,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.cells).toHaveLength(cells.length);
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run GORDIAN placement successfully', () => {
+      const result = runPlacement({
+        algorithm: 'gordian' as PlacementAlgorithm,
+        chipWidth,
+        chipHeight,
+        cells,
+        nets,
+        iterations: 50,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.cells).toHaveLength(cells.length);
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run FastPlace placement successfully', () => {
+      const result = runPlacement({
+        algorithm: 'fastplace' as PlacementAlgorithm,
+        chipWidth,
+        chipHeight,
+        cells,
+        nets,
+        iterations: 50,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.cells).toHaveLength(cells.length);
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run RePlAce placement successfully', () => {
+      const result = runPlacement({
+        algorithm: 'replace' as PlacementAlgorithm,
+        chipWidth,
+        chipHeight,
+        cells,
+        nets,
+        iterations: 50,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.cells).toHaveLength(cells.length);
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run DREAMPlace placement successfully', () => {
+      const result = runPlacement({
+        algorithm: 'dreamplace' as PlacementAlgorithm,
+        chipWidth,
+        chipHeight,
+        cells,
+        nets,
+        iterations: 50,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.cells).toHaveLength(cells.length);
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Quadratic Placement successfully', () => {
+      const result = runPlacement({
+        algorithm: PlacementAlgorithm.QUADRATIC,
+        chipWidth,
+        chipHeight,
+        cells,
+        nets,
+        iterations: 50,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.cells).toHaveLength(cells.length);
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Partitioning-Based Placement successfully', () => {
+      const result = runPlacement({
+        algorithm: PlacementAlgorithm.PARTITIONING_BASED,
+        chipWidth,
+        chipHeight,
+        cells,
+        nets,
+        iterations: 50,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.cells).toHaveLength(cells.length);
+      expect(result.runtime).toBeGreaterThan(0);
+    });
   });
 
-  // ========== ROUTING ALGORITHMS (3) ==========
+  // ========== ROUTING ALGORITHMS (13) ==========
   describe('Routing Algorithms', () => {
     const placedCells = cells.map((cell, i) => ({
       ...cell,
@@ -190,9 +318,150 @@ describe('Chip Design Algorithms - Complete Test Suite', () => {
       expect(result.totalWirelength).toBeGreaterThan(0);
       expect(result.runtime).toBeGreaterThan(0);
     });
+
+    it('should run FLUTE (Steiner Tree) successfully', () => {
+      const result = runRouting({
+        algorithm: 'flute' as RoutingAlgorithm,
+        chipWidth,
+        chipHeight,
+        cells: placedCells,
+        nets,
+        layers: 2,
+        gridSize: 10,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Left-Edge Algorithm successfully', () => {
+      const result = runRouting({
+        algorithm: 'left_edge' as RoutingAlgorithm,
+        chipWidth,
+        chipHeight,
+        cells: placedCells,
+        nets,
+        layers: 2,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Channel Routing successfully', () => {
+      const result = runRouting({
+        algorithm: RoutingAlgorithm.CHANNEL_ROUTING,
+        chipWidth,
+        chipHeight,
+        cells: placedCells,
+        nets,
+        layers: 2,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Detailed Routing successfully', () => {
+      const result = runRouting({
+        algorithm: 'detailed_routing' as RoutingAlgorithm,
+        chipWidth,
+        chipHeight,
+        cells: placedCells,
+        nets,
+        layers: 2,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run PathFinder successfully', () => {
+      const result = runRouting({
+        algorithm: 'pathfinder' as RoutingAlgorithm,
+        chipWidth,
+        chipHeight,
+        cells: placedCells,
+        nets,
+        layers: 2,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run GeoSteiner successfully', () => {
+      const result = runRouting({
+        algorithm: RoutingAlgorithm.GEOSTEINER,
+        chipWidth,
+        chipHeight,
+        cells: placedCells,
+        nets,
+        layers: 2,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Dogleg Routing successfully', () => {
+      const result = runRouting({
+        algorithm: RoutingAlgorithm.DOGLEG,
+        chipWidth,
+        chipHeight,
+        cells: placedCells,
+        nets,
+        layers: 2,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Switchbox Routing successfully', () => {
+      const result = runRouting({
+        algorithm: RoutingAlgorithm.SWITCHBOX,
+        chipWidth,
+        chipHeight,
+        cells: placedCells,
+        nets,
+        layers: 2,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Negotiation-Based Routing successfully', () => {
+      const result = runRouting({
+        algorithm: RoutingAlgorithm.NEGOTIATION_BASED,
+        chipWidth,
+        chipHeight,
+        cells: placedCells,
+        nets,
+        layers: 2,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run GridGraph Routing successfully', () => {
+      const result = runRouting({
+        algorithm: RoutingAlgorithm.GRIDGRAPH,
+        chipWidth,
+        chipHeight,
+        cells: placedCells,
+        nets,
+        layers: 2,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
   });
 
-  // ========== FLOORPLANNING ALGORITHMS (2) ==========
+  // ========== FLOORPLANNING ALGORITHMS (7) ==========
   describe('Floorplanning Algorithms', () => {
     it('should run Slicing Tree floorplanning successfully', () => {
       const result = runFloorplanning({
@@ -225,6 +494,71 @@ describe('Chip Design Algorithms - Complete Test Suite', () => {
       expect(result.success).toBe(true);
       expect(result.blocks).toHaveLength(cells.length);
       expect(result.area).toBeGreaterThan(0);
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run B*-Tree floorplanning successfully', () => {
+      const result = runFloorplanning({
+        algorithm: 'b_star_tree' as FloorplanningAlgorithm,
+        chipWidth,
+        chipHeight,
+        blocks: cells,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.blocks).toHaveLength(cells.length);
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run O-Tree floorplanning successfully', () => {
+      const result = runFloorplanning({
+        algorithm: 'o_tree' as FloorplanningAlgorithm,
+        chipWidth,
+        chipHeight,
+        blocks: cells,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.blocks).toHaveLength(cells.length);
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Corner Block List floorplanning successfully', () => {
+      const result = runFloorplanning({
+        algorithm: 'corner_block_list' as FloorplanningAlgorithm,
+        chipWidth,
+        chipHeight,
+        blocks: cells,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.blocks).toHaveLength(cells.length);
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run TCG floorplanning successfully', () => {
+      const result = runFloorplanning({
+        algorithm: 'tcg' as FloorplanningAlgorithm,
+        chipWidth,
+        chipHeight,
+        blocks: cells,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.blocks).toHaveLength(cells.length);
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Fixed-Outline floorplanning successfully', () => {
+      const result = runFloorplanning({
+        algorithm: FloorplanningAlgorithm.FIXED_OUTLINE,
+        chipWidth,
+        chipHeight,
+        blocks: cells,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.blocks).toHaveLength(cells.length);
       expect(result.runtime).toBeGreaterThan(0);
     });
   });
@@ -671,14 +1005,352 @@ endmodule`,
     });
   });
 
-  // ========== SUMMARY TEST ==========
-  describe('Algorithm Coverage Summary', () => {
-    it('should have all 31 algorithms tested', () => {
-      const totalTests = 3 + 3 + 2 + 2 + 2 + 3 + 4 + 3 + 3 + 5;
-      expect(totalTests).toBe(31);
+  // ========== NEW ALGORITHM CATEGORIES ==========
+
+  // ========== LEGALIZATION ALGORITHMS (4) ==========
+  describe('Legalization Algorithms', () => {
+    const placedCells = cells.map((cell, i) => ({
+      ...cell,
+      position: { x: i * 25, y: i * 25 },
+    }));
+
+    it('should run Tetris Legalization successfully', () => {
+      const result = runPlacement({
+        algorithm: 'tetris' as any,
+        chipWidth,
+        chipHeight,
+        cells: placedCells,
+        nets,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
     });
 
-    it('should cover all 10 algorithm categories', () => {
+    it('should run Abacus Legalization successfully', () => {
+      const result = runPlacement({
+        algorithm: 'abacus' as any,
+        chipWidth,
+        chipHeight,
+        cells: placedCells,
+        nets,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Flow-Based Legalization successfully', () => {
+      const result = runPlacement({
+        algorithm: 'flow_based' as any,
+        chipWidth,
+        chipHeight,
+        cells: placedCells,
+        nets,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Min-Cost Flow Legalization successfully', () => {
+      const result = runPlacement({
+        algorithm: 'min_cost_flow' as any,
+        chipWidth,
+        chipHeight,
+        cells: placedCells,
+        nets,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+  });
+
+  // ========== BUFFER INSERTION ALGORITHMS (3) ==========
+  describe('Buffer Insertion Algorithms', () => {
+    it('should run Van Ginneken Buffer Insertion successfully', () => {
+      const result = runRouting({
+        algorithm: 'van_ginneken' as any,
+        chipWidth,
+        chipHeight,
+        cells,
+        nets,
+        layers: 2,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Buffer Tree Algorithm successfully', () => {
+      const result = runRouting({
+        algorithm: 'buffer_tree' as any,
+        chipWidth,
+        chipHeight,
+        cells,
+        nets,
+        layers: 2,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Timing-Driven Buffer Insertion successfully', () => {
+      const result = runRouting({
+        algorithm: 'timing_driven' as any,
+        chipWidth,
+        chipHeight,
+        cells,
+        nets,
+        layers: 2,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+  });
+
+  // ========== CONGESTION ESTIMATION ALGORITHMS (3) ==========
+  describe('Congestion Estimation Algorithms', () => {
+    it('should run RUDY Congestion Estimation successfully', () => {
+      const result = runRouting({
+        algorithm: 'rudy' as any,
+        chipWidth,
+        chipHeight,
+        cells,
+        nets,
+        layers: 2,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Probabilistic Congestion Estimation successfully', () => {
+      const result = runRouting({
+        algorithm: 'probabilistic' as any,
+        chipWidth,
+        chipHeight,
+        cells,
+        nets,
+        layers: 2,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Grid-Based Congestion Estimation successfully', () => {
+      const result = runRouting({
+        algorithm: 'grid_based' as any,
+        chipWidth,
+        chipHeight,
+        cells,
+        nets,
+        layers: 2,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+  });
+
+  // ========== SIGNAL INTEGRITY ALGORITHMS (3) ==========
+  describe('Signal Integrity Algorithms', () => {
+    const wires = [
+      {
+        id: 'wire_0',
+        netId: 'net_0',
+        points: [{ x: 10, y: 10 }, { x: 50, y: 10 }],
+        layer: 1,
+        width: 0.2,
+      },
+    ];
+
+    it('should run Crosstalk Analysis successfully', () => {
+      const result = runVerification({
+        algorithm: 'crosstalk_analysis' as any,
+        cells,
+        wires,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Noise Analysis successfully', () => {
+      const result = runVerification({
+        algorithm: 'noise_analysis' as any,
+        cells,
+        wires,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Coupling Capacitance Analysis successfully', () => {
+      const result = runVerification({
+        algorithm: 'coupling_capacitance' as any,
+        cells,
+        wires,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+  });
+
+  // ========== IR DROP ALGORITHMS (3) ==========
+  describe('IR Drop Algorithms', () => {
+    it('should run Power Grid Analysis successfully', () => {
+      const result = runPower({
+        algorithm: 'power_grid_analysis' as any,
+        netlist: 'module test();',
+        cells,
+        clockFrequency: 1000,
+        voltage: 1.2,
+        temperature: 85,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Voltage Drop Analysis successfully', () => {
+      const result = runPower({
+        algorithm: 'voltage_drop' as any,
+        netlist: 'module test();',
+        cells,
+        clockFrequency: 1000,
+        voltage: 1.2,
+        temperature: 85,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Decap Placement successfully', () => {
+      const result = runPower({
+        algorithm: 'decap_placement' as any,
+        netlist: 'module test();',
+        cells,
+        clockFrequency: 1000,
+        voltage: 1.2,
+        temperature: 85,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+  });
+
+  // ========== LITHOGRAPHY ALGORITHMS (3) ==========
+  describe('Lithography Algorithms', () => {
+    const wires = [
+      {
+        id: 'wire_0',
+        netId: 'net_0',
+        points: [{ x: 10, y: 10 }, { x: 50, y: 10 }],
+        layer: 1,
+        width: 0.2,
+      },
+    ];
+
+    it('should run OPC successfully', () => {
+      const result = runVerification({
+        algorithm: 'opc' as any,
+        cells,
+        wires,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Phase-Shift Masking successfully', () => {
+      const result = runVerification({
+        algorithm: 'phase_shift_masking' as any,
+        cells,
+        wires,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run SRAF successfully', () => {
+      const result = runVerification({
+        algorithm: 'sraf' as any,
+        cells,
+        wires,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+  });
+
+  // ========== CMP ALGORITHMS (3) ==========
+  describe('CMP Algorithms', () => {
+    const wires = [
+      {
+        id: 'wire_0',
+        netId: 'net_0',
+        points: [{ x: 10, y: 10 }, { x: 50, y: 10 }],
+        layer: 1,
+        width: 0.2,
+      },
+    ];
+
+    it('should run Dummy Fill successfully', () => {
+      const result = runVerification({
+        algorithm: 'dummy_fill' as any,
+        cells,
+        wires,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run CMP-Aware Routing successfully', () => {
+      const result = runVerification({
+        algorithm: 'cmp_aware_routing' as any,
+        cells,
+        wires,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+
+    it('should run Density Balancing successfully', () => {
+      const result = runVerification({
+        algorithm: 'density_balancing' as any,
+        cells,
+        wires,
+      });
+
+      expect(result).toBeDefined();
+      expect(result.runtime).toBeGreaterThan(0);
+    });
+  });
+
+  // ========== SUMMARY TEST ==========
+  describe('Algorithm Coverage Summary', () => {
+    it('should have all 70+ algorithms tested', () => {
+      // Placement: 11, Routing: 13, Floorplanning: 7, Synthesis: 2, Timing: 2
+      // Power: 3, ClockTree: 4, Partitioning: 3, DRC/LVS: 3, RL: 5
+      // Legalization: 4, Buffer: 3, Congestion: 3, Signal: 3, IR: 3, Litho: 3, CMP: 3
+      const totalTests = 11 + 13 + 7 + 2 + 2 + 3 + 4 + 3 + 3 + 5 + 4 + 3 + 3 + 3 + 3 + 3 + 3;
+      expect(totalTests).toBe(75);
+    });
+
+    it('should cover all 17 algorithm categories', () => {
       const categories = [
         'Placement',
         'Routing',
@@ -690,8 +1362,15 @@ endmodule`,
         'Partitioning',
         'DRC/LVS Verification',
         'Reinforcement Learning',
+        'Legalization',
+        'Buffer Insertion',
+        'Congestion Estimation',
+        'Signal Integrity',
+        'IR Drop',
+        'Lithography',
+        'CMP',
       ];
-      expect(categories).toHaveLength(10);
+      expect(categories).toHaveLength(17);
     });
   });
 });

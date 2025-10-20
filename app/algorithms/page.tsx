@@ -39,6 +39,7 @@ import AlgorithmResults from '@/components/AlgorithmResults';
 import TemplateSelector from '@/components/TemplateSelector';
 import AutoTuneDialog from '@/components/AutoTuneDialog';
 import AIAlgorithmSelector from '@/components/AIAlgorithmSelector';
+import AlgorithmCodeViewer from '@/components/AlgorithmCodeViewer';
 import { AlgorithmTemplate } from '@/lib/templates';
 import { trackEvent } from '@/lib/analytics';
 
@@ -73,6 +74,7 @@ export default function AlgorithmsPage() {
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [autoTuneDialogOpen, setAutoTuneDialogOpen] = useState(false);
   const [aiSelectorOpen, setAiSelectorOpen] = useState(false);
+  const [codeViewerOpen, setCodeViewerOpen] = useState(false);
 
   // Sample parameters
   const [chipWidth, setChipWidth] = useState(1000);
@@ -579,6 +581,13 @@ endmodule`,
                   <MenuItem value={AlgorithmCategory.PARTITIONING}>Partitioning</MenuItem>
                   <MenuItem value={AlgorithmCategory.DRC_LVS}>DRC/LVS Verification</MenuItem>
                   <MenuItem value={AlgorithmCategory.REINFORCEMENT_LEARNING}>Reinforcement Learning</MenuItem>
+                  <MenuItem value={AlgorithmCategory.LEGALIZATION}>Legalization</MenuItem>
+                  <MenuItem value={AlgorithmCategory.BUFFER_INSERTION}>Buffer Insertion</MenuItem>
+                  <MenuItem value={AlgorithmCategory.CONGESTION_ESTIMATION}>Congestion Estimation</MenuItem>
+                  <MenuItem value={AlgorithmCategory.SIGNAL_INTEGRITY}>Signal Integrity</MenuItem>
+                  <MenuItem value={AlgorithmCategory.IR_DROP}>IR Drop Analysis</MenuItem>
+                  <MenuItem value={AlgorithmCategory.LITHOGRAPHY}>Lithography</MenuItem>
+                  <MenuItem value={AlgorithmCategory.CMP}>CMP (Chemical Mechanical Planarization)</MenuItem>
                 </Select>
               </FormControl>
 
@@ -854,6 +863,17 @@ endmodule`,
               <Alert severity="info">
                 Click "Run Algorithm" to execute the selected algorithm with sample data. Results will appear in the Results tab.
               </Alert>
+
+              <Box sx={{ mt: 2 }}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  startIcon={<CodeIcon />}
+                  onClick={() => setCodeViewerOpen(true)}
+                >
+                  View Code Examples
+                </Button>
+              </Box>
             </Paper>
           </Grid>
         </Grid>
@@ -898,6 +918,14 @@ endmodule`,
           setCategory(selectedCategory);
           setAlgorithm(selectedAlgorithm);
         }}
+      />
+
+      {/* Algorithm Code Viewer */}
+      <AlgorithmCodeViewer
+        open={codeViewerOpen}
+        onClose={() => setCodeViewerOpen(false)}
+        category={category}
+        algorithm={algorithm}
       />
     </Container>
   );

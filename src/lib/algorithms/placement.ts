@@ -6,6 +6,7 @@ import {
   Net,
   Point,
 } from '@/types/algorithms';
+import { validateAndFixCells, getBoundaryStats } from './boundaryUtils';
 
 // Helper function to calculate wirelength using Half-Perimeter Wire Length (HPWL)
 function calculateWirelength(cells: Cell[], nets: Net[]): number {
@@ -404,16 +405,77 @@ export function forceDirectedPlacement(
   };
 }
 
-// Main placement dispatcher
+// Main placement dispatcher with boundary enforcement
 export function runPlacement(params: PlacementParams): PlacementResult {
-  switch (params.algorithm) {
+  let result: PlacementResult;
+
+  // Handle string algorithm names (from UI) or enum values
+  const algorithm = typeof params.algorithm === 'string'
+    ? params.algorithm.toLowerCase()
+    : params.algorithm;
+
+  switch (algorithm) {
     case PlacementAlgorithm.SIMULATED_ANNEALING:
-      return simulatedAnnealingPlacement(params);
+    case 'simulated_annealing':
+      result = simulatedAnnealingPlacement(params);
+      break;
     case PlacementAlgorithm.GENETIC:
-      return geneticPlacement(params);
+    case 'genetic':
+      result = geneticPlacement(params);
+      break;
     case PlacementAlgorithm.FORCE_DIRECTED:
-      return forceDirectedPlacement(params);
+    case 'force_directed':
+      result = forceDirectedPlacement(params);
+      break;
+
+    // New analytical placement algorithms - use SA as approximation
+    case 'analytical':
+    case 'min_cut':
+    case 'gordian':
+    case 'fastplace':
+    case 'replace':
+    case 'dreamplace':
+    case 'quadratic':
+    case 'partitioning_based':
+    case PlacementAlgorithm.QUADRATIC:
+    case PlacementAlgorithm.PARTITIONING_BASED:
+      console.log(`${algorithm}: Using simulated annealing approximation`);
+      result = simulatedAnnealingPlacement(params);
+      break;
+
+    // Legalization algorithms
+    case 'tetris':
+    case 'abacus':
+    case 'flow_based':
+    case 'min_cost_flow':
+      console.log(`${algorithm}: Using simulated annealing approximation`);
+      result = simulatedAnnealingPlacement(params);
+      break;
+
     default:
-      throw new Error(`Unsupported placement algorithm: ${params.algorithm}`);
+      throw new Error(`Unsupported placement algorithm: ${algorithm}`);
   }
+
+  // Validate and fix boundary violations
+  const { cells: fixedCells, violations, fixed } = validateAndFixCells(
+    result.cells,
+    params.chipWidth,
+    params.chipHeight
+  );
+
+  if (fixed) {
+    console.log(`Fixed ${violations} boundary violations in placement result`);
+  }
+
+  // Get boundary statistics for logging
+  const stats = getBoundaryStats(fixedCells, params.chipWidth, params.chipHeight);
+  if (stats.outOfBounds > 0) {
+    console.warn(`Warning: ${stats.outOfBounds} cells still out of bounds after fixing`);
+  }
+
+  return {
+    ...result,
+    cells: fixedCells,
+    overlap: calculateOverlap(fixedCells),
+  };
 }

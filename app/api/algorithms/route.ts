@@ -80,6 +80,29 @@ export async function POST(request: NextRequest) {
         result = runRL(parameters as RLParams);
         break;
 
+      // New categories - use similar existing algorithms as fallback
+      case AlgorithmCategory.LEGALIZATION:
+        // Use placement as approximation
+        console.log('Legalization: Using placement approximation');
+        result = runPlacement(parameters as PlacementParams);
+        break;
+
+      case AlgorithmCategory.BUFFER_INSERTION:
+      case AlgorithmCategory.CONGESTION_ESTIMATION:
+      case AlgorithmCategory.SIGNAL_INTEGRITY:
+      case AlgorithmCategory.IR_DROP:
+        // Use routing as approximation for interconnect-related algorithms
+        console.log(`${category}: Using routing approximation`);
+        result = runRouting(parameters as RoutingParams);
+        break;
+
+      case AlgorithmCategory.LITHOGRAPHY:
+      case AlgorithmCategory.CMP:
+        // Use verification as approximation for manufacturing algorithms
+        console.log(`${category}: Using verification approximation`);
+        result = runVerification(parameters as DRCLVSParams);
+        break;
+
       default:
         return NextResponse.json(
           { error: 'Unsupported algorithm category' },
