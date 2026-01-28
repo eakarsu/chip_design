@@ -7,6 +7,18 @@ import {
   Point,
 } from '@/types/algorithms';
 import { validateAndFixCells, getBoundaryStats } from './boundaryUtils';
+import {
+  runDeepPlace,
+  runGNNPlacement,
+  runRLEnhancedPlacement,
+  runTransformerPlacement,
+} from './placement/mlBased';
+import {
+  runEPlace,
+  runNTUPlace,
+  runMPL,
+  runCapo,
+} from './placement/industrial';
 
 // Helper function to calculate wirelength using Half-Perimeter Wire Length (HPWL)
 function calculateWirelength(cells: Cell[], nets: Net[]): number {
@@ -405,6 +417,19 @@ export function forceDirectedPlacement(
   };
 }
 
+// Helper to convert old Cell format to new format (just returns the same cells)
+function convertCellsToNew(cells: Cell[]): Cell[] {
+  return cells;
+}
+
+// Helper to convert new result back to old format (already matches)
+function convertResultToOld(
+  newResult: PlacementResult,
+  originalCells: Cell[]
+): PlacementResult {
+  return newResult;
+}
+
 // Main placement dispatcher with boundary enforcement
 export function runPlacement(params: PlacementParams): PlacementResult {
   let result: PlacementResult;
@@ -426,6 +451,92 @@ export function runPlacement(params: PlacementParams): PlacementResult {
     case PlacementAlgorithm.FORCE_DIRECTED:
     case 'force_directed':
       result = forceDirectedPlacement(params);
+      break;
+
+    // ML/DL-based placement algorithms
+    case 'deepplace':
+    case 'deep_learning':
+      {
+        const newCells = convertCellsToNew(params.cells);
+        const newResult = runDeepPlace(newCells, params.nets, params.chipWidth, params.chipHeight, {
+          iterations: params.iterations,
+          learningRate: 0.01,
+        });
+        result = convertResultToOld(newResult, params.cells);
+      }
+      break;
+
+    case 'gnn_placement':
+    case 'gnn':
+      {
+        const newCells = convertCellsToNew(params.cells);
+        const newResult = runGNNPlacement(newCells, params.nets, params.chipWidth, params.chipHeight, {
+          gnnLayers: 3,
+          iterations: params.iterations,
+        });
+        result = convertResultToOld(newResult, params.cells);
+      }
+      break;
+
+    case 'rl_placement':
+    case 'reinforcement_learning':
+      {
+        const newCells = convertCellsToNew(params.cells);
+        const newResult = runRLEnhancedPlacement(newCells, params.nets, params.chipWidth, params.chipHeight, {
+          episodes: Math.floor((params.iterations || 100) / 10),
+        });
+        result = convertResultToOld(newResult, params.cells);
+      }
+      break;
+
+    case 'transformer_placement':
+    case 'transformer':
+      {
+        const newCells = convertCellsToNew(params.cells);
+        const newResult = runTransformerPlacement(newCells, params.nets, params.chipWidth, params.chipHeight, {
+          numHeads: 8,
+          iterations: params.iterations,
+        });
+        result = convertResultToOld(newResult, params.cells);
+      }
+      break;
+
+    // Industrial placement algorithms
+    case 'eplace':
+      {
+        const newCells = convertCellsToNew(params.cells);
+        const newResult = runEPlace(newCells, params.nets, params.chipWidth, params.chipHeight, {
+          iterations: params.iterations,
+        });
+        result = convertResultToOld(newResult, params.cells);
+      }
+      break;
+
+    case 'ntuplace':
+      {
+        const newCells = convertCellsToNew(params.cells);
+        const newResult = runNTUPlace(newCells, params.nets, params.chipWidth, params.chipHeight, {
+          iterations: params.iterations,
+        });
+        result = convertResultToOld(newResult, params.cells);
+      }
+      break;
+
+    case 'mpl':
+    case 'multilevel':
+      {
+        const newCells = convertCellsToNew(params.cells);
+        const newResult = runMPL(newCells, params.nets, params.chipWidth, params.chipHeight);
+        result = convertResultToOld(newResult, params.cells);
+      }
+      break;
+
+    case 'capo':
+      {
+        const newCells = convertCellsToNew(params.cells);
+        const newResult = runCapo(newCells, params.nets, params.chipWidth, params.chipHeight);
+        result = convertResultToOld(newResult, params.cells);
+      }
       break;
 
     // New analytical placement algorithms - use SA as approximation

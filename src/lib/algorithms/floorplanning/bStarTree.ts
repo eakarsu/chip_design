@@ -219,6 +219,9 @@ function perturbBStarTree(tree: BStarNode): BStarNode {
   // Clone tree
   const clonedTree = cloneTree(tree);
 
+  // Ensure we have a valid tree
+  if (!clonedTree) return tree;
+
   // Apply random perturbation
   const perturbationType = Math.floor(Math.random() * 3);
 

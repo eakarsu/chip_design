@@ -23,10 +23,10 @@ export async function POST(request: NextRequest) {
       .filter((e) => e.type === 'algorithm_run' && e.algorithm === algorithm)
       .map((e) => ({
         params: e.metadata?.parameters || {},
-        runtime: e.metadata?.runtime || 0,
+        runtime: (e.metadata?.runtime as number) || 0,
         success: e.metadata?.success !== false,
-        cellCount: e.metadata?.cellCount,
-        netCount: e.metadata?.netCount,
+        cellCount: e.metadata?.cellCount as number | undefined,
+        netCount: e.metadata?.netCount as number | undefined,
       }))
       .slice(-20); // Last 20 runs
 
@@ -65,7 +65,7 @@ ${JSON.stringify(currentParams, null, 2)}
 
     if (historicalRuns.length > 0) {
       const successRate = (historicalRuns.filter(h => h.success).length / historicalRuns.length * 100).toFixed(1);
-      const avgRuntime = (historicalRuns.reduce((sum, h) => sum + h.runtime, 0) / historicalRuns.length).toFixed(2);
+      const avgRuntime = (historicalRuns.reduce((sum, h) => sum + (h.runtime || 0), 0) / historicalRuns.length).toFixed(2);
 
       prompt += `
 Historical performance data (${historicalRuns.length} runs):

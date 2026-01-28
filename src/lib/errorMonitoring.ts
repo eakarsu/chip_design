@@ -75,7 +75,7 @@ export function getErrorLogs(): ErrorLog[] {
  */
 export function getErrorStats(): {
   total: number;
-  byS everity: Record<string, number>;
+  bySeverity: Record<string, number>;
   resolved: number;
   unresolved: number;
   recent: ErrorLog[];

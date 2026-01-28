@@ -8,6 +8,12 @@ import {
   Point,
 } from '@/types/algorithms';
 import { clipWiresToBoundary } from './boundaryUtils';
+import {
+  runTritonRoute,
+  runBoxRouter,
+  runNCTUGR,
+  runGNNRouting,
+} from './routing/modern';
 
 // Grid-based routing representation
 interface GridCell {
@@ -479,6 +485,41 @@ export function globalRouting(params: RoutingParams): RoutingResult {
   };
 }
 
+// Helper to convert modern routing result to legacy format
+function convertModernRoutingResult(
+  modernResult: any,
+  params: RoutingParams
+): RoutingResult {
+  const wires: Wire[] = [];
+
+  modernResult.routes.forEach((route: any) => {
+    if (route.path && route.path.length > 1) {
+      for (let i = 1; i < route.path.length; i++) {
+        const from = route.path[i - 1];
+        const to = route.path[i];
+        wires.push({
+          netId: route.netId,
+          layer: from.layer || 0,
+          points: [
+            { x: from.x, y: from.y },
+            { x: to.x, y: to.y },
+          ],
+        });
+      }
+    }
+  });
+
+  return {
+    success: true,
+    wires,
+    totalWirelength: modernResult.metrics?.totalWirelength || 0,
+    viaCount: modernResult.metrics?.viaCount || 0,
+    congestion: modernResult.metrics?.overflowCount || 0,
+    runtime: modernResult.metrics?.executionTime || 0,
+    unroutedNets: [],
+  };
+}
+
 // Main routing dispatcher
 export function runRouting(params: RoutingParams): RoutingResult {
   let result: RoutingResult;
@@ -544,6 +585,75 @@ export function runRouting(params: RoutingParams): RoutingResult {
     case 'grid_based':
       console.log(`${algorithm}: Using global routing approximation`);
       result = globalRouting(params);
+      break;
+
+    // Modern routing algorithms
+    case 'tritonroute':
+    case 'triton_route':
+      {
+        const modernResult = runTritonRoute(
+          params.cells,
+          params.nets,
+          params.chipWidth,
+          params.chipHeight,
+          {
+            numLayers: params.layers,
+            trackPitch: params.gridSize || 0.5,
+            drcIterations: 10,
+          }
+        );
+        result = convertModernRoutingResult(modernResult, params);
+      }
+      break;
+
+    case 'boxrouter':
+    case 'box_router':
+      {
+        const modernResult = runBoxRouter(
+          params.cells,
+          params.nets,
+          params.chipWidth,
+          params.chipHeight,
+          {
+            gcellSize: params.gridSize || 10,
+          }
+        );
+        result = convertModernRoutingResult(modernResult, params);
+      }
+      break;
+
+    case 'nctugr':
+    case 'nctu_gr':
+    case 'nctu':
+      {
+        const modernResult = runNCTUGR(
+          params.cells,
+          params.nets,
+          params.chipWidth,
+          params.chipHeight,
+          {
+            iterations: 20,
+          }
+        );
+        result = convertModernRoutingResult(modernResult, params);
+      }
+      break;
+
+    case 'gnn_routing':
+    case 'gnn':
+      {
+        const modernResult = runGNNRouting(
+          params.cells,
+          params.nets,
+          params.chipWidth,
+          params.chipHeight,
+          {
+            gnnLayers: 3,
+            iterations: 15,
+          }
+        );
+        result = convertModernRoutingResult(modernResult, params);
+      }
       break;
 
     default:

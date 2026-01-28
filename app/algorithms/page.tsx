@@ -21,6 +21,8 @@ import {
   Tabs,
   Tab,
   Chip,
+  ToggleButtonGroup,
+  ToggleButton,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -35,11 +37,13 @@ import {
 import Link from 'next/link';
 import { AlgorithmCategory } from '@/types/algorithms';
 import ChipVisualizer from '@/components/ChipVisualizer';
+import ChipVisualizer3D from '@/components/ChipVisualizer3D';
 import AlgorithmResults from '@/components/AlgorithmResults';
 import TemplateSelector from '@/components/TemplateSelector';
 import AutoTuneDialog from '@/components/AutoTuneDialog';
 import AIAlgorithmSelector from '@/components/AIAlgorithmSelector';
 import AlgorithmCodeViewer from '@/components/AlgorithmCodeViewer';
+import AICopilot from '@/components/AICopilot';
 import { AlgorithmTemplate } from '@/lib/templates';
 import { trackEvent } from '@/lib/analytics';
 
@@ -75,6 +79,7 @@ export default function AlgorithmsPage() {
   const [autoTuneDialogOpen, setAutoTuneDialogOpen] = useState(false);
   const [aiSelectorOpen, setAiSelectorOpen] = useState(false);
   const [codeViewerOpen, setCodeViewerOpen] = useState(false);
+  const [view3D, setView3D] = useState(false);
 
   // Sample parameters
   const [chipWidth, setChipWidth] = useState(1000);
@@ -92,6 +97,14 @@ export default function AlgorithmsPage() {
       { value: 'min_cut', label: 'Min-Cut Placement' },
       { value: 'gordian', label: 'GORDIAN (Quadratic)' },
       { value: 'fastplace', label: 'FastPlace' },
+      { value: 'deepplace', label: '🤖 DeepPlace (Deep Learning)' },
+      { value: 'gnn_placement', label: '🤖 GNN Placement' },
+      { value: 'rl_placement', label: '🤖 RL-Enhanced Placement (PPO)' },
+      { value: 'transformer_placement', label: '🤖 Transformer Placement' },
+      { value: 'eplace', label: '⚡ ePlace (Electrostatics)' },
+      { value: 'ntuplace', label: '⚡ NTUPlace (Analytical)' },
+      { value: 'mpl', label: '⚡ mPL (Multilevel)' },
+      { value: 'capo', label: '⚡ Capo (Constraint-Aware)' },
     ],
     [AlgorithmCategory.ROUTING]: [
       { value: 'maze_routing', label: 'Maze Routing (Lee)' },
@@ -102,6 +115,10 @@ export default function AlgorithmsPage() {
       { value: 'channel_routing', label: 'Channel Routing' },
       { value: 'detailed_routing', label: 'Detailed Routing (GridGraph)' },
       { value: 'pathfinder', label: 'PathFinder (Rip-up & Reroute)' },
+      { value: 'tritonroute', label: '⚡ TritonRoute (OpenROAD)' },
+      { value: 'boxrouter', label: '⚡ BoxRouter (Pattern Routing)' },
+      { value: 'nctugr', label: '⚡ NCTU-GR (Negotiation-Based)' },
+      { value: 'gnn_routing', label: '🤖 GNN Routing' },
     ],
     [AlgorithmCategory.FLOORPLANNING]: [
       { value: 'slicing_tree', label: 'Slicing Tree' },
@@ -885,7 +902,23 @@ endmodule`,
             <AlgorithmResults result={result} />
             {(result.category === 'placement' || result.category === 'routing' || result.category === 'floorplanning') && (
               <Box sx={{ mt: 3 }}>
-                <ChipVisualizer data={result.result} category={result.category} />
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6">Chip Layout Visualization</Typography>
+                  <ToggleButtonGroup
+                    value={view3D ? '3d' : '2d'}
+                    exclusive
+                    onChange={(_, value) => value && setView3D(value === '3d')}
+                    size="small"
+                  >
+                    <ToggleButton value="2d">2D View</ToggleButton>
+                    <ToggleButton value="3d">3D View</ToggleButton>
+                  </ToggleButtonGroup>
+                </Box>
+                {view3D ? (
+                  <ChipVisualizer3D data={result.result} category={result.category} />
+                ) : (
+                  <ChipVisualizer data={result.result} category={result.category} />
+                )}
               </Box>
             )}
           </>
@@ -926,6 +959,21 @@ endmodule`,
         onClose={() => setCodeViewerOpen(false)}
         category={category}
         algorithm={algorithm}
+      />
+
+      {/* AI Copilot */}
+      <AICopilot
+        designContext={{
+          currentAlgorithm: `${category}/${algorithm}`,
+          currentParams: {
+            chipWidth,
+            chipHeight,
+            cellCount,
+            netCount,
+            iterations,
+          },
+          lastResult: result || undefined,
+        }}
       />
     </Container>
   );

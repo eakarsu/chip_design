@@ -88,10 +88,10 @@ export default function AIAlgorithmSelector({
     setSummary('');
   };
 
-  const getConfidenceColor = (confidence: number): 'success' | 'warning' | 'default' => {
+  const getConfidenceColor = (confidence: number): 'success' | 'warning' | 'error' => {
     if (confidence >= 0.8) return 'success';
     if (confidence >= 0.6) return 'warning';
-    return 'default';
+    return 'error';
   };
 
   return (

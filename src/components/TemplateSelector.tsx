@@ -158,7 +158,7 @@ export default function TemplateSelector({
                         {template.name}
                       </Typography>
                       <Chip
-                        icon={getDifficultyIcon(template.difficulty)}
+                        icon={getDifficultyIcon(template.difficulty) || undefined}
                         label={template.difficulty}
                         color={getDifficultyColor(template.difficulty)}
                         size="small"

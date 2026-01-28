@@ -11,7 +11,7 @@ export interface AnalyticsEvent {
   timestamp: number;
   category?: AlgorithmCategory;
   algorithm?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface UsageStats {
@@ -34,9 +34,12 @@ export function trackEvent(
   data?: {
     category?: AlgorithmCategory;
     algorithm?: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }
 ): void {
+  // Only run in browser
+  if (typeof window === 'undefined') return;
+
   try {
     const event: AnalyticsEvent = {
       id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -68,6 +71,9 @@ export function trackEvent(
  * Get all analytics events
  */
 export function getEvents(): AnalyticsEvent[] {
+  // Only run in browser
+  if (typeof window === 'undefined') return [];
+
   try {
     const stored = localStorage.getItem(ANALYTICS_STORAGE_KEY);
     return stored ? JSON.parse(stored) : [];
@@ -97,7 +103,7 @@ export function getUsageStats(): UsageStats {
     if (event.category) {
       categoryUsage[event.category] = (categoryUsage[event.category] || 0) + 1;
     }
-    if (event.metadata?.runtime) {
+    if (event.metadata?.runtime && typeof event.metadata.runtime === 'number') {
       totalRuntime += event.metadata.runtime;
       runtimeCount++;
     }
@@ -156,7 +162,7 @@ export function getAlgorithmPerformance(algorithm: string): {
   let successCount = 0;
 
   events.forEach((event) => {
-    if (event.metadata?.runtime) {
+    if (event.metadata?.runtime && typeof event.metadata.runtime === 'number') {
       totalRuntime += event.metadata.runtime;
       runtimeCount++;
     }
@@ -211,6 +217,9 @@ export function getUsageTrends(days: number = 7): {
  * Clear all analytics data
  */
 export function clearAnalytics(): void {
+  // Only run in browser
+  if (typeof window === 'undefined') return;
+
   try {
     localStorage.removeItem(ANALYTICS_STORAGE_KEY);
   } catch (error) {

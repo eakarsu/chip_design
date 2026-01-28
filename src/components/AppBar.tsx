@@ -25,6 +25,7 @@ import SearchDialog from './SearchDialog';
 
 const navItems = [
   { label: 'Home', href: '/' },
+  { label: 'AI Features', href: '/ai-features', highlight: true },
   { label: 'Products', href: '/products' },
   { label: 'Algorithms', href: '/algorithms' },
   { label: 'Visualizations', href: '/visualizations' },
@@ -62,12 +63,22 @@ export default function AppBar() {
               href={item.href}
               sx={{
                 textAlign: 'center',
+                backgroundColor: item.highlight ? 'primary.main' : 'transparent',
+                color: item.highlight ? 'primary.contrastText' : 'inherit',
+                my: item.highlight ? 0.5 : 0,
+                mx: item.highlight ? 1 : 0,
+                borderRadius: item.highlight ? 1 : 0,
                 '&:hover': {
-                  backgroundColor: theme.palette.mode === 'light' ? 'rgba(79, 70, 229, 0.04)' : 'rgba(129, 140, 248, 0.08)',
+                  backgroundColor: item.highlight
+                    ? 'primary.dark'
+                    : theme.palette.mode === 'light' ? 'rgba(79, 70, 229, 0.04)' : 'rgba(129, 140, 248, 0.08)',
                 },
               }}
             >
-              <ListItemText primary={item.label} />
+              <ListItemText
+                primary={item.highlight ? `✨ ${item.label}` : item.label}
+                primaryTypographyProps={{ fontWeight: item.highlight ? 700 : 400 }}
+              />
             </ListItemButton>
           </ListItem>
         ))}
@@ -119,14 +130,19 @@ export default function AppBar() {
                     key={item.label}
                     component={Link}
                     href={item.href}
+                    variant={item.highlight ? 'contained' : 'text'}
                     sx={{
-                      color: 'text.primary',
+                      color: item.highlight ? 'primary.contrastText' : 'text.primary',
                       px: 2,
-                      fontWeight: 500,
+                      fontWeight: item.highlight ? 700 : 500,
+                      backgroundColor: item.highlight ? 'primary.main' : 'transparent',
                       '&:hover': {
-                        backgroundColor: theme.palette.mode === 'light' ? 'rgba(79, 70, 229, 0.04)' : 'rgba(129, 140, 248, 0.08)',
+                        backgroundColor: item.highlight
+                          ? 'primary.dark'
+                          : theme.palette.mode === 'light' ? 'rgba(79, 70, 229, 0.04)' : 'rgba(129, 140, 248, 0.08)',
                       },
                     }}
+                    startIcon={item.highlight ? <span className="material-symbols-outlined" style={{ fontSize: 20 }}>auto_awesome</span> : undefined}
                   >
                     {item.label}
                   </Button>
