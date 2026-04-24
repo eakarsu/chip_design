@@ -49,7 +49,7 @@ Respond with JSON:
         'X-Title': 'NeuralChip - Bug Detection',
       },
       body: JSON.stringify({
-        model: 'anthropic/claude-3.5-sonnet',
+        model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt },

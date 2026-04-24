@@ -454,7 +454,7 @@ export function runGNNRouting(
 
   let totalWirelength = 0;
   let totalVias = 0;
-  let overflow = 0;
+  const overflow = 0;
 
   // GNN message passing to learn congestion patterns
   for (let layer = 0; layer < gnnLayers; layer++) {

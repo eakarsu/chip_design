@@ -59,7 +59,7 @@ Provide specific, actionable recommendations with coordinates when possible.`;
           'X-Title': 'NeuralChip AI Platform - Layout Analysis',
         },
         body: JSON.stringify({
-          model: 'anthropic/claude-3.5-sonnet', // Vision model
+          model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet', // vision-capable model
           messages: [
             { role: 'system', content: systemPrompt },
             {

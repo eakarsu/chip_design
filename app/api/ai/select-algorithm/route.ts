@@ -160,7 +160,7 @@ Return ONLY valid JSON, no markdown formatting.`;
           'X-Title': 'NeuralChip AI Platform',
         },
         body: JSON.stringify({
-          model: 'anthropic/claude-3-haiku', // Fast and cheap
+          model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3-haiku',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: prompt },

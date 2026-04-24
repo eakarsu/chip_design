@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Box,
   Container,
@@ -33,6 +33,9 @@ import {
   LibraryBooks as TemplateIcon,
   AutoFixHigh as AutoTuneIcon,
   AutoAwesome as AIIcon,
+  Save as SaveIcon,
+  FolderOpen as FolderOpenIcon,
+  Stop as StopIcon,
 } from '@mui/icons-material';
 import Link from 'next/link';
 import { AlgorithmCategory } from '@/types/algorithms';
@@ -44,8 +47,11 @@ import AutoTuneDialog from '@/components/AutoTuneDialog';
 import AIAlgorithmSelector from '@/components/AIAlgorithmSelector';
 import AlgorithmCodeViewer from '@/components/AlgorithmCodeViewer';
 import AICopilot from '@/components/AICopilot';
+import ScenarioDialog from '@/components/ScenarioDialog';
+import type { Scenario } from '@/lib/scenarios';
 import { AlgorithmTemplate } from '@/lib/templates';
 import { trackEvent } from '@/lib/analytics';
+import { metaFor } from '@/lib/algorithms/algorithm_meta';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -80,6 +86,12 @@ export default function AlgorithmsPage() {
   const [aiSelectorOpen, setAiSelectorOpen] = useState(false);
   const [codeViewerOpen, setCodeViewerOpen] = useState(false);
   const [view3D, setView3D] = useState(false);
+  const [saveScenarioOpen, setSaveScenarioOpen] = useState(false);
+  const [loadScenarioOpen, setLoadScenarioOpen] = useState(false);
+
+  // AbortController ref so the Cancel button can tear down the in-flight
+  // fetch. We reset it on every run so stale controllers don't leak.
+  const abortRef = useRef<AbortController | null>(null);
 
   // Sample parameters
   const [chipWidth, setChipWidth] = useState(1000);
@@ -139,6 +151,7 @@ export default function AlgorithmsPage() {
     [AlgorithmCategory.TIMING_ANALYSIS]: [
       { value: 'static_timing_analysis', label: 'Static Timing Analysis' },
       { value: 'critical_path', label: 'Critical Path Analysis' },
+      { value: 'mmmc_sta', label: 'MMMC STA (Multi-Mode Multi-Corner)' },
     ],
     [AlgorithmCategory.POWER_OPTIMIZATION]: [
       { value: 'clock_gating', label: 'Clock Gating' },
@@ -163,6 +176,7 @@ export default function AlgorithmsPage() {
       { value: 'design_rule_check', label: 'Design Rule Check' },
       { value: 'layout_vs_schematic', label: 'Layout vs Schematic' },
       { value: 'electrical_rule_check', label: 'Electrical Rule Check' },
+      { value: 'rule_deck', label: 'Rule Deck Engine (JSON DRC)' },
     ],
     [AlgorithmCategory.REINFORCEMENT_LEARNING]: [
       { value: 'dqn_floorplanning', label: 'DQN Floorplanning' },
@@ -206,6 +220,20 @@ export default function AlgorithmsPage() {
       { value: 'cmp_aware_routing', label: 'CMP-Aware Routing' },
       { value: 'density_balancing', label: 'Density Balancing' },
     ],
+    [AlgorithmCategory.MULTI_OBJECTIVE]: [
+      { value: 'pareto', label: 'Pareto Frontier' },
+    ],
+    [AlgorithmCategory.ECO]: [
+      { value: 'eco', label: 'ECO Operations Apply' },
+    ],
+    [AlgorithmCategory.DFT]: [
+      { value: 'scan_chain_insertion', label: 'Scan Chain Insertion' },
+      { value: 'atpg_basic', label: 'ATPG (Basic Stuck-At)' },
+    ],
+    [AlgorithmCategory.THERMAL]: [
+      { value: 'hotspot_detection', label: 'Hotspot Detection' },
+      { value: 'thermal_rc', label: 'Thermal RC Solve' },
+    ],
   };
 
   const generateSampleData = () => {
@@ -248,6 +276,11 @@ export default function AlgorithmsPage() {
   };
 
   const runAlgorithm = async () => {
+    // Tear down any previous controller before arming a new one.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setRunning(true);
     setError(null);
     setResult(null);
@@ -428,6 +461,163 @@ endmodule`,
           };
           break;
 
+        case AlgorithmCategory.LEGALIZATION:
+          // API dispatches to runPlacement → PlacementParams shape.
+          cells.forEach((cell) => {
+            cell.position = {
+              x: Math.random() * (chipWidth - cell.width),
+              y: Math.random() * (chipHeight - cell.height),
+            };
+          });
+          parameters = {
+            algorithm,
+            chipWidth,
+            chipHeight,
+            cells,
+            nets,
+            iterations,
+            temperature: 1000,
+            populationSize: 50,
+            mutationRate: 0.1,
+            coolingRate: 0.95,
+          };
+          break;
+
+        case AlgorithmCategory.BUFFER_INSERTION:
+        case AlgorithmCategory.CONGESTION_ESTIMATION:
+          // API dispatches to runRouting → RoutingParams shape.
+          cells.forEach((cell) => {
+            cell.position = {
+              x: Math.random() * (chipWidth - cell.width),
+              y: Math.random() * (chipHeight - cell.height),
+            };
+          });
+          parameters = {
+            algorithm,
+            chipWidth,
+            chipHeight,
+            cells,
+            nets,
+            layers: 3,
+            gridSize: 20,
+            viaWeight: 2,
+            bendWeight: 1.5,
+          };
+          break;
+
+        case AlgorithmCategory.SIGNAL_INTEGRITY:
+        case AlgorithmCategory.IR_DROP:
+        case AlgorithmCategory.LITHOGRAPHY:
+        case AlgorithmCategory.CMP: {
+          // API dispatches to runSignalIntegrity / runIRDrop / runLithography /
+          // runCMP — all share the DRCLVSParams shape.
+          cells.forEach((cell) => {
+            cell.position = {
+              x: Math.random() * (chipWidth - cell.width),
+              y: Math.random() * (chipHeight - cell.height),
+            };
+          });
+          const wires = Array.from({ length: netCount }, (_, i) => ({
+            id: `wire_${i}`,
+            netId: `net_${i}`,
+            points: [
+              { x: Math.random() * chipWidth, y: Math.random() * chipHeight },
+              { x: Math.random() * chipWidth, y: Math.random() * chipHeight },
+            ],
+            layer: 1,
+            width: 0.2 + Math.random() * 0.3,
+          }));
+          parameters = {
+            algorithm,
+            cells,
+            wires,
+            netlist: 'module mfg_test();',
+            designRules: [
+              { name: 'MIN_WIDTH', minWidth: 0.1 },
+              { name: 'MIN_SPACING', minSpacing: 0.15 },
+              { name: 'MIN_AREA', minArea: 0.05 },
+            ],
+          };
+          break;
+        }
+
+        case AlgorithmCategory.MULTI_OBJECTIVE: {
+          // Generate synthetic candidates over (wirelength, power, area).
+          const candidates = Array.from({ length: cellCount }, (_, i) => ({
+            id: `cand_${i}`,
+            objectives: {
+              wirelength: 1000 + Math.random() * 500,
+              power: 50 + Math.random() * 30,
+              area: 200 + Math.random() * 100,
+            },
+            meta: { label: `Candidate ${i}` },
+          }));
+          parameters = {
+            algorithm,
+            candidates,
+            weights: { wirelength: 0.5, power: 0.3, area: 0.2 },
+            reference: { wirelength: 2000, power: 100, area: 400 },
+          };
+          break;
+        }
+
+        case AlgorithmCategory.ECO: {
+          cells.forEach((cell) => {
+            cell.position = {
+              x: Math.random() * (chipWidth - cell.width),
+              y: Math.random() * (chipHeight - cell.height),
+            };
+          });
+          parameters = {
+            algorithm,
+            snapshot: { cells, nets, wires: [] },
+            operations: [
+              { kind: 'gate_size', cellId: cells[0]?.id, newSize: 'X4' },
+              { kind: 'buffer_insert', netId: nets[0]?.id, position: { x: 100, y: 100 } },
+            ],
+            atomic: false,
+          };
+          break;
+        }
+
+        case AlgorithmCategory.DFT: {
+          cells.forEach((cell) => {
+            cell.position = {
+              x: Math.random() * (chipWidth - cell.width),
+              y: Math.random() * (chipHeight - cell.height),
+            };
+          });
+          parameters = {
+            algorithm,
+            cells,
+            maxChainLength: Math.max(1, Math.floor(cellCount / 4)),
+            patternCount: 64,
+            seed: 1,
+          };
+          break;
+        }
+
+        case AlgorithmCategory.THERMAL: {
+          cells.forEach((cell) => {
+            cell.position = {
+              x: Math.random() * (chipWidth - cell.width),
+              y: Math.random() * (chipHeight - cell.height),
+            };
+          });
+          parameters = {
+            algorithm,
+            cells,
+            chipWidth,
+            chipHeight,
+            tilePitch: 50,
+            hotspotThreshold: 0.0015,
+            defaultPowerDensity: 0.001,
+            rAmbient: 5.0,
+            rLateral: 0.5,
+          };
+          break;
+        }
+
         default:
           throw new Error('Unsupported category');
       }
@@ -436,6 +626,7 @@ endmodule`,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category, algorithm, parameters }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -459,19 +650,48 @@ endmodule`,
         },
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-      // Track error
-      trackEvent('algorithm_run', {
-        category,
-        algorithm,
-        metadata: {
-          success: false,
-          error: err instanceof Error ? err.message : 'Unknown error',
-        },
-      });
+      // AbortError is a cancellation, not a real failure — treat it as such
+      // so the user doesn't see a scary red banner for an action they triggered.
+      const aborted =
+        (err instanceof DOMException && err.name === 'AbortError') ||
+        (err instanceof Error && err.name === 'AbortError');
+      if (aborted) {
+        setError(null);
+        trackEvent('algorithm_run', {
+          category,
+          algorithm,
+          metadata: { success: false, cancelled: true },
+        });
+      } else {
+        setError(err instanceof Error ? err.message : 'Unknown error');
+        trackEvent('algorithm_run', {
+          category,
+          algorithm,
+          metadata: {
+            success: false,
+            error: err instanceof Error ? err.message : 'Unknown error',
+          },
+        });
+      }
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setRunning(false);
     }
+  };
+
+  const cancelRun = () => {
+    abortRef.current?.abort();
+  };
+
+  const handleScenarioLoad = (s: Scenario) => {
+    setCategory(s.category as AlgorithmCategory);
+    setAlgorithm(s.algorithm);
+    setChipWidth(s.parameters.chipWidth);
+    setChipHeight(s.parameters.chipHeight);
+    setCellCount(s.parameters.cellCount);
+    setNetCount(s.parameters.netCount);
+    setIterations(s.parameters.iterations);
+    setError(null);
   };
 
   const handleTemplateSelect = (template: AlgorithmTemplate) => {
@@ -605,23 +825,61 @@ endmodule`,
                   <MenuItem value={AlgorithmCategory.IR_DROP}>IR Drop Analysis</MenuItem>
                   <MenuItem value={AlgorithmCategory.LITHOGRAPHY}>Lithography</MenuItem>
                   <MenuItem value={AlgorithmCategory.CMP}>CMP (Chemical Mechanical Planarization)</MenuItem>
+                  <MenuItem value={AlgorithmCategory.MULTI_OBJECTIVE}>Multi-Objective (Pareto)</MenuItem>
+                  <MenuItem value={AlgorithmCategory.ECO}>ECO (Engineering Change Order)</MenuItem>
+                  <MenuItem value={AlgorithmCategory.DFT}>DFT (Design For Test)</MenuItem>
+                  <MenuItem value={AlgorithmCategory.THERMAL}>Thermal Analysis</MenuItem>
                 </Select>
               </FormControl>
 
-              <FormControl fullWidth sx={{ mb: 2 }}>
+              <FormControl fullWidth sx={{ mb: 1 }}>
                 <InputLabel>Algorithm</InputLabel>
                 <Select
                   value={algorithm}
                   label="Algorithm"
                   onChange={(e) => setAlgorithm(e.target.value)}
                 >
-                  {algorithms[category].map((alg) => (
-                    <MenuItem key={alg.value} value={alg.value}>
-                      {alg.label}
-                    </MenuItem>
-                  ))}
+                  {algorithms[category].map((alg) => {
+                    const m = metaFor(alg.value);
+                    return (
+                      <MenuItem key={alg.value} value={alg.value}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                          <span>{alg.label}</span>
+                          <Chip
+                            size="small"
+                            label={m.status === 'real' ? 'Real' : m.status === 'stub' ? 'Stub' : 'Approx'}
+                            color={m.status === 'real' ? 'success' : m.status === 'stub' ? 'default' : 'warning'}
+                            variant="outlined"
+                            sx={{ ml: 1, fontSize: '0.65rem', height: 18 }}
+                          />
+                        </Box>
+                      </MenuItem>
+                    );
+                  })}
                 </Select>
               </FormControl>
+
+              {/* Per-algorithm "what is this?" panel — tells users whether the
+                  selected algorithm has a real backend or falls back to a related one. */}
+              {(() => {
+                const m = metaFor(algorithm);
+                return (
+                  <Alert
+                    severity={m.status === 'real' ? 'success' : 'warning'}
+                    icon={false}
+                    sx={{ mb: 2, py: 0.5, fontSize: '0.8rem' }}
+                  >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                      <Chip
+                        size="small"
+                        label={m.status === 'real' ? 'Real implementation' : m.status === 'stub' ? 'Stub' : 'Approximation'}
+                        color={m.status === 'real' ? 'success' : m.status === 'stub' ? 'default' : 'warning'}
+                      />
+                    </Box>
+                    {m.description}
+                  </Alert>
+                );
+              })()}
 
               <Typography variant="subtitle2" gutterBottom sx={{ mt: 3 }}>
                 Problem Size
@@ -672,7 +930,7 @@ endmodule`,
                 sx={{ mb: 2 }}
               />
 
-              <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+              <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
                 <Button
                   fullWidth
                   variant="outlined"
@@ -693,16 +951,50 @@ endmodule`,
                 </Button>
               </Box>
 
-              <Button
-                fullWidth
-                variant="contained"
-                size="large"
-                startIcon={running ? <CircularProgress size={20} /> : <PlayIcon />}
-                onClick={runAlgorithm}
-                disabled={running}
-              >
-                {running ? 'Running...' : 'Run Algorithm'}
-              </Button>
+              <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  size="medium"
+                  startIcon={<SaveIcon />}
+                  onClick={() => setSaveScenarioOpen(true)}
+                >
+                  Save Scenario
+                </Button>
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  size="medium"
+                  startIcon={<FolderOpenIcon />}
+                  onClick={() => setLoadScenarioOpen(true)}
+                >
+                  Load Scenario
+                </Button>
+              </Box>
+
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  fullWidth
+                  variant="contained"
+                  size="large"
+                  startIcon={running ? <CircularProgress size={20} /> : <PlayIcon />}
+                  onClick={runAlgorithm}
+                  disabled={running}
+                >
+                  {running ? 'Running...' : 'Run Algorithm'}
+                </Button>
+                {running && (
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    size="large"
+                    startIcon={<StopIcon />}
+                    onClick={cancelRun}
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </Box>
 
               {error && (
                 <Alert
@@ -874,6 +1166,42 @@ endmodule`,
                       • <strong>Actor-Critic Routing:</strong> Combined value and policy learning for wire routing
                     </Typography>
                   )}
+
+                  {category === AlgorithmCategory.MULTI_OBJECTIVE && (
+                    <Typography variant="body2">
+                      <strong>Multi-objective optimization</strong> compares candidate designs across competing objectives (wirelength, power, area, congestion) without collapsing to a single score.
+                      <br /><br />
+                      • <strong>Pareto Frontier:</strong> Returns the non-dominated set, an optional weighted-sum best pick, and the hypervolume indicator vs. a reference point
+                    </Typography>
+                  )}
+
+                  {category === AlgorithmCategory.ECO && (
+                    <Typography variant="body2">
+                      <strong>Engineering Change Order (ECO)</strong> applies incremental edits to a frozen post-route snapshot — the standard late-stage spot-fix flow before tape-out.
+                      <br /><br />
+                      • <strong>ECO Operations Apply:</strong> Buffer insertion / gate sizing / net rerouting / cell swap, optionally atomic. Returns before/after snapshots and a diff
+                    </Typography>
+                  )}
+
+                  {category === AlgorithmCategory.DFT && (
+                    <Typography variant="body2">
+                      <strong>Design For Test (DFT)</strong> stitches manufacturing-test infrastructure into the netlist before tape-out so production silicon can be screened for defects.
+                      <br /><br />
+                      • <strong>Scan Chain Insertion:</strong> Wires flip-flops into one or more shift registers; orders FFs greedily by manhattan-nearest-neighbor TSP to minimize chain wirelength
+                      <br />
+                      • <strong>ATPG (Basic Stuck-At):</strong> Generates random test patterns and estimates fault coverage for stuck-at-0 / stuck-at-1 faults
+                    </Typography>
+                  )}
+
+                  {category === AlgorithmCategory.THERMAL && (
+                    <Typography variant="body2">
+                      <strong>Thermal analysis</strong> finds hotspots that cause timing derate and electromigration. Power density times poor heat extraction equals trouble.
+                      <br /><br />
+                      • <strong>Hotspot Detection:</strong> Tile-grid power-density screening — fast first pass before a full thermal solve
+                      <br />
+                      • <strong>Thermal RC Solve:</strong> Steady-state 2D RC mesh solved by Gauss-Seidel iteration; returns per-tile temperature rise above ambient
+                    </Typography>
+                  )}
                 </CardContent>
               </Card>
 
@@ -959,6 +1287,22 @@ endmodule`,
         onClose={() => setCodeViewerOpen(false)}
         category={category}
         algorithm={algorithm}
+      />
+
+      {/* Save/Load Scenario dialogs */}
+      <ScenarioDialog
+        open={saveScenarioOpen}
+        onClose={() => setSaveScenarioOpen(false)}
+        mode="save"
+        category={category}
+        algorithm={algorithm}
+        parameters={{ chipWidth, chipHeight, cellCount, netCount, iterations }}
+      />
+      <ScenarioDialog
+        open={loadScenarioOpen}
+        onClose={() => setLoadScenarioOpen(false)}
+        mode="load"
+        onLoad={handleScenarioLoad}
       />
 
       {/* AI Copilot */}

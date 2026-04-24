@@ -7,6 +7,7 @@ import {
   Rectangle,
   Point,
 } from '@/types/algorithms';
+import { tryParseVerilog, expandNets } from '@/lib/parsers/verilog';
 
 interface DesignRule {
   name: string;
@@ -181,19 +182,29 @@ export function layoutVsSchematic(params: DRCLVSParams): DRCLVSResult {
     layoutNets.get(wire.netId)!.add(wire.id);
   }
 
-  // Parse netlist (simplified - would need proper Verilog/VHDL parser)
-  const netlistLines = netlist.split('\n');
-  const expectedConnections = new Set<string>();
-
-  for (const line of netlistLines) {
-    // Simple pattern matching for connections
-    const wireMatch = line.match(/wire\s+(\w+)/);
-    if (wireMatch) {
-      expectedConnections.add(wireMatch[1]);
-    }
+  // Structural parse of the netlist (Verilog/SystemVerilog).
+  const { netlist: parsed, errors: parseErrors } = tryParseVerilog(netlist);
+  for (const pe of parseErrors) {
+    violations.push({
+      rule: 'NETLIST_PARSE_ERROR',
+      severity: 'error',
+      location: { x: 0, y: 0 },
+      message: `Netlist parse error: ${pe.message}`,
+      affectedObjects: [],
+    });
   }
 
-  // Check for missing connections
+  // Treat the first (top) module as the golden reference.
+  const topModule = parsed.modules[0];
+  const expectedConnections = new Set<string>();
+  let expectedInstanceCount = 0;
+
+  if (topModule) {
+    for (const n of expandNets(topModule)) expectedConnections.add(n);
+    expectedInstanceCount = topModule.instances.length;
+  }
+
+  // Missing nets — in the schematic but absent from the layout.
   for (const expectedNet of expectedConnections) {
     if (!layoutNets.has(expectedNet)) {
       violations.push({
@@ -206,10 +217,11 @@ export function layoutVsSchematic(params: DRCLVSParams): DRCLVSResult {
     }
   }
 
-  // Check for extra connections (only report as warning, not error)
-  // Note: Extra nets in layout are common and not necessarily errors
+  // Extra nets — in the layout but absent from the schematic.
   for (const [layoutNet] of layoutNets) {
-    if (!expectedConnections.has(layoutNet) && !layoutNet.startsWith('clk') && !layoutNet.startsWith('net_')) {
+    if (!expectedConnections.has(layoutNet) &&
+        !layoutNet.startsWith('clk') &&
+        !layoutNet.startsWith('net_')) {
       violations.push({
         rule: 'EXTRA_NET',
         severity: 'warning',
@@ -220,17 +232,39 @@ export function layoutVsSchematic(params: DRCLVSParams): DRCLVSResult {
     }
   }
 
-  // Check cell counts (only if netlist has explicit cell count)
-  // Skip this check for simple netlists
-  const expectedCellCount = (netlist.match(/\b(cell|instance)\s+/g) || []).length;
-  if (cells.length !== expectedCellCount && expectedCellCount > 1) {
+  // Cell-count mismatch against the instance count in the top module.
+  if (expectedInstanceCount > 1 && cells.length !== expectedInstanceCount) {
     violations.push({
       rule: 'CELL_COUNT_MISMATCH',
-      severity: 'warning',  // Changed from error to warning
+      severity: 'warning',
       location: { x: 0, y: 0 },
-      message: `Cell count mismatch: layout has ${cells.length}, schematic has ${expectedCellCount}`,
+      message: `Cell count mismatch: layout has ${cells.length}, schematic has ${expectedInstanceCount}`,
       affectedObjects: [],
     });
+  }
+
+  // Connectivity check: every instance port in the schematic must resolve to
+  // a net the layout knows about. This catches dangling logical connections.
+  if (topModule) {
+    for (const inst of topModule.instances) {
+      const netsUsed = [
+        ...inst.connections.map(c => c.net).filter((n): n is string => !!n),
+        ...inst.positional,
+      ];
+      for (const n of netsUsed) {
+        // Strip bit-selects and concatenations for the lookup.
+        const base = n.replace(/\s+/g, '').split(/[\[\{,]/)[0];
+        if (base && !layoutNets.has(base) && !expectedConnections.has(base)) {
+          violations.push({
+            rule: 'UNRESOLVED_INSTANCE_NET',
+            severity: 'warning',
+            location: { x: 0, y: 0 },
+            message: `Instance ${inst.name} (${inst.type}) references unresolved net '${base}'`,
+            affectedObjects: [inst.name, base],
+          });
+        }
+      }
+    }
   }
 
   const runtime = performance.now() - startTime;
@@ -373,26 +407,30 @@ export function runVerification(params: DRCLVSParams): DRCLVSResult {
     case 'electrical_rule_check':
       return electricalRuleCheck(params);
 
-    // Signal Integrity algorithms
+    // Signal Integrity / Lithography / CMP — delegate to real implementations
+    // in `manufacturing.ts`. Imported lazily to avoid a require-cycle.
     case 'crosstalk_analysis':
     case 'noise_analysis':
-    case 'coupling_capacitance':
-      console.log(`${algorithm}: Using ERC approximation`);
-      return electricalRuleCheck(params);
-
-    // Lithography algorithms
+    case 'coupling_capacitance': {
+      const { runSignalIntegrity } = require('./manufacturing');
+      return runSignalIntegrity(params);
+    }
     case 'opc':
     case 'phase_shift_masking':
-    case 'sraf':
-      console.log(`${algorithm}: Using DRC approximation`);
-      return designRuleCheck(params);
-
-    // CMP algorithms
+    case 'sraf': {
+      const { runLithography } = require('./manufacturing');
+      return runLithography(params);
+    }
     case 'dummy_fill':
     case 'cmp_aware_routing':
-    case 'density_balancing':
-      console.log(`${algorithm}: Using DRC approximation`);
-      return designRuleCheck(params);
+    case 'density_balancing': {
+      const { runCMP } = require('./manufacturing');
+      return runCMP(params);
+    }
+    case 'ir_drop': {
+      const { runIRDrop } = require('./manufacturing');
+      return runIRDrop(params);
+    }
 
     default:
       throw new Error(`Unknown verification algorithm: ${params.algorithm}`);

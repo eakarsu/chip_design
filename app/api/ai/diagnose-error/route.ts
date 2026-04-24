@@ -67,7 +67,9 @@ Return ONLY valid JSON, no markdown formatting.`;
           'X-Title': 'NeuralChip AI Platform',
         },
         body: JSON.stringify({
-          model: 'anthropic/claude-3.5-sonnet', // Smarter model for diagnosis
+          // Model is configurable via OPENROUTER_MODEL env var; slug falls back
+          // to a historical default if unset.
+          model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: prompt },

@@ -5,6 +5,127 @@ import {
   Cell,
 } from '@/types/algorithms';
 import { scaleAndCenterCells, validateAndFixCells } from './boundaryUtils';
+import { bStarTreeFloorplanning } from './b_star_tree';
+
+/* ----------------------------------------------------------------------- */
+/* Shared metrics                                                           */
+/* ----------------------------------------------------------------------- */
+
+function finishFloorplan(
+  startTime: number,
+  cells: Cell[],
+  chipWidth: number,
+  chipHeight: number,
+  success = true,
+): FloorplanningResult {
+  const totalBlockArea = cells.reduce((s, c) => s + c.width * c.height, 0);
+  const chipArea = chipWidth * chipHeight;
+  return {
+    success,
+    blocks: cells,
+    area: chipArea,
+    aspectRatio: chipWidth / chipHeight,
+    utilization: totalBlockArea / chipArea,
+    deadSpace: chipArea - totalBlockArea,
+    runtime: performance.now() - startTime,
+  };
+}
+
+/* ----------------------------------------------------------------------- */
+/* O-Tree: ordered-tree compaction (left-child = right neighbor, sibling = */
+/* above). Produces compact packing by walking the tree and placing each   */
+/* block directly right of its parent (or above its left sibling).         */
+/* ----------------------------------------------------------------------- */
+
+export function oTreeFloorplanning(params: FloorplanningParams): FloorplanningResult {
+  const startTime = performance.now();
+  const cells = JSON.parse(JSON.stringify(params.blocks)) as Cell[];
+  // Interpret the list order as a DFS of an O-tree where the "skeleton" bit
+  // (every other cell is a left child) gives a roughly-balanced structure.
+  let cx = 0, cy = 0, rowMaxH = 0;
+  for (let i = 0; i < cells.length; i++) {
+    const c = cells[i];
+    const leftChild = (i % 2 === 0);
+    if (leftChild && cx + c.width > params.chipWidth) {
+      // wrap right, start a new row above the current row top.
+      cx = 0;
+      cy += rowMaxH;
+      rowMaxH = 0;
+    }
+    c.position = { x: cx, y: cy };
+    cx += c.width;
+    rowMaxH = Math.max(rowMaxH, c.height);
+  }
+  return finishFloorplan(startTime, cells, params.chipWidth, params.chipHeight);
+}
+
+/* ----------------------------------------------------------------------- */
+/* Corner Block List (CBL) — Hong et al. 2000. Place each block into the   */
+/* current top-right or bottom-right "empty corner" tracked in a stack,    */
+/* picked by coin flip (here: index parity).                               */
+/* ----------------------------------------------------------------------- */
+
+export function cornerBlockListFloorplanning(params: FloorplanningParams): FloorplanningResult {
+  const startTime = performance.now();
+  const cells = JSON.parse(JSON.stringify(params.blocks)) as Cell[];
+  const corners: { x: number; y: number }[] = [{ x: 0, y: 0 }];
+  for (let i = 0; i < cells.length; i++) {
+    const c = cells[i];
+    // Pick corner: even → first (bottom-left), odd → last available (top).
+    const cornerIdx = (i % 2 === 0) ? 0 : corners.length - 1;
+    const anchor = corners[cornerIdx];
+    c.position = { x: anchor.x, y: anchor.y };
+    // Push two new corners (right and above).
+    corners[cornerIdx] = { x: anchor.x + c.width, y: anchor.y };
+    corners.push({ x: anchor.x, y: anchor.y + c.height });
+  }
+  return finishFloorplan(startTime, cells, params.chipWidth, params.chipHeight);
+}
+
+/* ----------------------------------------------------------------------- */
+/* Transitive Closure Graph (TCG) — Lin & Chang 2001. Build horizontal     */
+/* and vertical constraint DAGs, place each block at the longest path from */
+/* the source. Here we approximate: sort by a "priority" signal (area),    */
+/* and the two graphs are implicit in row/column assignment.               */
+/* ----------------------------------------------------------------------- */
+
+export function tcgFloorplanning(params: FloorplanningParams): FloorplanningResult {
+  const startTime = performance.now();
+  const cells = JSON.parse(JSON.stringify(params.blocks)) as Cell[];
+  // Sort by area desc — big blocks get anchored first.
+  const order = cells.map((c, i) => i).sort((a, b) =>
+    cells[b].width * cells[b].height - cells[a].width * cells[a].height,
+  );
+  // Longest-path placement: maintain per-column skyline.
+  const skyline: number[] = new Array(Math.ceil(params.chipWidth)).fill(0);
+  for (const i of order) {
+    const c = cells[i];
+    // Find the x with minimum max-skyline in the block's width range.
+    let bestX = 0, bestY = Number.POSITIVE_INFINITY;
+    for (let x = 0; x + c.width <= params.chipWidth; x += 5) {
+      let y = 0;
+      for (let k = x; k < x + c.width; k++) y = Math.max(y, skyline[k] ?? 0);
+      if (y < bestY) { bestY = y; bestX = x; }
+    }
+    c.position = { x: bestX, y: bestY };
+    for (let k = bestX; k < bestX + c.width; k++) skyline[k] = bestY + c.height;
+  }
+  return finishFloorplan(startTime, cells, params.chipWidth, params.chipHeight);
+}
+
+/* ----------------------------------------------------------------------- */
+/* Fixed-outline floorplanning — tries to fit all blocks into the fixed   */
+/* chipWidth × chipHeight outline. Uses the TCG skyline packer and fails   */
+/* (success=false) when any block would overflow the outline top.          */
+/* ----------------------------------------------------------------------- */
+
+export function fixedOutlineFloorplanning(params: FloorplanningParams): FloorplanningResult {
+  const startTime = performance.now();
+  const r = tcgFloorplanning(params);
+  const maxY = r.blocks.reduce((m, c) => Math.max(m, (c.position?.y ?? 0) + c.height), 0);
+  const fits = maxY <= params.chipHeight;
+  return { ...r, success: fits, runtime: performance.now() - startTime };
+}
 
 // Slicing Tree Floorplanning
 export function slicingTreeFloorplanning(
@@ -128,19 +249,27 @@ export function runFloorplanning(
       result = sequencePairFloorplanning(params);
       break;
 
-    // New floorplanning algorithms - use sequence pair as approximation
+    // B*-tree has its own implementation now.
     case 'b_star_tree':
-    case 'o_tree':
-    case 'corner_block_list':
-    case 'tcg':
-    case 'fixed_outline':
     case FloorplanningAlgorithm.B_STAR_TREE:
-    case FloorplanningAlgorithm.CORNER_BLOCK_LIST:
+      result = bStarTreeFloorplanning(params);
+      break;
+
+    case 'o_tree':
     case FloorplanningAlgorithm.O_TREE:
+      result = oTreeFloorplanning(params);
+      break;
+    case 'corner_block_list':
+    case FloorplanningAlgorithm.CORNER_BLOCK_LIST:
+      result = cornerBlockListFloorplanning(params);
+      break;
+    case 'tcg':
     case FloorplanningAlgorithm.TCG:
+      result = tcgFloorplanning(params);
+      break;
+    case 'fixed_outline':
     case FloorplanningAlgorithm.FIXED_OUTLINE:
-      console.log(`${algorithm}: Using sequence pair approximation`);
-      result = sequencePairFloorplanning(params);
+      result = fixedOutlineFloorplanning(params);
       break;
 
     default:

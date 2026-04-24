@@ -230,8 +230,11 @@ main() {
     # Step 1: Clean up ports
     print_info "Step 1/7: Cleaning up used ports..."
     kill_port 3000  # Next.js default port
-    kill_port 80    # Nginx HTTP
-    kill_port 443   # Nginx HTTPS
+    # Ports 80/443 are only needed when running behind Nginx in production.
+    # Skipped in dev because they're privileged (<1024) and usually owned by
+    # root-level services (Docker, VPN, Nginx) that this script can't kill.
+    # kill_port 80    # Nginx HTTP
+    # kill_port 443   # Nginx HTTPS
     echo ""
 
     # Step 2: Check Node.js

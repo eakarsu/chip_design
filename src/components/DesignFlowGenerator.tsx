@@ -27,6 +27,56 @@ import {
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
+import ShuffleIcon from '@mui/icons-material/Shuffle';
+
+// Preset requirement briefs that populate every form field at once. Cycled
+// by the "Load Sample" button so users can explore realistic multi-field
+// scenarios without typing.
+const FLOW_SAMPLES: Array<{
+  requirements: string;
+  chipType: string;
+  gateCount: string;
+  powerBudget: string;
+  frequency: string;
+  priority: string;
+}> = [
+  {
+    requirements:
+      'I need to design a low-power IoT sensor node targeting 100 MHz. Area and power matter most; runtime is a secondary concern.',
+    chipType: 'IoT',
+    gateCount: '500',
+    powerBudget: '5',
+    frequency: '100',
+    priority: 'power',
+  },
+  {
+    requirements:
+      'High-throughput ML accelerator block with aggressive frequency targets. Optimize for speed; we have thermal headroom.',
+    chipType: 'GPU',
+    gateCount: '50000',
+    powerBudget: '2000',
+    frequency: '1500',
+    priority: 'speed',
+  },
+  {
+    requirements:
+      'General-purpose ASIC core balancing power, performance, and area. No single axis dominates.',
+    chipType: 'ASIC',
+    gateCount: '10000',
+    powerBudget: '500',
+    frequency: '400',
+    priority: 'balanced',
+  },
+  {
+    requirements:
+      'CPU control path with tight area budget — we want the smallest viable floorplan at 200 MHz.',
+    chipType: 'CPU',
+    gateCount: '2000',
+    powerBudget: '100',
+    frequency: '200',
+    priority: 'area',
+  },
+];
 
 interface FlowStep {
   step: number;
@@ -57,7 +107,20 @@ export default function DesignFlowGenerator({ onExecuteFlow }: DesignFlowGenerat
   const [powerBudget, setPowerBudget] = useState('');
   const [frequency, setFrequency] = useState('');
   const [priority, setPriority] = useState('balanced');
+  const [sampleIdx, setSampleIdx] = useState(-1);
   const [loading, setLoading] = useState(false);
+
+  const loadSample = () => {
+    const next = (sampleIdx + 1) % FLOW_SAMPLES.length;
+    const s = FLOW_SAMPLES[next];
+    setSampleIdx(next);
+    setRequirements(s.requirements);
+    setChipType(s.chipType);
+    setGateCount(s.gateCount);
+    setPowerBudget(s.powerBudget);
+    setFrequency(s.frequency);
+    setPriority(s.priority);
+  };
   const [flow, setFlow] = useState<DesignFlow | null>(null);
   const [alternatives, setAlternatives] = useState<DesignFlow[]>([]);
   const [showAlternatives, setShowAlternatives] = useState(false);
@@ -164,7 +227,15 @@ export default function DesignFlowGenerator({ onExecuteFlow }: DesignFlowGenerat
     <Paper elevation={2} sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
         <AutoFixHighIcon sx={{ mr: 1, color: 'primary.main' }} />
-        <Typography variant="h5">AI Design Flow Generator</Typography>
+        <Typography variant="h5" sx={{ flexGrow: 1 }}>AI Design Flow Generator</Typography>
+        <Button
+          size="small"
+          startIcon={<ShuffleIcon />}
+          onClick={loadSample}
+          aria-label="load next design flow sample"
+        >
+          Load Sample ({Math.max(0, sampleIdx) + 1}/{FLOW_SAMPLES.length})
+        </Button>
       </Box>
 
       <Alert severity="info" sx={{ mb: 3 }}>

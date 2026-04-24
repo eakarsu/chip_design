@@ -453,19 +453,42 @@ export function dmeAlgorithm(params: ClockTreeParams): ClockTreeResult {
 }
 
 /**
+ * Strip the back-pointer `parent` field from every node in the tree.
+ * Internally we keep `parent` so the algorithms (and any future analysis
+ * pass) can walk upward, but it creates a parent↔children cycle that
+ * blows up JSON.stringify when the API route serializes the result.
+ */
+function stripParentPointers(root: ClockNode | undefined): void {
+  if (!root) return;
+  const stack: ClockNode[] = [root];
+  while (stack.length > 0) {
+    const n = stack.pop()!;
+    delete n.parent;
+    for (const c of n.children) stack.push(c);
+  }
+}
+
+/**
  * Main clock tree synthesis function
  */
 export function runClockTree(params: ClockTreeParams): ClockTreeResult {
+  let result: ClockTreeResult;
   switch (params.algorithm) {
     case ClockTreeAlgorithm.H_TREE:
-      return hTreeClock(params);
+      result = hTreeClock(params);
+      break;
     case ClockTreeAlgorithm.X_TREE:
-      return xTreeClock(params);
+      result = xTreeClock(params);
+      break;
     case ClockTreeAlgorithm.MESH_CLOCK:
-      return meshClock(params);
+      result = meshClock(params);
+      break;
     case ClockTreeAlgorithm.MMM_ALGORITHM:
-      return dmeAlgorithm(params);
+      result = dmeAlgorithm(params);
+      break;
     default:
       throw new Error(`Unknown clock tree algorithm: ${params.algorithm}`);
   }
+  stripParentPointers((result as any).root);
+  return result;
 }

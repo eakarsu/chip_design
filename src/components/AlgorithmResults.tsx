@@ -32,7 +32,9 @@ import {
   PartitionVisualizer,
   ViolationVisualizer,
   RLDashboard,
-  EnhancedChipVisualizer
+  EnhancedChipVisualizer,
+  SlackHistogram,
+  ParetoScatter,
 } from './visualizers';
 
 interface AlgorithmResultsProps {
@@ -464,6 +466,29 @@ export default function AlgorithmResults({ result }: AlgorithmResultsProps) {
       {category === 'floorplanning' && renderFloorplanningResults()}
       {category === 'synthesis' && renderSynthesisResults()}
       {category === 'timing_analysis' && renderTimingResults()}
+      {category === 'timing_analysis' && Array.isArray(data?.pins) && (
+        <Box sx={{ mt: 3 }}>
+          <SlackHistogram
+            slacks={data.pins.map((p: any) => p.slack).filter(Number.isFinite)}
+            wns={data.wns}
+            title="Slack distribution"
+          />
+        </Box>
+      )}
+      {category === 'multi_objective' && Array.isArray(data?.vizPoints) && (
+        <Box sx={{ mt: 3 }}>
+          <ParetoScatter
+            points={data.vizPoints.map((p: any) => ({
+              id: p.id, x: p.x, y: p.y,
+              isFrontier: !!p.isFrontier,
+              dominatedBy: p.dominatedBy,
+            }))}
+            bestId={data.best?.id}
+            hypervolume={typeof data.hypervolume === 'number' ? data.hypervolume : undefined}
+            title="Pareto frontier (objectives 1 & 2)"
+          />
+        </Box>
+      )}
       {category === 'power_optimization' && renderPowerResults()}
       {category === 'clock_tree' && renderClockTreeResults()}
       {category === 'partitioning' && renderPartitioningResults()}

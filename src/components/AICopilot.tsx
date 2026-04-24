@@ -22,6 +22,19 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import ShuffleIcon from '@mui/icons-material/Shuffle';
+
+// Preset prompts the user can cycle through to seed the chat input. Covers
+// the main categories of assistance the copilot offers (algorithm choice,
+// debugging, comparison, learning).
+const PROMPT_SAMPLES: string[] = [
+  'I need to design a low-power IoT chip with 500 gates. Which algorithms should I run and in what order?',
+  'Why is my placement showing cell overlaps? How do I fix it?',
+  'Compare simulated annealing vs genetic algorithm for a 200-cell placement — which is more appropriate?',
+  'How do I reduce total wirelength without making timing worse?',
+  'Walk me through a complete design flow for a 100 MHz ASIC from netlist to GDS.',
+  'Explain what Pareto-optimal means in the context of power/performance/area tradeoffs.',
+];
 
 interface Message {
   role: 'user' | 'assistant';
@@ -48,7 +61,14 @@ export default function AICopilot({ designContext }: AICopilotProps) {
     },
   ]);
   const [input, setInput] = useState('');
+  const [sampleIdx, setSampleIdx] = useState(-1);
   const [loading, setLoading] = useState(false);
+
+  const loadSample = () => {
+    const next = (sampleIdx + 1) % PROMPT_SAMPLES.length;
+    setSampleIdx(next);
+    setInput(PROMPT_SAMPLES[next]);
+  };
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -283,6 +303,17 @@ export default function AICopilot({ designContext }: AICopilotProps) {
 
           {/* Input */}
           <Box sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+              <IconButton
+                size="small"
+                onClick={loadSample}
+                disabled={loading}
+                aria-label="load next prompt sample"
+                title={`Load sample prompt (${Math.max(0, sampleIdx) + 1}/${PROMPT_SAMPLES.length})`}
+              >
+                <ShuffleIcon fontSize="small" />
+              </IconButton>
+            </Box>
             <Box sx={{ display: 'flex', gap: 1 }}>
               <TextField
                 fullWidth

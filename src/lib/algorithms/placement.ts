@@ -19,6 +19,8 @@ import {
   runMPL,
   runCapo,
 } from './placement/industrial';
+import { tetrisLegalization, abacusLegalization } from './legalization';
+import { quadraticPlacement } from './placement_analytical';
 
 // Helper function to calculate wirelength using Half-Perimeter Wire Length (HPWL)
 function calculateWirelength(cells: Cell[], nets: Net[]): number {
@@ -539,28 +541,38 @@ export function runPlacement(params: PlacementParams): PlacementResult {
       }
       break;
 
-    // New analytical placement algorithms - use SA as approximation
+    // Real analytical (quadratic) placement — single CG solve, then clamp.
     case 'analytical':
-    case 'min_cut':
     case 'gordian':
+    case 'quadratic':
+    case PlacementAlgorithm.QUADRATIC:
+      result = quadraticPlacement(params);
+      break;
+
+    // Quadratic + downstream legalization. min_cut/fastplace/replace are all
+    // analytical-then-detail; we approximate with quadratic + tetris.
+    case 'min_cut':
     case 'fastplace':
     case 'replace':
     case 'dreamplace':
-    case 'quadratic':
     case 'partitioning_based':
-    case PlacementAlgorithm.QUADRATIC:
-    case PlacementAlgorithm.PARTITIONING_BASED:
-      console.log(`${algorithm}: Using simulated annealing approximation`);
-      result = simulatedAnnealingPlacement(params);
+    case PlacementAlgorithm.PARTITIONING_BASED: {
+      const global = quadraticPlacement(params);
+      result = tetrisLegalization({ ...params, cells: global.cells });
       break;
+    }
 
     // Legalization algorithms
     case 'tetris':
+      result = tetrisLegalization(params);
+      break;
     case 'abacus':
+      result = abacusLegalization(params);
+      break;
     case 'flow_based':
     case 'min_cost_flow':
-      console.log(`${algorithm}: Using simulated annealing approximation`);
-      result = simulatedAnnealingPlacement(params);
+      console.log(`${algorithm}: Using abacus approximation`);
+      result = abacusLegalization(params);
       break;
 
     default:

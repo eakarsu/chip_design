@@ -18,6 +18,10 @@ export enum AlgorithmCategory {
   IR_DROP = 'ir_drop',
   LITHOGRAPHY = 'lithography',
   CMP = 'cmp',
+  MULTI_OBJECTIVE = 'multi_objective',
+  ECO = 'eco',
+  DFT = 'dft',
+  THERMAL = 'thermal',
 }
 
 export enum PlacementAlgorithm {

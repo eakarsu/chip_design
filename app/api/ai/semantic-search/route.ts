@@ -45,7 +45,7 @@ Respond with JSON:
         'X-Title': 'NeuralChip - Semantic Search',
       },
       body: JSON.stringify({
-        model: 'anthropic/claude-3-haiku',
+        model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3-haiku',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt },

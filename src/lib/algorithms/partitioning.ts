@@ -5,6 +5,7 @@ import {
   Cell,
   Net,
 } from '@/types/algorithms';
+import { spectralPartitioning } from './comprehensive';
 
 // Helper: Extract cell ID from pin ID (cache-friendly)
 function getCellId(pinId: string): string {
@@ -451,6 +452,23 @@ export function runPartitioning(params: PartitioningParams): PartitioningResult 
       return fiducciaMatttheysesPartitioning(params);
     case PartitioningAlgorithm.MULTILEVEL:
       return multiLevelPartitioning(params);
+    case PartitioningAlgorithm.SPECTRAL:
+      return spectralPartitioning({
+        cells: params.cells,
+        nets: params.nets,
+        partitionCount: params.partitionCount,
+      });
+    // ratio_cut and normalized_cut are spectral-family methods; the
+    // underlying connectivity-matrix analysis is shared. Until each has a
+    // distinct objective wired up, we fall through to the spectral
+    // implementation as a reasonable stand-in rather than 500'ing.
+    case PartitioningAlgorithm.RATIO_CUT:
+    case PartitioningAlgorithm.NORMALIZED_CUT:
+      return spectralPartitioning({
+        cells: params.cells,
+        nets: params.nets,
+        partitionCount: params.partitionCount,
+      });
     default:
       throw new Error(`Unknown partitioning algorithm: ${params.algorithm}`);
   }

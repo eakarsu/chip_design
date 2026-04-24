@@ -54,7 +54,7 @@ Choose the best option and explain why.`;
         'X-Title': 'NeuralChip - Collaborative Design',
       },
       body: JSON.stringify({
-        model: 'anthropic/claude-3.5-sonnet',
+        model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },

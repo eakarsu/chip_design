@@ -110,7 +110,7 @@ Return ONLY valid JSON, no markdown.`;
           'X-Title': 'NeuralChip AI Platform - Flow Generation',
         },
         body: JSON.stringify({
-          model: 'anthropic/claude-3.5-sonnet',
+          model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: prompt },

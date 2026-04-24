@@ -10,7 +10,9 @@ const aiRequestSchema = z.object({
       content: z.string(),
     })
   ),
-  model: z.string().optional().default('anthropic/claude-3.5-sonnet'),
+  // Default model honors OPENROUTER_MODEL env so the whole app can swap
+  // models via config. Client can still override per-request.
+  model: z.string().optional().default(process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet'),
   temperature: z.number().min(0).max(2).optional().default(1),
   max_tokens: z.number().min(1).max(4096).optional().default(1024),
   stream: z.boolean().optional().default(false),

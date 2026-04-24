@@ -575,7 +575,7 @@ function computeMultiHeadAttention(
     });
 
     // Softmax
-    const sumScores = scores.reduce((a, b) => a + Math.exp(b), 0);
+    const sumScores = scores.reduce((a: number, b: number) => a + Math.exp(b), 0 as number);
     return scores.map((s) => Math.exp(s) / sumScores);
   });
 

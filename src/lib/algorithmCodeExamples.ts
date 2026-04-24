@@ -649,4 +649,112 @@ console.log('Max voltage drop:', result.maxVoltageDrop);`,
       ],
     },
   },
+  [AlgorithmCategory.MULTI_OBJECTIVE]: {
+    pareto: {
+      algorithm: 'Pareto Frontier',
+      description: 'Compute the non-dominated set of candidate designs across multiple objectives',
+      examples: [
+        {
+          language: 'typescript',
+          code: `const result = await chip.multiObjective.run({
+  algorithm: 'pareto',
+  candidates: [
+    { id: 'A', objectives: { wirelength: 1200, power: 60, area: 250 } },
+    { id: 'B', objectives: { wirelength: 1100, power: 70, area: 240 } },
+  ],
+  weights: { wirelength: 0.5, power: 0.3, area: 0.2 },
+  reference: { wirelength: 2000, power: 100, area: 400 },
+});`,
+        },
+      ],
+    },
+  },
+  [AlgorithmCategory.ECO]: {
+    eco: {
+      algorithm: 'ECO Operations Apply',
+      description: 'Apply incremental edits (buffer/gate sizing/reroute) to a frozen post-route snapshot',
+      examples: [
+        {
+          language: 'typescript',
+          code: `const result = await chip.eco.run({
+  algorithm: 'eco',
+  snapshot: { cells, nets, wires },
+  operations: [
+    { kind: 'gate_size', cellId: 'U42', newSize: 'X4' },
+    { kind: 'buffer_insert', netId: 'n_clk', position: { x: 100, y: 100 } },
+  ],
+  atomic: false,
+});`,
+        },
+      ],
+    },
+  },
+  [AlgorithmCategory.DFT]: {
+    scan_chain_insertion: {
+      algorithm: 'Scan Chain Insertion',
+      description: 'Stitch flip-flops into shift registers ordered by manhattan-nearest-neighbor TSP',
+      examples: [
+        {
+          language: 'typescript',
+          code: `const result = await chip.dft.run({
+  algorithm: 'scan_chain_insertion',
+  cells: placedCells,
+  maxChainLength: 64,
+});`,
+        },
+      ],
+    },
+    atpg_basic: {
+      algorithm: 'ATPG (Basic Stuck-At)',
+      description: 'Random-pattern ATPG with seeded RNG for reproducible coverage estimation',
+      examples: [
+        {
+          language: 'typescript',
+          code: `const result = await chip.dft.run({
+  algorithm: 'atpg_basic',
+  cells: placedCells,
+  patternCount: 256,
+  seed: 1,
+});`,
+        },
+      ],
+    },
+  },
+  [AlgorithmCategory.THERMAL]: {
+    hotspot_detection: {
+      algorithm: 'Hotspot Detection',
+      description: 'Tile-grid power-density screening for thermal hotspots',
+      examples: [
+        {
+          language: 'typescript',
+          code: `const result = await chip.thermal.run({
+  algorithm: 'hotspot_detection',
+  cells: placedCells,
+  chipWidth: 1000,
+  chipHeight: 1000,
+  tilePitch: 50,
+  hotspotThreshold: 0.0015,
+});`,
+        },
+      ],
+    },
+    thermal_rc: {
+      algorithm: 'Thermal RC Solve',
+      description: 'Steady-state 2D thermal RC mesh solved by Gauss-Seidel iteration',
+      examples: [
+        {
+          language: 'typescript',
+          code: `const result = await chip.thermal.run({
+  algorithm: 'thermal_rc',
+  cells: placedCells,
+  chipWidth: 1000,
+  chipHeight: 1000,
+  tilePitch: 50,
+  rAmbient: 5.0,
+  rLateral: 0.5,
+});`,
+        },
+      ],
+    },
+  },
 };

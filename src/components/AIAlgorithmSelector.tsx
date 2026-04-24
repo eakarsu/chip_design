@@ -24,8 +24,20 @@ import {
   Close as CloseIcon,
   AutoAwesome as AIIcon,
   CheckCircle as CheckIcon,
+  Shuffle as ShuffleIcon,
 } from '@mui/icons-material';
 import { AlgorithmCategory } from '@/types/algorithms';
+
+// Preset natural-language queries that exercise different algorithm
+// categories, so the user can try the selector without composing prompts.
+const QUERY_SAMPLES: string[] = [
+  'Place 50 cells on a 100x100 chip minimizing total wirelength — runtime is not critical.',
+  'Route 200 signal nets across a congested 4-layer grid while avoiding DRC violations.',
+  'Partition a 10,000-gate netlist into 4 balanced blocks minimizing cut edges.',
+  'Optimize power consumption of an IoT SoC running at 50 MHz under a 5 mW budget.',
+  'Analyze timing for a 1 GHz CPU pipeline and identify critical paths.',
+  'Fix thermal hotspots in a GPU floorplan without increasing total area.',
+];
 
 interface AlgorithmRecommendation {
   category: AlgorithmCategory;
@@ -46,7 +58,14 @@ export default function AIAlgorithmSelector({
   onSelect,
 }: AIAlgorithmSelectorProps) {
   const [query, setQuery] = useState('');
+  const [sampleIdx, setSampleIdx] = useState(-1);
   const [loading, setLoading] = useState(false);
+
+  const loadSample = () => {
+    const next = (sampleIdx + 1) % QUERY_SAMPLES.length;
+    setSampleIdx(next);
+    setQuery(QUERY_SAMPLES[next]);
+  };
   const [recommendations, setRecommendations] = useState<AlgorithmRecommendation[]>([]);
   const [summary, setSummary] = useState('');
   const [error, setError] = useState('');
@@ -111,9 +130,20 @@ export default function AIAlgorithmSelector({
       <DialogContent>
         {/* Input */}
         <Box sx={{ mb: 3 }}>
-          <Typography variant="subtitle2" gutterBottom>
-            Describe what you want to do:
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Describe what you want to do:
+            </Typography>
+            <Button
+              size="small"
+              startIcon={<ShuffleIcon />}
+              onClick={loadSample}
+              disabled={loading}
+              aria-label="load next query sample"
+            >
+              Load Sample ({Math.max(0, sampleIdx) + 1}/{QUERY_SAMPLES.length})
+            </Button>
+          </Box>
           <TextField
             fullWidth
             multiline

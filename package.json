@@ -13,18 +13,25 @@
     "e2e:ui": "playwright test --ui",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,mdx}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,mdx}\""
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,mdx}\"",
+    "cli": "tsx bin/chip-design.ts"
+  },
+  "bin": {
+    "chip-design": "bin/chip-design.ts"
   },
   "dependencies": {
     "@emotion/cache": "^11.11.0",
     "@emotion/react": "^11.11.4",
     "@emotion/styled": "^11.11.5",
+    "@mui/icons-material": "^6.5.0",
     "@mui/material": "^6.0.0",
     "@mui/material-nextjs": "^6.0.0",
     "@react-three/drei": "^9.114.3",
     "@react-three/fiber": "^8.17.10",
     "@types/three": "^0.180.0",
+    "better-sqlite3": "^12.9.0",
     "chart.js": "^4.5.1",
+    "drizzle-orm": "^0.45.2",
     "gray-matter": "^4.0.3",
     "js-yaml": "^4.1.0",
     "next": "14.2.5",
@@ -40,6 +47,7 @@
     "@playwright/test": "^1.45.0",
     "@testing-library/jest-dom": "^6.4.6",
     "@testing-library/react": "^16.0.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/jest": "^29.5.12",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.14.10",
@@ -47,6 +55,7 @@
     "@types/react-dom": "^18.3.0",
     "@typescript-eslint/eslint-plugin": "^7.16.0",
     "@typescript-eslint/parser": "^7.16.0",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^8.57.0",
     "eslint-config-next": "14.2.5",
     "eslint-config-prettier": "^9.1.0",

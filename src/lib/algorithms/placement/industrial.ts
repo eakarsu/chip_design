@@ -41,7 +41,7 @@ export function runEPlace(
   });
 
   // Nesterov's method for optimization
-  let prevPositions = cells.map((c) => ({ ...c.position! }));
+  const prevPositions = cells.map((c) => ({ ...c.position! }));
 
   for (let iter = 0; iter < iterations; iter++) {
     // Update density grid using FFT (simulated)

@@ -281,6 +281,107 @@ export async function copyToClipboard(result: AlgorithmResponse): Promise<boolea
 }
 
 /**
+ * Render a multi-result comparison as a printable HTML report.
+ *
+ * Follows the same pattern as exportToPDF: downloads HTML the user opens
+ * in a browser and prints to PDF. A proper PDF library (jsPDF/pdfmake)
+ * would be nicer but would pull in ~100KB of deps for a once-a-week
+ * feature.
+ */
+export function exportComparisonPDF(results: AlgorithmResponse[], filename?: string): void {
+  if (results.length === 0) return;
+
+  // Collect every numeric metric key that appears in any row so the
+  // table is complete even when algorithms emit different shapes.
+  const metricKeys = new Set<string>();
+  results.forEach(r => {
+    Object.entries(r.result).forEach(([k, v]) => {
+      if (typeof v === 'number' && k !== 'success') metricKeys.add(k);
+    });
+  });
+  const cols = Array.from(metricKeys);
+
+  const esc = (s: unknown) =>
+    String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const rows = results.map(r => {
+    const cells = cols.map(k => {
+      const v = (r.result as any)[k];
+      return typeof v === 'number' ? v.toFixed(3) : '';
+    });
+    return `<tr>
+        <td>${esc(r.algorithm)}</td>
+        <td>${esc(String(r.category).replace(/_/g, ' '))}</td>
+        <td class="${r.result.success ? 'ok' : 'bad'}">${r.result.success ? 'Success' : 'Failed'}</td>
+        ${cells.map(c => `<td>${c}</td>`).join('')}
+        <td>${r.metadata.runtime.toFixed(2)}</td>
+      </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Algorithm Comparison</title>
+<style>
+  body { font-family: 'Segoe UI', sans-serif; margin: 32px; color: #222; }
+  h1 { color: #3f51b5; border-bottom: 3px solid #3f51b5; padding-bottom: 8px; }
+  .meta { color: #666; margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+  th { background: #3f51b5; color: white; }
+  tr:nth-child(even) { background: #f5f5f5; }
+  .ok { color: #2e7d32; font-weight: 600; }
+  .bad { color: #c62828; font-weight: 600; }
+  @media print { body { margin: 0; } }
+</style></head><body>
+  <h1>Algorithm Comparison</h1>
+  <div class="meta">
+    ${results.length} algorithm result${results.length === 1 ? '' : 's'} · generated ${new Date().toLocaleString()}
+  </div>
+  <table>
+    <thead><tr>
+      <th>Algorithm</th><th>Category</th><th>Status</th>
+      ${cols.map(c => `<th>${esc(c)}</th>`).join('')}
+      <th>Runtime (ms)</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <p style="margin-top: 24px; color: #888; font-size: 11px;">
+    Open this file in a browser and use <em>File → Print → Save as PDF</em> for a PDF copy.
+  </p>
+</body></html>`;
+
+  const blob = new Blob([html], { type: 'text/html' });
+  downloadBlob(blob, filename || `algorithm-comparison-${Date.now()}.html`);
+}
+
+/**
+ * Build a reproducible `curl` command for an algorithm run. The backend
+ * accepts POST /api/algorithms with {category, algorithm, parameters}.
+ *
+ * We don't persist the original request parameters on the response, so
+ * the caller must supply them explicitly. When `parameters` is omitted,
+ * a `{/* parameters here *\/}` placeholder is emitted so the user can
+ * fill them in.
+ */
+export function toCurlCommand(args: {
+  category: string;
+  algorithm: string;
+  parameters?: Record<string, unknown>;
+  origin?: string;
+}): string {
+  const { category, algorithm, parameters, origin } = args;
+  const base = origin ?? (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+  const body = parameters
+    ? JSON.stringify({ category, algorithm, parameters }, null, 2)
+    : JSON.stringify({ category, algorithm, parameters: '__FILL_ME__' }, null, 2)
+        .replace('"__FILL_ME__"', '{ /* parameters here */ }');
+  // Escape single quotes for safe embedding inside a POSIX-quoted shell string.
+  const escaped = body.replace(/'/g, `'\\''`);
+  return `curl -X POST '${base}/api/algorithms' \\
+  -H 'Content-Type: application/json' \\
+  -d '${escaped}'`;
+}
+
+/**
  * Export multiple results for comparison
  */
 export function exportComparisonCSV(results: AlgorithmResponse[], filename?: string): void {

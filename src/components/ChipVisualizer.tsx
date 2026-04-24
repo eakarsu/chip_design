@@ -1,7 +1,7 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
-import { Box, Paper, Typography } from '@mui/material';
+import { useRef, useEffect, useMemo } from 'react';
+import { Box, Paper, Typography, useTheme } from '@mui/material';
 
 interface ChipVisualizerProps {
   data: any;
@@ -10,6 +10,20 @@ interface ChipVisualizerProps {
 
 export default function ChipVisualizer({ data, category }: ChipVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const theme = useTheme();
+  const isDark = theme.palette.mode === 'dark';
+
+  // Theme-aware canvas palette. Dark mode uses lower-contrast strokes and
+  // bright label text so drawn shapes don't glow against the dark bg.
+  // Memoized so the draw effect doesn't re-run every render.
+  const palette = useMemo(() => ({
+    boundary:  isDark ? '#aaa' : '#333',
+    cellLabel: isDark ? '#fff' : '#fff',            // label stays white on filled cell
+    legend:    theme.palette.text.primary,
+    cellOutline: isDark ? '#4f46e5' : '#1a237e',
+    pinFill:   isDark ? '#9e9e9e' : '#757575',
+    pinStroke: isDark ? '#616161' : '#424242',
+  }), [isDark, theme.palette.text.primary]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -26,7 +40,7 @@ export default function ChipVisualizer({ data, category }: ChipVisualizerProps) 
     const scale = 0.6; // Scale factor to fit canvas
 
     // Draw chip boundary
-    ctx.strokeStyle = '#333';
+    ctx.strokeStyle = palette.boundary;
     ctx.lineWidth = 2;
     ctx.strokeRect(padding, padding, canvas.width - 2 * padding, canvas.height - 2 * padding);
 
@@ -48,12 +62,12 @@ export default function ChipVisualizer({ data, category }: ChipVisualizerProps) 
           ctx.fillRect(x, y, w, h);
           ctx.globalAlpha = 1.0;
 
-          ctx.strokeStyle = '#1a237e';
+          ctx.strokeStyle = palette.cellOutline;
           ctx.lineWidth = 1;
           ctx.strokeRect(x, y, w, h);
 
           // Draw cell label
-          ctx.fillStyle = '#fff';
+          ctx.fillStyle = palette.cellLabel;
           ctx.font = '8px Arial';
           ctx.textAlign = 'center';
           ctx.fillText(cell.name || cell.id, x + w / 2, y + h / 2);
@@ -115,9 +129,9 @@ export default function ChipVisualizer({ data, category }: ChipVisualizerProps) 
           const w = cell.width * scale;
           const h = cell.height * scale;
 
-          ctx.fillStyle = '#757575';
+          ctx.fillStyle = palette.pinFill;
           ctx.fillRect(x, y, w, h);
-          ctx.strokeStyle = '#424242';
+          ctx.strokeStyle = palette.pinStroke;
           ctx.lineWidth = 1;
           ctx.strokeRect(x, y, w, h);
         });
@@ -125,7 +139,7 @@ export default function ChipVisualizer({ data, category }: ChipVisualizerProps) 
     }
 
     // Draw legend
-    ctx.fillStyle = '#000';
+    ctx.fillStyle = palette.legend;
     ctx.font = '10px Arial';
     ctx.textAlign = 'left';
     ctx.fillText(`Total Cells: ${(data.cells || data.blocks || []).length}`, 10, 20);
@@ -142,7 +156,7 @@ export default function ChipVisualizer({ data, category }: ChipVisualizerProps) 
       ctx.fillText(`Runtime: ${data.runtime.toFixed(2)}ms`, 200, 35);
     }
 
-  }, [data, category]);
+  }, [data, category, palette]);
 
   return (
     <Paper sx={{ p: 2 }}>
@@ -153,7 +167,7 @@ export default function ChipVisualizer({ data, category }: ChipVisualizerProps) 
         sx={{
           display: 'flex',
           justifyContent: 'center',
-          bgcolor: '#f5f5f5',
+          bgcolor: 'background.default',
           p: 2,
           borderRadius: 1,
         }}
@@ -162,7 +176,10 @@ export default function ChipVisualizer({ data, category }: ChipVisualizerProps) 
           ref={canvasRef}
           width={800}
           height={600}
-          style={{ border: '1px solid #ddd', backgroundColor: '#fff' }}
+          style={{
+            border: `1px solid ${theme.palette.divider}`,
+            backgroundColor: theme.palette.background.paper,
+          }}
         />
       </Box>
     </Paper>

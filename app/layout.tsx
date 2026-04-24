@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import ThemeRegistry from '@/app/ThemeRegistry';
-import AppBar from '@/components/AppBar';
-import Footer from '@/components/Footer';
-import { Box } from '@mui/material';
+import ErrorBoundary from '@/components/ErrorBoundary';
+import LayoutWithSideNav from '@/components/LayoutWithSideNav';
+import { AuthProvider } from '@/lib/auth/context';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -102,19 +102,13 @@ export default function RootLayout({
       </head>
       <body>
         <ThemeRegistry>
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              minHeight: '100vh',
-            }}
-          >
-            <AppBar />
-            <Box component="main" id="main-content" sx={{ flexGrow: 1 }}>
-              {children}
-            </Box>
-            <Footer />
-          </Box>
+          <AuthProvider>
+            <ErrorBoundary>
+              <LayoutWithSideNav>
+                {children}
+              </LayoutWithSideNav>
+            </ErrorBoundary>
+          </AuthProvider>
         </ThemeRegistry>
       </body>
     </html>

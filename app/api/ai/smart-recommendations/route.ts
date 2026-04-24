@@ -100,7 +100,7 @@ Provide general best-practice recommendations for these parameters based on:
           'X-Title': 'NeuralChip AI Platform',
         },
         body: JSON.stringify({
-          model: 'anthropic/claude-3.5-sonnet',
+          model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: prompt },
