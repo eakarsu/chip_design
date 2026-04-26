@@ -262,3 +262,18 @@ export function parseRuleDeck(raw: string | object): RuleDeck {
   // Each rule's `kind` is validated implicitly at runtime.
   return obj as RuleDeck;
 }
+
+/** Serialize a deck back to a stable JSON string (2-space indent). */
+export function serializeRuleDeck(deck: RuleDeck): string {
+  return JSON.stringify(deck, null, 2);
+}
+
+/** Convenience factory for the editor UI — produces a fresh rule with sane
+ *  defaults for each kind. */
+export function defaultRule(kind: 'min_width' | 'min_spacing' | 'min_area'): DrcRule {
+  switch (kind) {
+    case 'min_width':   return { kind, layer: 'L1', min: 50, name: 'L1.W.1' };
+    case 'min_spacing': return { kind, layer: 'L1', min: 50, name: 'L1.S.1' };
+    case 'min_area':    return { kind, layer: 'L1', min: 1000, name: 'L1.A.1' };
+  }
+}

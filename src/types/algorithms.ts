@@ -22,6 +22,11 @@ export enum AlgorithmCategory {
   ECO = 'eco',
   DFT = 'dft',
   THERMAL = 'thermal',
+  VERIFICATION = 'verification',
+  MEMORY = 'memory',
+  MIXED_SIGNAL = 'mixed_signal',
+  RF = 'rf',
+  RELIABILITY = 'reliability',
 }
 
 export enum PlacementAlgorithm {

@@ -1,5 +1,6 @@
 import {
-  runDrc, parseRuleDeck, RuleDeck, Geometry,
+  runDrc, parseRuleDeck, serializeRuleDeck, defaultRule,
+  RuleDeck, Geometry,
 } from '@/lib/algorithms/drc_ruledeck';
 
 const g = (id: string, layer: string, xl: number, yl: number, xh: number, yh: number): Geometry => ({
@@ -139,5 +140,28 @@ describe('DRC — deck loading', () => {
   it('rejects malformed decks', () => {
     expect(() => parseRuleDeck('{}')).toThrow();
     expect(() => parseRuleDeck({ name: 'x', technology: 'y' } as any)).toThrow(/rules/);
+  });
+});
+
+describe('DRC — rule-deck editor helpers', () => {
+  it('serializeRuleDeck round-trips with parseRuleDeck', () => {
+    const deck: RuleDeck = {
+      name: 'demo', technology: 'demo',
+      rules: [defaultRule('min_width'), defaultRule('min_spacing'), defaultRule('min_area')],
+    };
+    const json = serializeRuleDeck(deck);
+    expect(json).toContain('"min_width"');
+    expect(parseRuleDeck(json)).toEqual(deck);
+  });
+
+  it('defaultRule produces a valid rule for each supported kind', () => {
+    expect(defaultRule('min_width').kind).toBe('min_width');
+    expect(defaultRule('min_spacing').kind).toBe('min_spacing');
+    expect(defaultRule('min_area').kind).toBe('min_area');
+    // Sanity: every default rule should pass parse when wrapped in a deck.
+    const deck: RuleDeck = {
+      name: 'd', technology: 't', rules: [defaultRule('min_width')],
+    };
+    expect(() => parseRuleDeck(serializeRuleDeck(deck))).not.toThrow();
   });
 });

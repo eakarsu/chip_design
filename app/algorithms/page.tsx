@@ -59,6 +59,108 @@ interface TabPanelProps {
   value: number;
 }
 
+/**
+ * Default request bodies for tools wired via standalone-page routes.
+ * Used by runAlgorithm() when the selected algorithm value is a "/path".
+ * Keep these minimal but valid for the matching POST /api<path> handler.
+ */
+const STANDALONE_DEFAULT_PARAMS: Record<string, unknown> = {
+  // RF
+  '/spiral-q':       { doutUm: 200, dinUm: 80, N: 4, wUm: 8, sUm: 2, rsOhmSq: 0.05, fGhz: 2.4 },
+  '/microstrip':     { kind: 'microstrip', wUm: 150, hUm: 100, sUm: 80, er: 4.4, fGhz: 2.4 },
+  '/lc-match':       { Rs: 50, Rl: 200, Xs: 0, Xl: 0, f: 900e6 },
+  '/smith':          { points: [{ f: 1e9, R: 75, X: 20 }], Z0: 50 },
+  '/sparam':         {
+    text: '# GHz S MA R 50\n1.0 0.30 -45 0.95 -10 0.05 90 0.20 -30\n2.0 0.20 -90 0.90 -20 0.06 60 0.18 -45\n',
+  },
+  // Memory & Cache
+  '/sram-planner':   { capacityBits: 65536, wordBits: 32, cellAreaUm2: 0.05, muxFactor: 4, targetAccessNs: 1.0 },
+  '/cacti-lite':     { sizeBytes: 32 * 1024, lineBytes: 64, assoc: 4, addressBits: 32, techNm: 28 },
+  '/ecc':            { dataBits: 64, data: '0xCAFEBABE' },
+  '/bist-wrap':      { memories: [
+    { name: 'L1D', width: 32, addrBits: 10, retention: false },
+    { name: 'L1I', width: 32, addrBits: 10, retention: false },
+  ] },
+  '/dram-refresh':   { banks: 8, rowsPerBank: 1024, colsPerRow: 1024, wordBits: 32, trfcNs: 90, tempC: 85, clockNs: 1.0 },
+  '/tcam':           { entries: 256, widthBits: 144, cellType: 'NOR_16T', techNm: 28 },
+  // Mixed-Signal
+  '/gm-id':          { gmTarget: 1e-3, region: 'moderate', uCox: 200e-6, L: 1e-6 },
+  '/common-centroid':{ groups: 4, unitsPerGroup: 4 },
+  '/pll-filter':     { fref: 25e6, fvco: 2.4e9, fc: 200e3, pmDeg: 60, kvco: 100e6, icp: 200e-6 },
+  '/ldo-psrr':       { A0: 80, fp1: 1e3, esr: 0.01, cout: 4.7e-6, beta: 0.5, gmp: 50e-3, iload: 50e-3 },
+  '/bandgap':        { Tmin: 233, Tmax: 398, steps: 60 },
+  '/spice-tb':       {
+    dut: 'INVX1', subcktPath: 'inv.sp',
+    pins: ['A', 'Y', 'VDD', 'VSS'],
+    rails: [{ name: 'VDD', value: 1.0 }, { name: 'VSS', value: 0 }],
+    sources: [{ kind: 'pulse', node: 'A', vlow: 0, vhigh: 1, period: 2e-9 }],
+    analyses: [{ kind: 'tran', tstep: 1e-12, tstop: 4e-9 }],
+  },
+  // Verification
+  '/rtl-lint':       { source: 'module m(input clk, output reg q); always @(posedge clk) q <= ~q; endmodule' },
+  '/cdc':            {
+    signals: [
+      { name: 'd',   srcClk: 'clk1', width: 1, gray: false },
+      { name: 'sync',srcClk: 'clk1', width: 1, gray: false },
+    ],
+    crossings: [
+      { src: 'd', dst: 'q', dstClk: 'clk2', stages: 2, kind: 'flop' },
+    ],
+  },
+  '/cov-merge':      { dbs: [
+    { name: 'run1', bins: { 'top.a': 10, 'top.b': 5 } },
+    { name: 'run2', bins: { 'top.a': 3, 'top.c': 7 } },
+  ] },
+  '/sva-density':    { modules: [
+    { name: 'm', source: 'module m; assert property (1); endmodule' },
+  ] },
+  '/stim-gen':       {
+    fields: [{ name: 'addr', width: 8 }, { name: 'data', width: 16 }],
+    vectors: 16,
+  },
+  '/log-triage':     { log: 'ERROR foo\nWARN bar\nERROR baz' },
+  // Reliability
+  '/em-check':       {
+    segments: [
+      { name: 's1', layer: 'M1', width: 0.1, length: 100, current: 0.0008 },
+    ],
+    layers: [
+      { name: 'M1', thickness: 0.18, jmax: 1.0, mu: 1, ea: 0.7 },
+    ],
+  },
+  '/aging':          { alpha: 0.05, tempK: 358, years: 10, vgs: 1.0 },
+  '/esd-coverage':   {
+    pads: [{ name: 'PAD1', domain: 'VDD', x: 0,   y: 0 }],
+    devices: [{ name: 'D1', domain: 'VDD', x: 30, y: 0 }],
+    maxDist: 100,
+  },
+  '/latchup':        {
+    devices: [
+      { name: 'n1', kind: 'nmos', x: 0,  y: 0 },
+      { name: 'p1', kind: 'pmos', x: 10, y: 0 },
+    ],
+    taps: [
+      { name: 'pt1', kind: 'ptap', x: 5, y: 0 },
+      { name: 'nt1', kind: 'ntap', x: 8, y: 0 },
+    ],
+    maxTapDist: 20,
+  },
+  '/fit':            {
+    mechanisms: [
+      { name: 'EM',   population: 1e6, baseFit: 5,  ea: 0.9 },
+      { name: 'BTI',  population: 1e7, baseFit: 1,  ea: 0.7 },
+      { name: 'TDDB', population: 1e7, baseFit: 2,  ea: 0.6 },
+    ],
+    useK: 358,
+    stressK: 398,
+  },
+  '/rel-hotspot':    {
+    ir: { cols: 4, rows: 4, data: Array.from({ length: 16 }, (_, i) => 0.05 + (i % 4) * 0.01) },
+    em: { cols: 4, rows: 4, data: Array.from({ length: 16 }, (_, i) => 0.4 + (i % 5) * 0.05) },
+    topN: 5,
+  },
+};
+
 function TabPanel(props: TabPanelProps) {
   const { children, value, index, ...other } = props;
   return (
@@ -229,10 +331,55 @@ export default function AlgorithmsPage() {
     [AlgorithmCategory.DFT]: [
       { value: 'scan_chain_insertion', label: 'Scan Chain Insertion' },
       { value: 'atpg_basic', label: 'ATPG (Basic Stuck-At)' },
+      { value: '/scan-stitch', label: '🔗 Scan Stitcher (greedy NN)' },
+      { value: '/atpg',        label: '🔗 ATPG Coverage Estimator' },
+      { value: '/mbist',       label: '🔗 MBIST Inserter' },
+      { value: '/jtag',        label: '🔗 JTAG / Boundary Scan' },
+      { value: '/iddq',        label: '🔗 IDDQ Test Planner' },
+      { value: '/tdf',         label: '🔗 TDF (Path Delay)' },
     ],
     [AlgorithmCategory.THERMAL]: [
       { value: 'hotspot_detection', label: 'Hotspot Detection' },
       { value: 'thermal_rc', label: 'Thermal RC Solve' },
+    ],
+    [AlgorithmCategory.VERIFICATION]: [
+      { value: '/rtl-lint',    label: '🔗 RTL Linter' },
+      { value: '/cdc',         label: '🔗 Clock-Domain Crossing' },
+      { value: '/cov-merge',   label: '🔗 Coverage Merger' },
+      { value: '/sva-density', label: '🔗 SVA Assertion Density' },
+      { value: '/stim-gen',    label: '🔗 Constrained-Random Stim' },
+      { value: '/log-triage',  label: '🔗 Sim Log Triage' },
+    ],
+    [AlgorithmCategory.MEMORY]: [
+      { value: '/sram-planner', label: '🔗 SRAM Array Planner' },
+      { value: '/cacti-lite',   label: '🔗 CACTI-lite Cache Geometry' },
+      { value: '/ecc',          label: '🔗 ECC / SECDED' },
+      { value: '/bist-wrap',    label: '🔗 Memory BIST Wrapper' },
+      { value: '/dram-refresh', label: '🔗 DRAM Refresh Planner' },
+      { value: '/tcam',         label: '🔗 TCAM Cell Estimator' },
+    ],
+    [AlgorithmCategory.MIXED_SIGNAL]: [
+      { value: '/gm-id',           label: '🔗 Op-Amp gm/Id Sizing' },
+      { value: '/common-centroid', label: '🔗 Common-Centroid Layout' },
+      { value: '/pll-filter',      label: '🔗 PLL Loop Filter' },
+      { value: '/ldo-psrr',        label: '🔗 LDO PSRR' },
+      { value: '/bandgap',         label: '🔗 Bandgap Sweep' },
+      { value: '/spice-tb',        label: '🔗 SPICE Testbench Emitter' },
+    ],
+    [AlgorithmCategory.RF]: [
+      { value: '/spiral-q',   label: '🔗 Spiral Inductor Q' },
+      { value: '/microstrip', label: '🔗 Microstrip / CPW Z₀' },
+      { value: '/lc-match',   label: '🔗 LC Matching' },
+      { value: '/smith',      label: '🔗 Smith Chart' },
+      { value: '/sparam',     label: '🔗 S-Parameter Viewer' },
+    ],
+    [AlgorithmCategory.RELIABILITY]: [
+      { value: '/em-check',     label: '🔗 EM (Electromigration) Check' },
+      { value: '/aging',        label: '🔗 NBTI/BTI Aging' },
+      { value: '/esd-coverage', label: '🔗 ESD Coverage Map' },
+      { value: '/latchup',      label: '🔗 Latch-up Rule Check' },
+      { value: '/fit',          label: '🔗 FIT / MTTF Predictor' },
+      { value: '/rel-hotspot',  label: '🔗 IR×EM Combined Hotspot' },
     ],
   };
 
@@ -276,6 +423,43 @@ export default function AlgorithmsPage() {
   };
 
   const runAlgorithm = async () => {
+    // Tools wired via standalone pages use a route-style "value" (starts with
+    // "/"). Run them in-place by POSTing default parameters to /api<path>
+    // and rendering the JSON in the Results tab. The standalone UI is still
+    // available at the same path for richer interaction.
+    if (algorithm.startsWith('/')) {
+      setRunning(true);
+      setError(null);
+      setResult(null);
+      try {
+        const body = STANDALONE_DEFAULT_PARAMS[algorithm] ?? {};
+        const t0 = performance.now();
+        const resp = await fetch(`/api${algorithm}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await resp.json();
+        const runtimeMs = performance.now() - t0;
+        if (!resp.ok) {
+          throw new Error(data.error || `HTTP ${resp.status}`);
+        }
+        setResult({
+          success: true,
+          category,
+          algorithm,
+          metadata: { runtime: runtimeMs, openIn: algorithm },
+          result: data,
+        });
+        setTabValue(1);
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setRunning(false);
+      }
+      return;
+    }
+
     // Tear down any previous controller before arming a new one.
     abortRef.current?.abort();
     const controller = new AbortController();
@@ -829,6 +1013,11 @@ endmodule`,
                   <MenuItem value={AlgorithmCategory.ECO}>ECO (Engineering Change Order)</MenuItem>
                   <MenuItem value={AlgorithmCategory.DFT}>DFT (Design For Test)</MenuItem>
                   <MenuItem value={AlgorithmCategory.THERMAL}>Thermal Analysis</MenuItem>
+                  <MenuItem value={AlgorithmCategory.VERIFICATION}>Verification (RTL Lint / CDC / Coverage)</MenuItem>
+                  <MenuItem value={AlgorithmCategory.MEMORY}>Memory &amp; Cache (SRAM / CACTI / ECC / DRAM / TCAM)</MenuItem>
+                  <MenuItem value={AlgorithmCategory.MIXED_SIGNAL}>Mixed-Signal (gm/Id / PLL / LDO / Bandgap)</MenuItem>
+                  <MenuItem value={AlgorithmCategory.RF}>RF (Spiral / Microstrip / Smith / S-param)</MenuItem>
+                  <MenuItem value={AlgorithmCategory.RELIABILITY}>Reliability (EM / Aging / ESD / FIT)</MenuItem>
                 </Select>
               </FormControl>
 
@@ -1225,7 +1414,35 @@ endmodule`,
       </TabPanel>
 
       <TabPanel value={tabValue} index={1}>
-        {result && (
+        {result && typeof result.algorithm === 'string' && result.algorithm.startsWith('/') ? (
+          <Box>
+            <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Chip label={String(result.category).toUpperCase()} color="primary" />
+              <Chip label={result.algorithm} variant="outlined" />
+              <Chip
+                icon={<PlayIcon />}
+                label="Success"
+                color="success"
+              />
+              {typeof result.metadata?.runtime === 'number' && (
+                <Chip label={`${result.metadata.runtime.toFixed(1)} ms`} />
+              )}
+              <Button
+                size="small"
+                variant="outlined"
+                component={Link}
+                href={result.algorithm}
+              >
+                Open standalone tool ↗
+              </Button>
+            </Box>
+            <Paper sx={{ p: 2, bgcolor: '#0f172a', color: '#e2e8f0', overflow: 'auto' }}>
+              <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap' }}>
+                {JSON.stringify(result.result, null, 2)}
+              </pre>
+            </Paper>
+          </Box>
+        ) : result && (
           <>
             <AlgorithmResults result={result} />
             {(result.category === 'placement' || result.category === 'routing' || result.category === 'floorplanning') && (
