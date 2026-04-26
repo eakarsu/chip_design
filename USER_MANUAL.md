@@ -31,18 +31,18 @@ npm test -- foo          # tests matching "foo"
 
 The app has a **left sidebar** with grouped tool links and a main content pane. Groups are collapsible scroll-only sections:
 
-| Group         | What's in it                                              |
-|---------------|-----------------------------------------------------------|
-| Overview      | Dashboard                                                 |
-| Design Flow   | Floorplan, OpenLane, OR Composer, KLayout, LVS, DRC, PDN  |
-| Analysis      | Congestion, IR-drop, Power, Timing, SDC, CTS, antennas    |
-| DFT & Test    | Scan stitch, ATPG, MBIST, JTAG, IDDQ, TDF                 |
-| Verification  | RTL Lint, CDC, Coverage merge, SVA density, Stim, Triage  |
-| Memory        | SRAM planner, CACTI-lite, ECC, BIST wrap, DRAM, TCAM      |
-| Mixed-Signal  | gm/Id sizing, Common-centroid, PLL filter, LDO, Bandgap   |
-| Reliability   | EM, BTI aging, ESD coverage, Latch-up, FIT, IR×EM         |
-| Reports       | Visualizations, Analytics, History, Benchmarks            |
-| Admin         | Admin console (admins only)                               |
+| Group         | What's in it                                                                                                                                                                                                                  |
+|---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Overview      | Dashboard                                                                                                                                                                                                                     |
+| Design Flow   | Full Flow, Floorplan, OpenLane, OR Composer, KLayout, Layout Diff, LVS, DRC Deck, PDN Gen, GDS Remap, Cell Hier, Layer Bool, Density Fill, Tap/Endcap, Pin Access, X-Section, Bump/RDL, Wafer Plan, Algorithms, Synth Graph, Compare, Sweep, Auto-Tune, Stream, Import |
+| Analysis      | Congestion, Cong. Map, IR Drop, IR Map, Power, Timing, Timing Paths, Slack Hist, Wire Length, SDC Editor, Clock Tree, Antennas, Pin Assign, Library, Liberty                                                                  |
+| DFT & Test    | Scan Stitch, ATPG, MBIST, JTAG, IDDQ, TDF                                                                                                                                                                                     |
+| Verification  | RTL Lint, CDC, Coverage merge, SVA density, Stim, Triage                                                                                                                                                                      |
+| Memory        | SRAM planner, CACTI-lite, ECC, BIST wrap, DRAM, TCAM                                                                                                                                                                          |
+| Mixed-Signal  | gm/Id sizing, Common-centroid, PLL filter, LDO, Bandgap, SPICE TB                                                                                                                                                             |
+| Reliability   | EM, BTI aging, ESD coverage, Latch-up, FIT, IR×EM                                                                                                                                                                             |
+| Reports       | Visualizations, Analytics, History, Benchmarks, Architectures                                                                                                                                                                 |
+| Admin         | Admin console (admins only)                                                                                                                                                                                                   |
 
 Top of sidebar: **Search (`/` shortcut)**, theme toggle, account menu.
 
@@ -142,33 +142,65 @@ Every standalone tool lives at `/<tool-name>` and exposes a POST API at `/api/<t
 | IDDQ        | `/iddq`          | IDDQ test pattern planner          |
 | TDF         | `/tdf`           | Transition-fault path-delay coverage |
 
-### Design Flow Pages (highlights)
+### Design Flow Pages
 
-| Tool        | Path                  | Notes                                  |
-|-------------|-----------------------|----------------------------------------|
-| Floorplan   | `/floorplan`          | Block placement, aspect ratio, util    |
-| OpenLane    | `/openlane`           | Run OpenLane RTL→GDS flow              |
-| OR Composer | `/openroad-composer`  | Compose OpenROAD flow steps            |
-| KLayout     | `/klayout`            | Layout viewer / DRC integration        |
-| LVS         | `/lvs`                | Layout-vs-Schematic checker            |
-| DRC Deck    | `/drc-deck`           | Build / lint DRC rule decks            |
-| PDN         | `/pdn`                | Power-delivery-network synthesis       |
-| Layout Diff | `/layout-diff`        | Diff two GDS files                     |
-| GDS Remap   | `/gds-remap`          | Layer remapping                        |
-| X-Section   | `/xsection`           | Cross-sectional render                 |
+| Tool          | Path                  | Notes                                                       |
+|---------------|-----------------------|-------------------------------------------------------------|
+| Full Flow     | `/flow`               | End-to-end RTL→GDS dashboard (cell count, nets, chip dims)  |
+| Floorplan     | `/floorplan`          | Block placement, aspect ratio, utilization                  |
+| OpenLane      | `/openlane`           | Run OpenLane RTL→GDS flow                                   |
+| OR Composer   | `/openroad-composer`  | Compose OpenROAD flow steps                                 |
+| KLayout       | `/klayout`            | Layout viewer / DRC integration                             |
+| Layout Diff   | `/layout-diff`        | Diff two GDS files                                          |
+| LVS           | `/lvs`                | Layout-vs-Schematic checker                                 |
+| DRC Deck      | `/drc-deck`           | Build / lint DRC rule decks                                 |
+| PDN Gen       | `/pdn`                | Power-delivery-network synthesis                            |
+| GDS Remap     | `/gds-remap`          | Layer remapping                                             |
+| Cell Hier     | `/cell-hier`          | Browse GDS cell hierarchy tree (paste GdsLibrary JSON)      |
+| Layer Bool    | `/layer-bool`         | Rectangle boolean ops (AND/OR/XOR/NOT/SIZE) on rect lists   |
+| Density Fill  | `/density-fill`       | Dummy-fill inserter — target density, cell size, pitch      |
+| Tap/Endcap    | `/tap-endcap`         | Tap-cell and endcap insertion in floorplan rows             |
+| Pin Access    | `/pin-access`         | Check pin accessibility to routing tracks                   |
+| X-Section     | `/xsection`           | Cross-sectional render                                      |
+| Bump/RDL      | `/bump-rdl`           | Plan bump array and RDL fanout (die size, pitch, pattern)   |
+| Wafer Plan    | `/wafer`              | Dies-per-wafer and reticle packing (diameter, defect rate)  |
+| Algorithms    | `/algorithms`         | Master dispatcher (see §3)                                  |
+| Synth Graph   | `/synth-graph`        | Force-directed netlist graph viewer (Verilog/structural)    |
+| Compare       | `/compare`            | Side-by-side algorithm comparison / benchmarking            |
+| Sweep         | `/sweep`              | Parameter sweep (grid or random) over a problem size        |
+| Auto-Tune     | `/autotune`           | Bayesian optimization of placer hyperparameters             |
+| Stream        | `/stream`             | Live convergence stream over SSE with real-time plot        |
+| Import        | `/import`             | Import designs from Bookshelf or DEF                        |
 
 ### Analysis
 
-| Tool         | Path              | Notes                                |
-|--------------|-------------------|--------------------------------------|
-| Congestion   | `/congestion`     | Routing congestion estimator         |
-| IR Drop      | `/ir-drop`        | Static IR-drop solver                |
-| Power        | `/power`          | Switching/leakage breakdown          |
-| Timing       | `/timing`         | Setup/hold timing summary            |
-| Slack Hist   | `/slack-histogram`| Slack distribution histogram         |
-| Wire Length  | `/wire-length`    | Net wire-length metrics              |
-| SDC Editor   | `/sdc`            | Edit clocks, false paths, exceptions |
-| Clock Tree   | `/cts`            | CTS algorithm runner                 |
+| Tool         | Path               | Notes                                                       |
+|--------------|--------------------|-------------------------------------------------------------|
+| Congestion   | `/congestion`      | Routing congestion estimator                                |
+| Cong. Map    | `/congestion-map`  | Per-tile congestion heatmap (paste OpenROAD report)         |
+| IR Drop      | `/ir-drop`         | Static IR-drop solver                                       |
+| IR Map       | `/irdrop-map`      | IR-drop scatter + density heatmaps from instance/net dumps  |
+| Power        | `/power`           | Switching/leakage breakdown                                 |
+| Timing       | `/timing`          | Setup/hold timing summary                                   |
+| Timing Paths | `/timing-paths`    | STA path explorer with sort/filter (OpenSTA report_checks)  |
+| Slack Hist   | `/slack-histogram` | Slack distribution histogram                                |
+| Wire Length  | `/wire-length`     | Net wire-length metrics                                     |
+| SDC Editor   | `/sdc`             | Edit clocks, false paths, exceptions                        |
+| Clock Tree   | `/cts`             | CTS algorithm runner                                        |
+| Antennas     | `/antennas`        | Antenna-violation viewer (OpenROAD check_antennas report)   |
+| Pin Assign   | `/pin-assignment`  | Optimize I/O pin positions given core placement             |
+| Library      | `/library`         | LEF cell browser with macro details (paste/upload LEF)      |
+| Liberty      | `/liberty`         | Liberty cell catalog with timing arcs (paste/upload .lib)   |
+
+### Reports
+
+| Tool           | Path              | Notes                                                       |
+|----------------|-------------------|-------------------------------------------------------------|
+| Visualizations | `/visualizations` | Demo dashboard — charts, heatmaps, trees, graphs            |
+| Analytics      | `/analytics`      | Usage stats, category breakdown, trends; refresh/export     |
+| History        | `/history`        | Run history with filtering and side-by-side compare         |
+| Benchmarks     | `/benchmarks`     | Performance comparison vs. competitors (inference/training) |
+| Architectures  | `/architectures`  | NeuralChip arch features and code examples                  |
 
 ---
 
