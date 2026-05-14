@@ -3,9 +3,25 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { rateLimit } from '@/lib/rateLimit';
+
+// Apply pass 5: rate-limit added (mechanical, matches /api/ai pattern)
+function getClientId(request: NextRequest): string {
+  const forwarded = request.headers.get('x-forwarded-for');
+  const ip = forwarded ? forwarded.split(',')[0] : request.headers.get('x-real-ip') || 'unknown';
+  return ip;
+}
 
 export async function POST(request: NextRequest) {
   try {
+    const clientId = getClientId(request);
+    const rateLimitResult = rateLimit(`nl-parameters:${clientId}`, { windowMs: 60000, maxRequests: 10 });
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded', message: 'Too many requests. Please try again later.', retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000) },
+        { status: 429, headers: { 'X-RateLimit-Limit': '10', 'X-RateLimit-Remaining': rateLimitResult.remaining.toString(), 'X-RateLimit-Reset': rateLimitResult.resetAt.toString(), 'Retry-After': Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000).toString() } }
+      );
+    }
     const { nlCommand, algorithm, category, currentParams } = await request.json();
 
     const systemPrompt = `You are a parameter configuration assistant. Convert natural language commands to algorithm parameters.

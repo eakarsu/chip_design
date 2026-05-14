@@ -3,6 +3,14 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { rateLimit } from '@/lib/rateLimit';
+
+// Apply pass 5: rate-limit added (mechanical, matches /api/ai pattern)
+function getClientId(request: NextRequest): string {
+  const forwarded = request.headers.get('x-forwarded-for');
+  const ip = forwarded ? forwarded.split(',')[0] : request.headers.get('x-real-ip') || 'unknown';
+  return ip;
+}
 
 // Extract the first top-level JSON value from a string. Haiku often appends
 // prose after the JSON object ("Here's how the Pareto frontier was derived…"),
@@ -37,6 +45,14 @@ function extractFirstJson(raw: string): string {
 
 export async function POST(request: NextRequest) {
   try {
+    const clientId = getClientId(request);
+    const rateLimitResult = rateLimit(`multi-objective:${clientId}`, { windowMs: 60000, maxRequests: 10 });
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded', message: 'Too many requests. Please try again later.', retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000) },
+        { status: 429, headers: { 'X-RateLimit-Limit': '10', 'X-RateLimit-Remaining': rateLimitResult.remaining.toString(), 'X-RateLimit-Reset': rateLimitResult.resetAt.toString(), 'Retry-After': Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000).toString() } }
+      );
+    }
     const { objectives, constraints, numPoints = 5 } = await request.json();
 
     const systemPrompt = `You are a multi-objective optimization engine. Generate Pareto-optimal design points exploring tradeoffs between competing objectives.

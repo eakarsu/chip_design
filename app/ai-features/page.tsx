@@ -327,6 +327,26 @@ export default function AIFeaturesPage() {
   const [diagBusy, setDiagBusy] = useState(false);
   const [diagResult, setDiagResult] = useState<any>(null);
 
+  // Smart Recommendations demo: POST /api/ai/smart-recommendations
+  //   { currentParams, category, algorithm }
+  const [recAlgo, setRecAlgo] = useState<string>('simulated_annealing');
+  const [recCategory, setRecCategory] = useState<string>('placement');
+  const [recParams, setRecParams] = useState<string>(
+    JSON.stringify({ iterations: 500, initialTemp: 1000, coolingRate: 0.95 }, null, 2)
+  );
+  const [recBusy, setRecBusy] = useState(false);
+  const [recResult, setRecResult] = useState<any>(null);
+  const [recError, setRecError] = useState<string>('');
+
+  // Analyze Layout demo: POST /api/ai/analyze-layout { image (base64 dataURL ok), question?, analysisType }
+  const [layoutFile, setLayoutFile] = useState<File | null>(null);
+  const [layoutDataUrl, setLayoutDataUrl] = useState<string>('');
+  const [layoutType, setLayoutType] = useState<'general' | 'congestion' | 'hotspots' | 'violations' | 'comparison'>('general');
+  const [layoutQuestion, setLayoutQuestion] = useState<string>('');
+  const [layoutBusy, setLayoutBusy] = useState(false);
+  const [layoutResult, setLayoutResult] = useState<any>(null);
+  const [layoutError, setLayoutError] = useState<string>('');
+
   const loadPerfSample = () => {
     const next = (perfIdx + 1) % PERF_SAMPLES.length;
     const s = PERF_SAMPLES[next];
@@ -570,6 +590,114 @@ export default function AIFeaturesPage() {
               <strong>Comparison:</strong> Side-by-side layout comparison
             </li>
           </ul>
+
+          {/* Interactive demo: vision-capable POST /api/ai/analyze-layout */}
+          <Box sx={{ mt: 3 }}>
+            <Typography variant="h6" gutterBottom>Try it</Typography>
+
+            <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+              <InputLabel>Analysis Type</InputLabel>
+              <Select
+                value={layoutType}
+                label="Analysis Type"
+                onChange={(e) => setLayoutType(e.target.value as typeof layoutType)}
+              >
+                <MenuItem value="general">General</MenuItem>
+                <MenuItem value="congestion">Congestion</MenuItem>
+                <MenuItem value="hotspots">Hotspots</MenuItem>
+                <MenuItem value="violations">Violations</MenuItem>
+                <MenuItem value="comparison">Comparison</MenuItem>
+              </Select>
+            </FormControl>
+
+            <Box sx={{ mb: 2 }}>
+              <Button variant="outlined" component="label" size="small">
+                {layoutFile ? `Selected: ${layoutFile.name}` : 'Upload Layout Image (PNG/JPG)'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] || null;
+                    setLayoutFile(f);
+                    setLayoutResult(null);
+                    setLayoutError('');
+                    if (f) {
+                      const reader = new FileReader();
+                      reader.onload = () => setLayoutDataUrl(String(reader.result || ''));
+                      reader.readAsDataURL(f);
+                    } else {
+                      setLayoutDataUrl('');
+                    }
+                  }}
+                />
+              </Button>
+              {layoutDataUrl && (
+                <Box sx={{ mt: 1 }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={layoutDataUrl}
+                    alt="layout preview"
+                    style={{ maxHeight: 240, border: '1px solid #ddd', borderRadius: 4 }}
+                  />
+                </Box>
+              )}
+            </Box>
+
+            <TextField
+              fullWidth
+              label="Optional question (used when analysis type is General)"
+              value={layoutQuestion}
+              onChange={(e) => setLayoutQuestion(e.target.value)}
+              size="small"
+              sx={{ mb: 2 }}
+            />
+
+            <Button
+              variant="contained"
+              startIcon={layoutBusy ? <CircularProgress size={20} /> : <PlayArrowIcon />}
+              disabled={layoutBusy || !layoutDataUrl}
+              onClick={async () => {
+                setLayoutBusy(true);
+                setLayoutError('');
+                setLayoutResult(null);
+                try {
+                  const resp = await fetch('/api/ai/analyze-layout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      image: layoutDataUrl,
+                      analysisType: layoutType,
+                      question: layoutQuestion || undefined,
+                    }),
+                  });
+                  if (resp.status === 503) {
+                    const data = await resp.json().catch(() => ({}));
+                    throw new Error(data.error || 'AI not configured (503). Set OPENROUTER_API_KEY in .env.');
+                  }
+                  const data = await resp.json();
+                  if (!resp.ok) throw new Error(data?.error || `Request failed (${resp.status})`);
+                  setLayoutResult(data);
+                } catch (e) {
+                  setLayoutError(e instanceof Error ? e.message : String(e));
+                }
+                setLayoutBusy(false);
+              }}
+            >
+              {layoutBusy ? 'Analyzing...' : 'Analyze Layout'}
+            </Button>
+
+            {layoutError && (
+              <Alert severity="error" sx={{ mt: 2 }}>{layoutError}</Alert>
+            )}
+            {layoutResult && (
+              <Paper variant="outlined" sx={{ mt: 2, p: 2, bgcolor: 'background.default', maxHeight: 320, overflow: 'auto' }}>
+                <Typography variant="body2" component="pre" sx={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap' }}>
+                  {JSON.stringify(layoutResult, null, 2)}
+                </Typography>
+              </Paper>
+            )}
+          </Box>
         </Paper>
       </TabPanel>
 
@@ -1444,6 +1572,95 @@ export default function AIFeaturesPage() {
                   <Paper variant="outlined" sx={{ mt: 2, p: 1.5, maxHeight: 200, overflow: 'auto' }}>
                     <Typography component="pre" sx={{ fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre-wrap' }}>
                       {JSON.stringify(diagResult, null, 2)}
+                    </Typography>
+                  </Paper>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* Smart Recommendations Demo: POST /api/ai/smart-recommendations
+             { currentParams, category, algorithm } — uses /lib/analytics history */}
+          <Grid item xs={12} md={6}>
+            <Card elevation={3}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>
+                  💡 Smart Recommendations
+                </Typography>
+                <Typography variant="body2" color="text.secondary" paragraph>
+                  Suggest parameter changes for the chosen algorithm based on historical analytics.
+                </Typography>
+
+                <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                  <InputLabel>Algorithm</InputLabel>
+                  <Select value={recAlgo} label="Algorithm" onChange={(e) => setRecAlgo(e.target.value)}>
+                    <MenuItem value="simulated_annealing">Simulated Annealing</MenuItem>
+                    <MenuItem value="genetic">Genetic</MenuItem>
+                    <MenuItem value="force_directed">Force Directed</MenuItem>
+                    <MenuItem value="a_star">A*</MenuItem>
+                    <MenuItem value="clock_tree_synthesis">Clock Tree Synthesis</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                  <InputLabel>Category</InputLabel>
+                  <Select value={recCategory} label="Category" onChange={(e) => setRecCategory(e.target.value)}>
+                    <MenuItem value="placement">Placement</MenuItem>
+                    <MenuItem value="routing">Routing</MenuItem>
+                    <MenuItem value="timing">Timing</MenuItem>
+                    <MenuItem value="power">Power</MenuItem>
+                  </Select>
+                </FormControl>
+
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={4}
+                  label="Current Parameters (JSON)"
+                  value={recParams}
+                  onChange={(e) => setRecParams(e.target.value)}
+                  sx={{ mb: 2, fontFamily: 'monospace' }}
+                />
+
+                <Button
+                  fullWidth
+                  variant="contained"
+                  startIcon={recBusy ? <CircularProgress size={20} /> : <PlayArrowIcon />}
+                  disabled={recBusy}
+                  onClick={async () => {
+                    setRecBusy(true);
+                    setRecError('');
+                    setRecResult(null);
+                    try {
+                      const currentParams = JSON.parse(recParams);
+                      const resp = await fetch('/api/ai/smart-recommendations', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ currentParams, category: recCategory, algorithm: recAlgo }),
+                      });
+                      if (resp.status === 503) {
+                        const data = await resp.json().catch(() => ({}));
+                        throw new Error(data.error || 'AI not configured (503). Set OPENROUTER_API_KEY in .env.');
+                      }
+                      const data = await resp.json();
+                      if (!resp.ok) throw new Error(data?.error || `Request failed (${resp.status})`);
+                      setRecResult(data);
+                    } catch (e) {
+                      setRecError(e instanceof Error ? e.message : String(e));
+                    }
+                    setRecBusy(false);
+                  }}
+                >
+                  {recBusy ? 'Analyzing...' : 'Get Recommendations'}
+                </Button>
+
+                {recError && (
+                  <Alert severity="error" sx={{ mt: 2 }}>{recError}</Alert>
+                )}
+                {recResult && (
+                  <Paper variant="outlined" sx={{ mt: 2, p: 1.5, maxHeight: 240, overflow: 'auto' }}>
+                    <Typography component="pre" sx={{ fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre-wrap' }}>
+                      {JSON.stringify(recResult, null, 2)}
                     </Typography>
                   </Paper>
                 )}

@@ -5,6 +5,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { rateLimit } from '@/lib/rateLimit';
+
+function getClientId(request: NextRequest): string {
+  const forwarded = request.headers.get('x-forwarded-for');
+  const ip = forwarded ? forwarded.split(',')[0] : request.headers.get('x-real-ip') || 'unknown';
+  return ip;
+}
 
 const copilotRequestSchema = z.object({
   messages: z.array(
@@ -24,6 +31,32 @@ const copilotRequestSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limiting (per-client) — matches main /api/ai pattern
+    const clientId = getClientId(request);
+    const rateLimitResult = rateLimit(`copilot:${clientId}`, {
+      windowMs: 60000,
+      maxRequests: 10,
+    });
+
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        {
+          error: 'Rate limit exceeded',
+          message: 'Too many requests. Please try again later.',
+          retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
+        },
+        {
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': '10',
+            'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+            'X-RateLimit-Reset': rateLimitResult.resetAt.toString(),
+            'Retry-After': Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000).toString(),
+          },
+        }
+      );
+    }
+
     const body = await request.json();
     const { messages, designContext, stream } = copilotRequestSchema.parse(body);
 
