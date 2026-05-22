@@ -30,6 +30,7 @@ import {
   runRL,
   dqnFloorplanning,
   qLearningPlacement,
+  analyzeRLTrainingStability,
 } from '@/lib/algorithms';
 import {
   RLAlgorithm,
@@ -200,6 +201,9 @@ export default function MLAlgorithmsPage() {
           },
         ],
       }
+    : null;
+  const stability = result?.episodeRewards
+    ? analyzeRLTrainingStability({ rewards: result.episodeRewards, windowSize: 10 })
     : null;
 
   return (
@@ -409,6 +413,16 @@ export default function MLAlgorithmsPage() {
                   <Alert severity="success" sx={{ mb: 2 }}>
                     RL Training completed in {result.trainingTime.toFixed(0)}ms | Inference: {result.inferenceTime.toFixed(0)}ms
                   </Alert>
+
+                  {stability && (
+                    <Alert
+                      severity={stability.status === 'improving' ? 'success' : stability.status === 'unstable' ? 'warning' : 'info'}
+                      sx={{ mb: 2 }}
+                    >
+                      <strong>Training stability:</strong> {stability.status} · recent avg {stability.recentAverage.toFixed(2)} ·
+                      improvement {(stability.improvement * 100).toFixed(1)}%. {stability.recommendation}
+                    </Alert>
+                  )}
 
                   <Typography variant="body2" color="text.secondary">
                     The agent trained for {episodes} episodes and learned to place {cellCount}{' '}

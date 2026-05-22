@@ -428,6 +428,67 @@ export function dqnFloorplanning(params: RLParams): RLResult {
   };
 }
 
+export interface RLTrainingStabilityInput {
+  rewards: number[];
+  windowSize?: number;
+  minImprovement?: number;
+}
+
+export interface RLTrainingStabilityReport {
+  status: 'improving' | 'plateaued' | 'unstable' | 'insufficient_data';
+  earlyAverage: number;
+  recentAverage: number;
+  recentStdDev: number;
+  improvement: number;
+  recommendation: string;
+}
+
+export function analyzeRLTrainingStability(input: RLTrainingStabilityInput): RLTrainingStabilityReport {
+  const rewards = input.rewards.filter((x) => Number.isFinite(x));
+  const windowSize = Math.max(3, input.windowSize ?? 10);
+  const minImprovement = input.minImprovement ?? 0.02;
+
+  if (rewards.length < windowSize * 2) {
+    return {
+      status: 'insufficient_data',
+      earlyAverage: 0,
+      recentAverage: rewards.at(-1) ?? 0,
+      recentStdDev: 0,
+      improvement: 0,
+      recommendation: `Collect at least ${windowSize * 2} reward samples before judging RL convergence.`,
+    };
+  }
+
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const early = rewards.slice(0, windowSize);
+  const recent = rewards.slice(-windowSize);
+  const earlyAverage = mean(early);
+  const recentAverage = mean(recent);
+  const recentStdDev = Math.sqrt(mean(recent.map((x) => (x - recentAverage) ** 2)));
+  const denom = Math.max(1e-6, Math.abs(earlyAverage));
+  const improvement = (recentAverage - earlyAverage) / denom;
+  const volatility = recentStdDev / Math.max(1e-6, Math.abs(recentAverage));
+
+  let status: RLTrainingStabilityReport['status'] = 'plateaued';
+  let recommendation = 'Plateau detected; reduce epsilon, lower learning rate, or add prioritized replay.';
+  if (volatility > 0.75) {
+    status = 'unstable';
+    recommendation = 'Reward volatility is high; clip rewards, lower learning rate, and increase replay batch size.';
+  } else if (improvement > minImprovement) {
+    status = 'improving';
+    recommendation = 'Training is improving; continue current schedule and checkpoint the policy.';
+  }
+
+  return {
+    status,
+    earlyAverage,
+    recentAverage,
+    recentStdDev,
+    improvement,
+    recommendation,
+  };
+}
+
 /**
  * Q-Learning for Placement
  * Simple tabular Q-learning approach
