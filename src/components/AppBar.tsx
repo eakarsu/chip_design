@@ -59,6 +59,13 @@ const navItems = [
   { label: 'Admin', href: '/admin', highlight: false },
 ];
 
+// Keep the persistent desktop bar operable at normal laptop widths. The full
+// workbench navigation remains available from the side navigation and mobile
+// drawer instead of rendering twenty-five clipped links in one row.
+const desktopNavItems = navItems.filter((item) =>
+  ['Home', 'AI Features', 'Products', 'Algorithms', 'Flow', 'Docs', 'Contact'].includes(item.label),
+);
+
 export default function AppBar() {
   const theme = useTheme();
   const router = useRouter();
@@ -162,7 +169,7 @@ export default function AppBar() {
             {/* Desktop Navigation */}
             {!isMobile && (
               <Box sx={{ flexGrow: 1, display: 'flex', gap: 0.5 }}>
-                {navItems.map((item) => (
+                {desktopNavItems.map((item) => (
                   <Button
                     key={item.label}
                     component={Link}

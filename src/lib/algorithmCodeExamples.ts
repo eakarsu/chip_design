@@ -11,7 +11,7 @@ export interface AlgorithmCodeExample {
   examples: CodeExample[];
 }
 
-export const algorithmCodeExamples: Record<AlgorithmCategory, Record<string, AlgorithmCodeExample>> = {
+export const algorithmCodeExamples: Partial<Record<AlgorithmCategory, Record<string, AlgorithmCodeExample>>> = {
   [AlgorithmCategory.PLACEMENT]: {
     simulated_annealing: {
       algorithm: 'Simulated Annealing',

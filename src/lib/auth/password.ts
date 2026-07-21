@@ -1,16 +1,27 @@
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import type { PasswordStrength } from '@/types/auth';
 
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString('hex');
-  const hash = createHash('sha256').update(password + salt).digest('hex');
-  return `${salt}:${hash}`;
+  const n = 16384, r = 8, p = 1;
+  const hash = scryptSync(password, salt, 64, { N: n, r, p, maxmem: 64 * 1024 * 1024 }).toString('hex');
+  return `scrypt$${n}$${r}$${p}$${salt}$${hash}`;
 }
 
 export function verifyPassword(password: string, stored: string): boolean {
+  if (stored.startsWith('scrypt$')) {
+    const [, nValue, rValue, pValue, salt, expected] = stored.split('$');
+    const n = Number(nValue), r = Number(rValue), p = Number(pValue);
+    if (n !== 16384 || r !== 8 || p !== 1 || !salt || !expected) return false;
+    const actual = scryptSync(password, salt, 64, { N: n, r, p, maxmem: 64 * 1024 * 1024 });
+    const expectedBytes = Buffer.from(expected, 'hex');
+    return actual.length === expectedBytes.length && timingSafeEqual(actual, expectedBytes);
+  }
   const [salt, hash] = stored.split(':');
+  if (!salt || !hash) return false;
   const checkHash = createHash('sha256').update(password + salt).digest('hex');
-  return hash === checkHash;
+  const actual = Buffer.from(checkHash, 'hex'), expected = Buffer.from(hash, 'hex');
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 export function generateToken(): string {

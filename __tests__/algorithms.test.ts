@@ -619,7 +619,7 @@ endmodule`;
         wires: [],
       });
 
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(result.setupViolations === 0);
       expect(result.criticalPath).toBeDefined();
       expect(result.slackTime).toBeDefined();
       expect(result.setupViolations).toBeGreaterThanOrEqual(0);
@@ -636,7 +636,7 @@ endmodule`;
         wires: [],
       });
 
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(result.setupViolations === 0);
       expect(result.criticalPath).toBeDefined();
       expect(result.maxDelay).toBeGreaterThanOrEqual(0);
       expect(result.runtime).toBeGreaterThan(0);

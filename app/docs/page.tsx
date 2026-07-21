@@ -63,7 +63,8 @@ export default function DocsPage() {
           {docSections.map((section, index) => (
             <Grid item xs={12} sm={6} md={4} key={index}>
               <Card elevation={0} sx={{ height: '100%', border: '1px solid', borderColor: 'divider' }}>
-                <CardActionArea component={Link} href={section.href} sx={{ height: '100%' }}>
+                <Link href={section.href} style={{ color: 'inherit', textDecoration: 'none' }}>
+                <CardActionArea component="div" sx={{ height: '100%' }}>
                   <CardContent sx={{ p: 3, height: '100%' }}>
                     <Box
                       sx={{
@@ -90,6 +91,7 @@ export default function DocsPage() {
                     </Typography>
                   </CardContent>
                 </CardActionArea>
+                </Link>
               </Card>
             </Grid>
           ))}

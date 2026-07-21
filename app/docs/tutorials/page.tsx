@@ -1,6 +1,5 @@
 import { Container, Box, Typography, Paper, Grid, Card, CardContent, CardActionArea, Chip } from '@mui/material';
 import Hero from '@/components/Hero';
-import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -143,7 +142,7 @@ export default function TutorialsPage() {
             {quickstarts.map((quickstart, index) => (
               <Grid item xs={12} sm={6} md={3} key={index}>
                 <Card elevation={0} sx={{ height: '100%', border: '1px solid', borderColor: 'divider' }}>
-                  <CardActionArea component={Link} href={quickstart.link} sx={{ height: '100%' }}>
+                  <CardActionArea component="a" href={quickstart.link} sx={{ height: '100%' }}>
                     <CardContent sx={{ p: 3, height: '100%' }}>
                       <Box
                         sx={{
@@ -226,11 +225,11 @@ export default function TutorialsPage() {
                     ))}
                   </Box>
                   <Box sx={{ mt: 2 }}>
-                    <Link href="/docs/getting-started" style={{ textDecoration: 'none' }}>
+                    <a href="/docs/getting-started" style={{ textDecoration: 'none' }}>
                       <Typography variant="body2" color="primary" sx={{ '&:hover': { textDecoration: 'underline' } }}>
                         Start Tutorial →
                       </Typography>
-                    </Link>
+                    </a>
                   </Box>
                 </Paper>
               </Grid>
@@ -246,21 +245,21 @@ export default function TutorialsPage() {
             Prefer learning by watching? Check out our video tutorial series covering everything from basics to advanced topics.
           </Typography>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <Link href="https://youtube.com" style={{ textDecoration: 'none' }}>
+            <a href="https://youtube.com" style={{ textDecoration: 'none' }}>
               <Typography variant="body2" color="primary" sx={{ '&:hover': { textDecoration: 'underline' } }}>
                 YouTube Channel →
               </Typography>
-            </Link>
-            <Link href="/blog" style={{ textDecoration: 'none' }}>
+            </a>
+            <a href="/blog" style={{ textDecoration: 'none' }}>
               <Typography variant="body2" color="primary" sx={{ '&:hover': { textDecoration: 'underline' } }}>
                 Blog Posts →
               </Typography>
-            </Link>
-            <Link href="/contact" style={{ textDecoration: 'none' }}>
+            </a>
+            <a href="/contact" style={{ textDecoration: 'none' }}>
               <Typography variant="body2" color="primary" sx={{ '&:hover': { textDecoration: 'underline' } }}>
                 Request Training →
               </Typography>
-            </Link>
+            </a>
           </Box>
         </Box>
 
@@ -271,9 +270,9 @@ export default function TutorialsPage() {
           <Typography variant="body2" paragraph>
             Let us know what topics you'd like to see covered in future tutorials.
           </Typography>
-          <Link href="/contact" style={{ color: 'inherit', textDecoration: 'underline' }}>
+          <a href="/contact" style={{ color: 'inherit', textDecoration: 'underline' }}>
             Submit Feedback →
-          </Link>
+          </a>
         </Box>
       </Container>
     </>

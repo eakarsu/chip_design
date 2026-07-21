@@ -3,6 +3,7 @@ export type UserStatus = 'active' | 'inactive' | 'suspended';
 
 export interface User {
   id: string;
+  tenantId?: string;
   email: string;
   name: string;
   passwordHash: string;

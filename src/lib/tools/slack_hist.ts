@@ -12,7 +12,7 @@
  *   - critical:  0 < slack ≤ criticalMargin (default 10% of |WNS| or 50ps)
  *   - clean:     slack > criticalMargin
  */
-import type { TimingPath } from './openroad';
+import type { TimingPath } from './openroad-report';
 
 export type SlackBand = 'violation' | 'critical' | 'clean';
 

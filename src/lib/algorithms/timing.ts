@@ -42,7 +42,7 @@ export function staticTimingAnalysis(params: TimingParams): TimingResult {
   const runtime = performance.now() - startTime;
 
   return {
-    success: true, // Algorithm executed successfully (meeting timing is separate concern)
+    success: setupViolations === 0,
     criticalPath,
     slackTime,
     setupViolations,
@@ -81,7 +81,7 @@ export function criticalPathAnalysis(params: TimingParams): TimingResult {
   const runtime = performance.now() - startTime;
 
   return {
-    success: true, // Algorithm executed successfully (meeting timing is separate concern)
+    success: setupViolations === 0,
     criticalPath,
     slackTime,
     setupViolations,

@@ -1,37 +1,58 @@
-version: '3.8'
-
 services:
   web:
     build:
       context: .
-      dockerfile: Dockerfile
+      target: runner
     ports:
-      - '3000:3000'
+      - "127.0.0.1:3000:3000"
+    env_file: ${CHIP_ENV_FILE:-.env}
     environment:
-      - NODE_ENV=production
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-      - OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
-      - NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+      NODE_ENV: production
+      CHIP_DB_PATH: ${CHIP_HOST_DATA_DIR:?set CHIP_HOST_DATA_DIR}/chip_design.db
+      CHIP_EDA_OBJECT_DIR: ${CHIP_HOST_DATA_DIR:?set CHIP_HOST_DATA_DIR}/eda-objects
+      CHIP_BACKUP_DIR: ${CHIP_HOST_BACKUP_DIR:?set CHIP_HOST_BACKUP_DIR}
+    volumes:
+      - type: bind
+        source: ${CHIP_HOST_DATA_DIR:?set CHIP_HOST_DATA_DIR}
+        target: ${CHIP_HOST_DATA_DIR:?set CHIP_HOST_DATA_DIR}
+      - type: bind
+        source: ${CHIP_HOST_BACKUP_DIR:?set CHIP_HOST_BACKUP_DIR}
+        target: ${CHIP_HOST_BACKUP_DIR:?set CHIP_HOST_BACKUP_DIR}
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     restart: unless-stopped
     healthcheck:
-      test: ['CMD', 'node', '-e', "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      test: [CMD, node, -e, "require('http').get('http://localhost:3000/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
       interval: 30s
       timeout: 3s
       retries: 3
       start_period: 40s
 
-  # Optional: Nginx reverse proxy
-  nginx:
-    image: nginx:alpine
-    ports:
-      - '80:80'
-      - '443:443'
+  eda-worker:
+    profiles: [eda-worker]
+    build:
+      context: .
+      target: eda-worker
+    env_file: ${CHIP_ENV_FILE:-.env}
+    environment:
+      NODE_ENV: production
+      CHIP_DB_PATH: ${CHIP_HOST_DATA_DIR:?set CHIP_HOST_DATA_DIR}/chip_design.db
+      CHIP_EDA_OBJECT_DIR: ${CHIP_HOST_DATA_DIR:?set CHIP_HOST_DATA_DIR}/eda-objects
+      CHIP_BACKUP_DIR: ${CHIP_HOST_BACKUP_DIR:?set CHIP_HOST_BACKUP_DIR}
+      DOCKER_HOST: unix:///run/chip-engine.sock
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./certs:/etc/nginx/certs:ro
-    depends_on:
-      - web
+      - type: bind
+        source: ${CHIP_HOST_DATA_DIR:?set CHIP_HOST_DATA_DIR}
+        target: ${CHIP_HOST_DATA_DIR:?set CHIP_HOST_DATA_DIR}
+      - type: bind
+        source: ${CHIP_ROOTLESS_ENGINE_SOCKET:?set CHIP_ROOTLESS_ENGINE_SOCKET}
+        target: /run/chip-engine.sock
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     restart: unless-stopped
-    profiles:
-      - with-nginx

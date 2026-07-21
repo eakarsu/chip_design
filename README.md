@@ -1,6 +1,36 @@
 # NeuralChip AI Platform
 
-A production-ready, enterprise-grade web application for an AI chip design company built with Next.js 14, Material Design 3, MUI v6, and OpenRouter AI integration.
+> **Scope:** this repository is an educational/open-flow analysis workbench. It
+> is not a foundry-qualified signoff system and must not be represented as
+> tape-out approval evidence. See `EDA_OPERATIONS.md` for the supported service
+> boundary, scale ceilings, PDK/license controls, and required external
+> qualification.
+
+A governed AI chip-design workbench built with Next.js 16, Material Design,
+MUI, SQLite, and optional OpenRouter integration.
+
+## Governed production flow
+
+Production OpenROAD/Yosys work is accepted only through `/api/eda/*`. OIDC
+identities carry tenant and role claims; projects are tenant-scoped; expensive
+runs require a separate administrator approval; jobs are durable,
+idempotent, cancellable, retryable, and audited. A dedicated worker executes a
+digest-pinned tool image with no network, a read-only root/toolchain, read-only
+inputs, a separate output mount, a non-root user, and CPU/memory/PID/time
+limits. Direct host-tool execution is refused under `NODE_ENV=production`.
+
+Production setup is explicit:
+
+```bash
+npm ci
+NODE_ENV=production CHIP_ALLOW_SCHEMA_MIGRATION=true npm run migrate
+NODE_ENV=production ./start.sh check
+NODE_ENV=production ./start.sh production
+NODE_ENV=production ./start.sh worker
+```
+
+Startup never kills unrelated processes, installs packages, copies an example
+environment, resets/seeds production data, or silently migrates schema.
 
 ## Features
 
@@ -13,7 +43,7 @@ A production-ready, enterprise-grade web application for an AI chip design compa
 
 ## Tech Stack
 
-- **Framework**: Next.js 14.2.5 (App Router)
+- **Framework**: Next.js 16.2.10 (App Router)
 - **UI Library**: MUI v6 with Material Design 3
 - **Language**: TypeScript 5.5
 - **Styling**: Emotion CSS-in-JS
@@ -25,7 +55,7 @@ A production-ready, enterprise-grade web application for an AI chip design compa
 
 ### Prerequisites
 
-- Node.js ≥18.0.0
+- Node.js ≥20.9.0
 - npm ≥9.0.0
 - (Optional) Docker & Docker Compose
 
@@ -36,8 +66,8 @@ A production-ready, enterprise-grade web application for an AI chip design compa
 git clone https://github.com/yourusername/neuralchip-platform.git
 cd neuralchip-platform
 
-# Install dependencies
-npm install
+# Install exactly the locked dependencies
+npm ci
 ```
 
 ### 2. Configure Environment

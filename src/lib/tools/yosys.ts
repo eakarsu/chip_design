@@ -62,6 +62,9 @@ export async function runYosysSynth(input: YosysSynthesisInput): Promise<YosysRe
     ? await findOnPath('yosys')
     : input.binaryPath;
   if (!bin) return fallbackReport(input);
+  if (process.env.NODE_ENV === 'production') {
+    throw new YosysError('Host Yosys execution is disabled in production; submit a durable EDA job');
+  }
 
   // Write the input Verilog and a tiny script to a temp dir.
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'yosys-'));

@@ -2,6 +2,7 @@
  * @jest-environment node
  */
 process.env.CHIP_DB_PATH = ':memory:';
+process.env.CHIP_ALLOW_DEMO_SEED = 'true';
 
 import { ReplayBuffer, placementReward, routingReward, Transition } from '@/lib/rl/replay_buffer';
 import { algorithmRuns } from '@/lib/db';

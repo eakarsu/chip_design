@@ -8,6 +8,7 @@
 
 // Point the DB at an in-memory SQLite before the module loads.
 process.env.CHIP_DB_PATH = ':memory:';
+process.env.CHIP_ALLOW_DEMO_SEED = 'true';
 
 import {
   users, sessions, auditLogs, passwordResets, emailVerifications,
@@ -30,7 +31,8 @@ describe('DB — seeding', () => {
     const s = getDbStats();
     expect(Object.keys(s).sort()).toEqual([
       'algorithmRuns', 'auditLogs', 'designs', 'emailVerifications',
-      'errorLogs', 'passwordResets', 'roles', 'sessions', 'users',
+      'errorLogs', 'openlaneDesigns', 'openlaneRuns', 'passwordResets',
+      'roles', 'sessions', 'users',
     ]);
   });
 });
@@ -113,7 +115,7 @@ describe('DB — designs (new table)', () => {
         id: 'c1', name: 'c1', width: 10, height: 10,
         position: { x: 0, y: 0 }, pins: [], type: 'standard',
       }],
-      nets: [{ id: 'n1', name: 'n1', pins: [], signalType: 'signal' }],
+      nets: [{ id: 'n1', name: 'n1', pins: [], weight: 1 }],
       wires: [{ id: 'w1', netId: 'n1', layer: 1, width: 0.1, points: [{x:0,y:0},{x:10,y:0}] }],
     });
     expect(d.createdAt).toBeDefined();

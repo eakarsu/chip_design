@@ -13,7 +13,7 @@ test.describe('Contact Form', () => {
   });
 
   test('should validate required fields', async ({ page }) => {
-    await page.click('button[type="submit"]');
+    await page.getByRole('button', { name: /Send Message/i }).click();
 
     // Check for HTML5 validation
     const nameInput = page.locator('input[name="name"]');
@@ -29,11 +29,12 @@ test.describe('Contact Form', () => {
     await page.fill('input[name="company"]', 'Test Corp');
     await page.fill('textarea[name="message"]', 'This is a test message');
 
-    await page.click('button[type="submit"]');
+    const sendButton = page.getByRole('button', { name: /Send Message/i });
+    await sendButton.click();
 
     // Form submission would normally trigger navigation or success message
     // For now just check that the button was clickable
-    await expect(page.locator('button[type="submit"]')).toBeEnabled();
+    await expect(sendButton).toBeEnabled();
   });
 
   test('should have correct email input type', async ({ page }) => {

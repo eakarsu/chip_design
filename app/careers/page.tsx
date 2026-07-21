@@ -1,6 +1,5 @@
 import { Container, Box, Typography, Grid, Card, CardContent, Button, Chip, Stack } from '@mui/material';
 import Hero from '@/components/Hero';
-import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -175,7 +174,7 @@ export default function CareersPage() {
                       </Stack>
                     </Box>
                     <Button
-                      component={Link}
+                      component="a"
                       href={`/careers/${position.title.toLowerCase().replace(/\s+/g, '-')}`}
                       variant="outlined"
                       size="small"

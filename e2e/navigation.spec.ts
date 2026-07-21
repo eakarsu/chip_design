@@ -25,8 +25,8 @@ test.describe('Navigation', () => {
     await page.goto('/');
 
     // Check initial theme
-    const html = page.locator('html');
-    const initialBg = await html.evaluate(el =>
+    const body = page.locator('body');
+    const initialBg = await body.evaluate(el =>
       window.getComputedStyle(el).backgroundColor
     );
 
@@ -37,7 +37,7 @@ test.describe('Navigation', () => {
     await page.waitForTimeout(500);
 
     // Check theme changed
-    const newBg = await html.evaluate(el =>
+    const newBg = await body.evaluate(el =>
       window.getComputedStyle(el).backgroundColor
     );
 

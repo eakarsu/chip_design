@@ -12,7 +12,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { runOpenROAD, parseTimingPaths } from '@/lib/tools/openroad';
+import { runOpenROAD } from '@/lib/tools/openroad';
+import { parseTimingPaths } from '@/lib/tools/openroad-report';
 
 export async function POST(request: NextRequest) {
   try {

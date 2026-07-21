@@ -1,7 +1,6 @@
 import { Box, Container, Typography, Button, Grid, Card, CardContent } from '@mui/material';
 import Hero from '@/components/Hero';
 import FeatureGrid, { Feature } from '@/components/FeatureGrid';
-import Link from 'next/link';
 
 const features: Feature[] = [
   {
@@ -244,7 +243,7 @@ export default function HomePage() {
             }}
           >
             <Button
-              component={Link}
+              component="a"
               href="/ai-features"
               variant="contained"
               size="large"
@@ -297,13 +296,13 @@ export default function HomePage() {
               Join leading AI companies deploying NeuralChip in production
             </Typography>
             <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <Button component={Link} href="/algorithms" variant="contained" size="large" sx={{ px: 4 }}>
+              <Button component="a" href="/algorithms" variant="contained" size="large" sx={{ px: 4 }}>
                 Try Algorithms
               </Button>
-              <Button component={Link} href="/visualizations" variant="outlined" size="large" sx={{ px: 4 }}>
+              <Button component="a" href="/visualizations" variant="outlined" size="large" sx={{ px: 4 }}>
                 View Visualizations
               </Button>
-              <Button component={Link} href="/benchmarks" variant="outlined" size="large" sx={{ px: 4 }}>
+              <Button component="a" href="/benchmarks" variant="outlined" size="large" sx={{ px: 4 }}>
                 View Benchmarks
               </Button>
             </Box>

@@ -19,6 +19,7 @@ import { parseLef } from '@/lib/parsers/lef';
 import { parseDef } from '@/lib/parsers/def';
 import { runRePlAce } from '@/lib/algorithms/replace';
 import type { Cell, Net } from '@/types/algorithms';
+export { parseTimingPaths, type TimingPath } from './openroad-report';
 
 export type OpenROADStep =
   | { kind: 'read_lef'; path: string }
@@ -109,6 +110,9 @@ export async function runOpenROAD(input: OpenROADInput): Promise<OpenROADReport>
   if (input.forceFallback) return fallback(input);
   const bin = input.binaryPath === undefined ? await findOnPath('openroad') : input.binaryPath;
   if (!bin) return fallback(input);
+  if (process.env.NODE_ENV === 'production') {
+    throw new OpenROADError('Host OpenROAD execution is disabled in production; submit a durable EDA job');
+  }
 
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'openroad-'));
   const assetPaths: Record<string, string> = {};
@@ -329,67 +333,6 @@ export function parseMetrics(stdout: string): Record<string, number> {
   for (const [key, rx] of patterns) {
     const m = stdout.match(rx);
     if (m) out[key] = Number(m[1]);
-  }
-  return out;
-}
-
-export interface TimingPath {
-  startpoint: string;
-  endpoint: string;
-  pathGroup?: string;
-  pathType?: 'max' | 'min' | string;
-  arrival: number;
-  required: number;
-  slack: number;
-  status: 'MET' | 'VIOLATED' | 'UNKNOWN';
-  /** Per-stage breakdown lines as raw text (delay/time/description). */
-  stages: string[];
-}
-
-/**
- * Parse OpenSTA `report_checks` output into a structured array of paths.
- *
- * The report has a fairly stable shape: each path block opens with
- * `Startpoint:` / `Endpoint:` lines, ends with a `slack (MET|VIOLATED)` line,
- * and contains `data arrival time` / `data required time` totals.
- * We split on `Startpoint:` to keep the parser tolerant of OpenROAD banner
- * lines and other report output mixed into the same stdout.
- */
-export function parseTimingPaths(stdout: string): TimingPath[] {
-  const out: TimingPath[] = [];
-  // Anchor on Startpoint: — split keeps the leading text in [0] which we drop.
-  const blocks = stdout.split(/(?=^Startpoint:\s)/m).slice(1);
-  for (const block of blocks) {
-    const startMatch = block.match(/^Startpoint:\s*(\S+)/m);
-    const endMatch   = block.match(/^Endpoint:\s*(\S+)/m);
-    if (!startMatch || !endMatch) continue;
-    const groupMatch  = block.match(/^Path Group:\s*(\S+)/m);
-    const typeMatch   = block.match(/^Path Type:\s*(\S+)/m);
-
-    // First occurrences are the cumulative path totals; later repeats in
-    // the slack-delta block negate the arrival, so take the first match.
-    const arrivalMatch  = block.match(/(-?[\d.]+)\s+data\s+arrival\s+time/i);
-    const requiredMatch = block.match(/(-?[\d.]+)\s+data\s+required\s+time/i);
-    const slackMatch    = block.match(/(-?[\d.]+)\s+slack\s*\((MET|VIOLATED)\)/i);
-
-    if (!slackMatch) continue;
-
-    const stages = block
-      .split('\n')
-      .filter(l => /^\s*-?\d+\.\d+\s+-?\d+\.\d+/.test(l))
-      .map(l => l.trim());
-
-    out.push({
-      startpoint: startMatch[1],
-      endpoint:   endMatch[1],
-      pathGroup:  groupMatch?.[1],
-      pathType:   typeMatch?.[1],
-      arrival:    arrivalMatch ? Number(arrivalMatch[1]) : NaN,
-      required:   requiredMatch ? Number(requiredMatch[1]) : NaN,
-      slack:      Number(slackMatch[1]),
-      status:     slackMatch[2].toUpperCase() === 'MET' ? 'MET' : 'VIOLATED',
-      stages,
-    });
   }
   return out;
 }

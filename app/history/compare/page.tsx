@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Box, Container, Typography, Paper, Alert, CircularProgress,
@@ -42,7 +42,7 @@ function delta(a: any, b: any): { changed: boolean; pct?: string } {
   return { changed: JSON.stringify(a) !== JSON.stringify(b) };
 }
 
-export default function ComparePage() {
+function CompareContent() {
   const sp = useSearchParams();
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [aId, setAId] = useState(sp.get('a') ?? '');
@@ -174,5 +174,13 @@ export default function ComparePage() {
         </Alert>
       )}
     </Container>
+  );
+}
+
+export default function ComparePage() {
+  return (
+    <Suspense fallback={<Container sx={{ py: 4 }}><CircularProgress /></Container>}>
+      <CompareContent />
+    </Suspense>
   );
 }

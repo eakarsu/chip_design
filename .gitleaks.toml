@@ -1,0 +1,7 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Documentation-only API key placeholder"
+regexTarget = "match"
+regexes = ['''Authorization: Bearer YOUR_API_KEY''']

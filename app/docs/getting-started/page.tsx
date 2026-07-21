@@ -1,6 +1,5 @@
 import { Container, Box, Typography, Paper, Stepper, Step, StepLabel, StepContent, Button, Alert } from '@mui/material';
 import Hero from '@/components/Hero';
-import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -120,7 +119,7 @@ export default function GettingStartedPage() {
               <Typography variant="body2" color="text.secondary" paragraph>
                 Learn about the 70+ algorithms available across 17 categories including placement, routing, floorplanning, and more.
               </Typography>
-              <Button component={Link} href="/algorithms" variant="outlined" size="small">
+              <Button component="a" href="/algorithms" variant="outlined" size="small">
                 View Algorithms
               </Button>
             </Paper>
@@ -132,7 +131,7 @@ export default function GettingStartedPage() {
               <Typography variant="body2" color="text.secondary" paragraph>
                 Complete API documentation for all programming languages and interfaces.
               </Typography>
-              <Button component={Link} href="/docs/api" variant="outlined" size="small">
+              <Button component="a" href="/docs/api" variant="outlined" size="small">
                 View API Docs
               </Button>
             </Paper>
@@ -144,7 +143,7 @@ export default function GettingStartedPage() {
               <Typography variant="body2" color="text.secondary" paragraph>
                 Follow step-by-step tutorials covering common use cases and advanced scenarios.
               </Typography>
-              <Button component={Link} href="/docs/tutorials" variant="outlined" size="small">
+              <Button component="a" href="/docs/tutorials" variant="outlined" size="small">
                 View Tutorials
               </Button>
             </Paper>
@@ -159,10 +158,10 @@ export default function GettingStartedPage() {
             Join our community or contact support for assistance with setup and development.
           </Typography>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <Button component={Link} href="/contact" variant="outlined" size="small" sx={{ color: 'inherit', borderColor: 'currentColor' }}>
+            <Button component="a" href="/contact" variant="outlined" size="small" sx={{ color: 'inherit', borderColor: 'currentColor' }}>
               Contact Support
             </Button>
-            <Button component={Link} href="/docs" variant="outlined" size="small" sx={{ color: 'inherit', borderColor: 'currentColor' }}>
+            <Button component="a" href="/docs" variant="outlined" size="small" sx={{ color: 'inherit', borderColor: 'currentColor' }}>
               Back to Docs
             </Button>
           </Box>

@@ -21,7 +21,7 @@ import {
   Chip, Alert, FormControlLabel, Switch, MenuItem, IconButton, Tooltip,
 } from '@mui/material';
 import { PlayArrow, Search, ContentPaste, Clear } from '@mui/icons-material';
-import type { TimingPath } from '@/lib/tools/openroad';
+import type { TimingPath } from '@/lib/tools/openroad-report';
 
 const SAMPLE = `Startpoint: reg1/CK (rising edge-triggered flip-flop clocked by clk)
 Endpoint: reg2/D (rising edge-triggered flip-flop clocked by clk)

@@ -1,0 +1,104 @@
+name: governed-ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test -- --runInBand
+      - run: npm run eda:golden
+      - name: Replay governed migration and verify backup/restore
+        env:
+          NODE_ENV: production
+          CHIP_ALLOW_SCHEMA_MIGRATION: "true"
+          CHIP_ALLOW_DEMO_SEED: "false"
+          CHIP_DB_PATH: ${{ runner.temp }}/chip-ci.sqlite3
+          CHIP_EDA_OBJECT_DIR: ${{ runner.temp }}/chip-objects
+          CHIP_BACKUP_DIR: ${{ runner.temp }}/chip-backups
+          CHIP_OIDC_ISSUER: https://identity.ci.example
+          CHIP_OIDC_AUDIENCE: chip-design-ci
+          CHIP_OIDC_PUBLIC_KEYS_JSON: '{"ci":"ZmFrZQ=="}'
+          CHIP_YOSYS_IMAGE: registry.ci/yosys@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          CHIP_OPENROAD_IMAGE: registry.ci/openroad@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        run: |
+          mkdir -p "$CHIP_EDA_OBJECT_DIR" "$CHIP_BACKUP_DIR"
+          npm run migrate
+          npm run migrate
+          npm run check:production
+          npm run backup:eda -- "${{ runner.temp }}/chip-backup"
+          npm run restore:verify -- "${{ runner.temp }}/chip-backup"
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+
+  browser:
+    needs: application
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test --project=chromium --reporter=line
+
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  containers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --target runner -t chip-web:ci .
+      - run: docker build --target eda-worker -t chip-worker:ci .
+
+  approved-eda-golden:
+    if: ${{ vars.CHIP_OPENROAD_IMAGE != '' && vars.CHIP_GOLDEN_BUNDLE != '' }}
+    runs-on: [self-hosted, eda-golden]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: docker pull "$CHIP_OPENROAD_IMAGE"
+        env:
+          CHIP_OPENROAD_IMAGE: ${{ vars.CHIP_OPENROAD_IMAGE }}
+      - run: npx tsx scripts/verify-golden.ts "$CHIP_GOLDEN_BUNDLE"
+        env:
+          CHIP_GOLDEN_BUNDLE: ${{ vars.CHIP_GOLDEN_BUNDLE }}

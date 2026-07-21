@@ -52,7 +52,6 @@ describe('FEA solver — IR drop', () => {
       sheetR: new Float64Array(nx * ny).fill(2.0),
       padVoltage: 1.0,
     });
-    const dropLow  = 1.0 - low.peakAt ? 0 : 0; // unused; we just compare min field
     const minLow  = Math.min(...low.field);
     const minHigh = Math.min(...high.field);
     expect(minHigh).toBeLessThan(minLow);

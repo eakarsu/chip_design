@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactElement } from 'react';
 import {
   Box, Container, Typography, Paper, Button, TextField, Grid,
   Alert, CircularProgress, Chip, MenuItem,
@@ -77,7 +77,7 @@ export default function IRDropPage() {
   const heatmap = (drop: number[][], worst: number) => {
     const W = 600, H = 600;
     const tw = W / cols, th = H / rows;
-    const rects: JSX.Element[] = [];
+    const rects: ReactElement[] = [];
     for (let rr = 0; rr < rows; rr++) {
       for (let cc = 0; cc < cols; cc++) {
         const t = worst > 0 ? drop[rr][cc] / worst : 0;

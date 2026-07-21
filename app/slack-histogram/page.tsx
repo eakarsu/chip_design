@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import { PlayArrow } from '@mui/icons-material';
 
-import { parseTimingPaths, type TimingPath } from '@/lib/tools/openroad';
+import { parseTimingPaths, type TimingPath } from '@/lib/tools/openroad-report';
 import {
   binSlacks, formatSlack, type SlackHistogram, type SlackBand,
 } from '@/lib/tools/slack_hist';

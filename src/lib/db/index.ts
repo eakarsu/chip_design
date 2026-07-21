@@ -31,6 +31,7 @@ type RoleRow = typeof schema.roles.$inferSelect;
 
 const rowToUser = (r: UserRow): User => ({
   id: r.id,
+  tenantId: r.tenantId,
   email: r.email,
   name: r.name,
   passwordHash: r.passwordHash,

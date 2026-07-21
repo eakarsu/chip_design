@@ -6,7 +6,7 @@
  * plus optional opts: { bins?, min?, max?, criticalMargin? }.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { parseTimingPaths } from '@/lib/tools/openroad';
+import { parseTimingPaths } from '@/lib/tools/openroad-report';
 import { binSlacks } from '@/lib/tools/slack_hist';
 
 export const runtime = 'nodejs';

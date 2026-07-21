@@ -23,17 +23,18 @@ declare global {
 }
 
 function resolveDbPath(): string {
-  const explicit = process.env.CHIP_DB_PATH;
+  const explicit = process.env.CHIP_DB_PATH || process.env.DB_PATH;
   if (explicit && explicit.length > 0) return explicit;
   return path.join(process.cwd(), 'data', 'chip_design.db');
 }
 
-function ensureTables(raw: Database.Database): void {
+export function ensureTables(raw: Database.Database): void {
   // Drizzle doesn't auto-migrate — we keep the schema creation inline here
   // so the first launch after cloning the repo just works.
   raw.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
+      tenant_id TEXT NOT NULL DEFAULT 'local',
       email TEXT NOT NULL UNIQUE,
       name TEXT NOT NULL,
       password_hash TEXT NOT NULL,
@@ -192,11 +193,33 @@ function ensureTables(raw: Database.Database): void {
     // Table may not exist yet on a truly fresh DB — in that case the CREATE
     // above handled it with the correct schema.
   }
+
+  const userColumns = raw.prepare(`PRAGMA table_info(users)`).all() as Array<{ name: string }>;
+  if (!userColumns.some(column => column.name === 'tenant_id')) {
+    raw.exec(`ALTER TABLE users ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'local'`);
+  }
+}
+
+export function validateCoreSchema(raw: Database.Database): void {
+  const required = [
+    'users', 'sessions', 'audit_logs', 'password_resets', 'email_verifications',
+    'error_logs', 'roles', 'designs', 'algorithm_runs', 'openlane_designs', 'openlane_runs',
+  ];
+  const existing = new Set((raw.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table'",
+  ).all() as Array<{ name: string }>).map(row => row.name));
+  const missing = required.filter(table => !existing.has(table));
+  if (missing.length) throw new Error(`database migration required; missing: ${missing.join(', ')}`);
+  const userColumns = raw.prepare('PRAGMA table_info(users)').all() as Array<{ name: string }>;
+  if (!userColumns.some(column => column.name === 'tenant_id')) {
+    throw new Error('database migration required; users.tenant_id is missing');
+  }
 }
 
 function seedIfEmpty(raw: Database.Database): void {
   const count = raw.prepare('SELECT COUNT(*) as n FROM users').get() as { n: number };
   if (count.n > 0) return;
+  if (process.env.CHIP_ALLOW_DEMO_SEED !== 'true') return;
 
   const seed = getSeedData();
 
@@ -292,8 +315,12 @@ export function getDb(): DrizzleDb {
   const raw = new Database(dbPath);
   raw.pragma('journal_mode = WAL');
   raw.pragma('foreign_keys = ON');
-  ensureTables(raw);
-  seedIfEmpty(raw);
+  if (process.env.NODE_ENV === 'production' && process.env.CHIP_ALLOW_SCHEMA_MIGRATION !== 'true') {
+    validateCoreSchema(raw);
+  } else {
+    ensureTables(raw);
+    seedIfEmpty(raw);
+  }
 
   const db = drizzle(raw, { schema });
   globalThis.__chipDb = db;
@@ -308,6 +335,9 @@ export function getRawDb(): Database.Database {
 
 /** Test helper: drop and recreate all tables. DO NOT call in production. */
 export function resetDbForTests(): void {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Database reset is disabled in production');
+  }
   const raw = getRawDb();
   const tables = ['users', 'sessions', 'audit_logs', 'password_resets',
                   'email_verifications', 'error_logs', 'roles', 'designs',

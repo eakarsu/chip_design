@@ -155,6 +155,14 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    title: 'Resources',
+    items: [
+      { label: 'Docs',     href: '/docs',     icon: <MenuBook /> },
+      { label: 'Products', href: '/products', icon: <Memory /> },
+      { label: 'Contact',  href: '/contact',  icon: <Person /> },
+    ],
+  },
+  {
     title: 'Admin',
     items: [
       { label: 'Admin', href: '/admin', icon: <AdminPanelSettings /> },

@@ -1,0 +1,33 @@
+{
+  "manifest": {
+    "name": "tiny-reference-educational-flow",
+    "toolImage": "ghcr.io/example/openroad-educational@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "pdkDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "maxRuntimeMs": 30000,
+    "metrics": {
+      "wns": { "expected": 0.12, "absoluteTolerance": 0.02 },
+      "drc_violations": { "expected": 0, "absoluteTolerance": 0 },
+      "ir_drop_mv": { "expected": 18.4, "relativeTolerance": 0.05 },
+      "congestion_overflow": { "expected": 0.01, "absoluteTolerance": 0.01 },
+      "hpwl": { "expected": 5432, "relativeTolerance": 0.02 }
+    },
+    "artifacts": {
+      "layout.signature": "0c817b7a9461537427ea27dc6d6089e89e9c6394069dce1984190841c3a3b298"
+    }
+  },
+  "observation": {
+    "toolImage": "ghcr.io/example/openroad-educational@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "pdkDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "runtimeMs": 12000,
+    "metrics": {
+      "wns": 0.12,
+      "drc_violations": 0,
+      "ir_drop_mv": 18.4,
+      "congestion_overflow": 0.01,
+      "hpwl": 5432
+    },
+    "artifacts": {
+      "layout.signature": "0c817b7a9461537427ea27dc6d6089e89e9c6394069dce1984190841c3a3b298"
+    }
+  }
+}

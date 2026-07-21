@@ -13,7 +13,7 @@
  *   - Config knobs that differed
  */
 
-import { useEffect, useState, useMemo } from 'react';
+import { Suspense, useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -125,7 +125,7 @@ function TwoRunPicker({ runs }: { runs: Run[] }) {
   );
 }
 
-export default function ComparePage() {
+function CompareContent() {
   const search = useSearchParams();
   const aId = search?.get('a') ?? '';
   const bId = search?.get('b') ?? '';
@@ -377,5 +377,13 @@ export default function ComparePage() {
         </>
       )}
     </Container>
+  );
+}
+
+export default function ComparePage() {
+  return (
+    <Suspense fallback={<Container sx={{ py: 4 }}><CircularProgress /></Container>}>
+      <CompareContent />
+    </Suspense>
   );
 }

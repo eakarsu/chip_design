@@ -51,10 +51,6 @@ function LoginForm() {
 
           {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
 
-          <Alert severity="info" sx={{ mb: 3 }}>
-            Demo: use <strong>alice.johnson@neuralchip.ai</strong> / <strong>Password1!</strong>
-          </Alert>
-
           <Box component="form" onSubmit={handleSubmit}>
             <TextField
               fullWidth

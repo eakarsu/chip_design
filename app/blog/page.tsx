@@ -78,9 +78,9 @@ export default function BlogPage() {
         <Grid container spacing={4}>
           {blogPosts.map((post, index) => (
             <Grid item xs={12} md={6} key={index}>
+              <Link href={`/blog/${post.slug}`} style={{ color: 'inherit', textDecoration: 'none' }}>
               <Card
-                component={Link}
-                href={`/blog/${post.slug}`}
+                component="article"
                 sx={{
                   height: '100%',
                   display: 'flex',
@@ -121,6 +121,7 @@ export default function BlogPage() {
                   </Typography>
                 </CardContent>
               </Card>
+              </Link>
             </Grid>
           ))}
         </Grid>
