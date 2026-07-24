@@ -134,6 +134,15 @@ export function simulatedAnnealingPlacement(
       const temp = newCells[idx1].position;
       newCells[idx1].position = newCells[idx2].position;
       newCells[idx2].position = temp;
+      // A position valid for the smaller cell can place a larger swapped cell
+      // beyond the die boundary. Re-legalize both coordinates after the swap.
+      for (const index of [idx1, idx2]) {
+        const cell = newCells[index];
+        cell.position = {
+          x: Math.max(0, Math.min(Math.max(0, chipWidth - cell.width), cell.position!.x)),
+          y: Math.max(0, Math.min(Math.max(0, chipHeight - cell.height), cell.position!.y)),
+        };
+      }
     } else {
       // Move one random cell
       const idx = Math.floor(Math.random() * cells.length);
