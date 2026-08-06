@@ -19,6 +19,7 @@ import {
   ImportExport, GridOn, Speed, Settings, MenuBook, ViewInAr, Insights,
   History, Gavel, Architecture, AdminPanelSettings, Search as SearchIcon,
   Logout, Person, Build, GridView, FactCheck, BugReport,
+  Hub,
 } from '@mui/icons-material';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -37,6 +38,7 @@ const GROUPS: Group[] = [
     title: 'Overview',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: <Dashboard /> },
+      { label: 'Design Workspace', href: '/workspace', icon: <Hub /> },
     ],
   },
   {

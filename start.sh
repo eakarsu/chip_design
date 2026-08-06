@@ -25,10 +25,6 @@ fi
 demo_credentials_email=""
 demo_credentials_password=""
 demo_credentials_tenant="${DEMO_TENANT:-${BOOTSTRAP_TENANT_SLUG:-${GOVERNANCE_TENANT_ID:-${TENANT_ID:-}}}}"
-demo_credentials_tenant="${DEMO_TENANT:-${BOOTSTRAP_TENANT_SLUG:-${GOVERNANCE_TENANT_ID:-${TENANT_ID:-}}}}"
-demo_credentials_tenant="${DEMO_TENANT:-${BOOTSTRAP_TENANT_SLUG:-${GOVERNANCE_TENANT_ID:-${TENANT_ID:-}}}}"
-demo_credentials_tenant="${DEMO_TENANT:-${BOOTSTRAP_TENANT_SLUG:-${GOVERNANCE_TENANT_ID:-${TENANT_ID:-}}}}"
-demo_credentials_tenant="${DEMO_TENANT:-${BOOTSTRAP_TENANT_SLUG:-${GOVERNANCE_TENANT_ID:-${TENANT_ID:-}}}}"
 if [ -n "${PROVISION_ADMIN_EMAIL:-}" ] && [ -n "${PROVISION_ADMIN_PASSWORD:-}" ]; then
   demo_credentials_email="$PROVISION_ADMIN_EMAIL"
   demo_credentials_password="$PROVISION_ADMIN_PASSWORD"
@@ -84,7 +80,7 @@ load_env_file(){ local line key value;while IFS= read -r line||[ -n "$line" ];do
 [ -f "$ENV_FILE" ]||{ echo "Missing required file: $ENV_FILE" >&2;exit 1; };load_env_file
 case "${1:-start}" in
   check) cd "$PROJECT_DIR";npm run typecheck&&npm run check:production;exit ;;
-  migrate) [ "${ALLOW_SCHEMA_MIGRATION:-0}" = 1 ]||{ echo "Set ALLOW_SCHEMA_MIGRATION=1 for explicit migration" >&2;exit 1; };cd "$PROJECT_DIR";exec npm run migrate ;;
+  migrate) { [ "${ALLOW_SCHEMA_MIGRATION:-0}" = 1 ] || [ "${CHIP_ALLOW_SCHEMA_MIGRATION:-false}" = true ]; }||{ echo "Set CHIP_ALLOW_SCHEMA_MIGRATION=true for explicit migration" >&2;exit 1; };cd "$PROJECT_DIR";exec npm run migrate ;;
   worker) cd "$PROJECT_DIR";exec npm run eda:worker ;;
   start) ;;
   *) echo "Usage: $0 [start|check|migrate|worker]" >&2;exit 64 ;;

@@ -56,3 +56,34 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     restart: unless-stopped
+
+  postgres:
+    profiles: [commercial]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${CHIP_POSTGRES_DB:-chip_design}
+      POSTGRES_USER: ${CHIP_POSTGRES_USER:-chip_app}
+      POSTGRES_PASSWORD: ${CHIP_POSTGRES_PASSWORD:?set CHIP_POSTGRES_PASSWORD}
+    volumes:
+      - chip-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  object-storage:
+    profiles: [commercial]
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${CHIP_OBJECT_STORAGE_ACCESS_KEY:?set CHIP_OBJECT_STORAGE_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${CHIP_OBJECT_STORAGE_SECRET_KEY:?set CHIP_OBJECT_STORAGE_SECRET_KEY}
+    volumes:
+      - chip-object-data:/data
+    restart: unless-stopped
+
+volumes:
+  chip-postgres-data:
+  chip-object-data:

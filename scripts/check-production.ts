@@ -3,6 +3,9 @@ import path from 'path';
 import { getRawDb } from '../src/lib/db/connection';
 import { validateCoreSchema } from '../src/lib/db/connection';
 import { validateEdaSchema } from '../src/lib/eda/store';
+import { ensureCommercialSchema } from '../src/lib/commercial/database';
+
+async function main(): Promise<void> {
 
 function requireValue(name: string): string {
   const value = process.env[name]?.trim();
@@ -40,6 +43,13 @@ if (process.env.NODE_ENV === 'production') {
 const database = getRawDb();
 validateCoreSchema(database);
 validateEdaSchema(database);
+await ensureCommercialSchema();
 const integrity = database.pragma('integrity_check') as Array<{ integrity_check: string }>;
 if (integrity[0]?.integrity_check !== 'ok') throw new Error('database integrity check failed');
-console.log('Configuration and database checks passed');
+console.log('Configuration, tenant workspace, and database checks passed');
+}
+
+main().catch(error => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});

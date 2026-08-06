@@ -11,6 +11,7 @@ import {
   Settings, AutoGraph, MenuBook, GridOn, FlashOn, ImportExport,
   Architecture, History as HistoryIcon, BugReport, Search, Gavel,
   Star, StarBorder, Replay, PlayArrow,
+  Hub,
 } from '@mui/icons-material';
 import type { ReactNode } from 'react';
 import {
@@ -37,6 +38,7 @@ const SECTIONS: Section[] = [
   {
     title: 'Design Flow',
     cards: [
+      { title: 'Design Workspace', description: 'Governed RTL, constraints, PPA, evidence, ECO and approval control plane.', icon: <Hub />, href: '/workspace', badge: 'commercial' },
       { title: 'Full Flow',        description: 'Run synthesis → PnR → signoff end-to-end.',          icon: <AccountTree />, href: '/flow' },
       { title: 'OpenLane',         description: 'OpenLane-style RTL→GDS simulation: designs, 11-stage runs, reports.', icon: <Architecture />, href: '/openlane', badge: 'new' },
       { title: 'Algorithms',       description: 'Browse the full algorithm catalog and run any one.', icon: <Memory />,      href: '/algorithms' },

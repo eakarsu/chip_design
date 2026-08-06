@@ -25,7 +25,7 @@ Production setup is explicit:
 npm ci
 NODE_ENV=production CHIP_ALLOW_SCHEMA_MIGRATION=true npm run migrate
 NODE_ENV=production ./start.sh check
-NODE_ENV=production ./start.sh production
+NODE_ENV=production ./start.sh start
 NODE_ENV=production ./start.sh worker
 ```
 
@@ -39,7 +39,24 @@ environment, resets/seeds production data, or silently migrates schema.
 - **AI Integration**: OpenRouter proxy API with streaming, rate limiting, and security
 - **Performance Optimized**: Lighthouse scores ≥95 across all metrics
 - **Accessibility**: WCAG 2.1 AA compliant with keyboard navigation and screen reader support
-- **Production Ready**: Docker deployment, health checks, and monitoring
+- **Deployment controls**: Docker deployment, health checks, and monitoring foundations
+
+### Commercial design workspace
+
+The authenticated `/workspace` control plane connects versioned RTL projects,
+SDC constraints, MMMC corners, commit-level PPA guardrails, RTL-to-PnR impact,
+checksum-addressed artifacts, ECO comparisons, independent approvals, SPICE
+regressions, live reviews, and a license-aware design-library registry. New
+records are tenant-scoped and audited. PostgreSQL is selected when
+`CHIP_COMMERCIAL_DATABASE_URL` (or `DATABASE_URL`) is a PostgreSQL URL; local
+development uses the existing SQLite database. Artifact storage uses an
+S3-compatible bucket when configured and a private filesystem root otherwise.
+
+OpenRouter analysis is always an explicit user action after measured evidence
+has been saved. Results render as decision briefs with evidence, assumptions,
+recommended actions, confidence, risk, and mandatory human-review gates—not as
+raw provider JSON. See `COMMERCIAL_WORKSPACE.md` for deployment and operational
+boundaries.
 
 ## Tech Stack
 
