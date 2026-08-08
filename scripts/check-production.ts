@@ -35,8 +35,19 @@ if (process.env.NODE_ENV === 'production') {
   requireValue('CHIP_OIDC_AUDIENCE');
   const keyRing = JSON.parse(requireValue('CHIP_OIDC_PUBLIC_KEYS_JSON')) as Record<string, string>;
   if (!Object.keys(keyRing).length) throw new Error('OIDC public key ring cannot be empty');
+  const internalKeyId = requireValue('CHIP_OIDC_INTERNAL_KEY_ID');
+  requireValue('CHIP_OIDC_INTERNAL_PRIVATE_KEY_BASE64');
+  if (!keyRing[internalKeyId]) throw new Error('internal OIDC signing key is missing from the public key ring');
   requirePinnedImage('CHIP_YOSYS_IMAGE');
   requirePinnedImage('CHIP_OPENROAD_IMAGE');
+  if (!/^postgres(?:ql)?:\/\//i.test(requireValue('CHIP_COMMERCIAL_DATABASE_URL'))) {
+    throw new Error('CHIP_COMMERCIAL_DATABASE_URL must use PostgreSQL in production');
+  }
+  requireValue('CHIP_OBJECT_STORAGE_BUCKET');
+  requireValue('CHIP_OBJECT_STORAGE_ENDPOINT');
+  requireValue('CHIP_OBJECT_STORAGE_KMS_KEY');
+  requireValue('CHIP_OBJECT_STORAGE_ACCESS_KEY');
+  requireValue('CHIP_OBJECT_STORAGE_SECRET_KEY');
   if (process.env.CHIP_ALLOW_DEMO_SEED === 'true') throw new Error('demo seed is forbidden in production');
 }
 

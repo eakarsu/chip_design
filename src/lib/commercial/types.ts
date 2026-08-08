@@ -137,8 +137,25 @@ export interface DecisionBrief {
   executiveSummary: string;
   risk: ReviewRisk;
   confidence: number;
+  verdict: 'proceed' | 'proceed-with-conditions' | 'hold' | 'reject' | 'insufficient-evidence';
+  signoffPosition: string;
+  reviewMode: 'single-pass' | 'two-pass';
+  promptVersion: string;
+  evidenceQuality: { grade: 'A' | 'B' | 'C' | 'D'; score: number; rationale: string };
+  findings: Array<{
+    severity: ReviewRisk;
+    domain: string;
+    finding: string;
+    impact: string;
+    evidenceRefs: string[];
+  }>;
+  cornerCoverage: { covered: string[]; missing: string[]; assessment: string };
   metrics: Array<{ label: string; value: string }>;
   sections: Array<{ title: string; detail: string }>;
+  tradeoffs: string[];
+  recommendedExperiments: string[];
+  stopConditions: string[];
+  dataGaps: string[];
   actions: string[];
   evidence: string[];
   assumptions: string[];
@@ -146,6 +163,7 @@ export interface DecisionBrief {
   provider: string;
   model: string;
   humanStatus: 'pending' | 'accepted' | 'rejected';
+  humanDecision?: { rationale: string; decidedBy: string; decidedAt: string };
   createdAt?: string;
 }
 

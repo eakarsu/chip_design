@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { rateLimit } from '@/lib/rateLimit';
+import { openRouterProviderPreferences } from '@/lib/openrouter';
 
 // Validation schema
 const aiRequestSchema = z.object({
@@ -115,6 +116,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         model: validatedData.model,
+        provider: openRouterProviderPreferences(),
         messages: validatedData.messages,
         temperature: validatedData.temperature,
         max_tokens: validatedData.max_tokens,

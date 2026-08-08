@@ -55,7 +55,7 @@ export default function GdsRemapPage() {
     catch { return null; }
   }, [libText]);
 
-  const table: RemapTable = { rules, dropUnmapped };
+  const table: RemapTable = useMemo(() => ({ rules, dropUnmapped }), [rules, dropUnmapped]);
 
   const before = useMemo(() => lib ? layerHistogram(lib) : [], [lib]);
   const result = useMemo(() => {

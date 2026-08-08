@@ -21,7 +21,8 @@ export async function workspaceOperation<T>(request: Request, operation: string,
   } catch (error) {
     const validation = error instanceof ZodError;
     const message = error instanceof Error ? error.message : 'Workspace operation failed';
-    const status = validation ? 400 : /not found/i.test(message) ? 404 : /already|conflict/i.test(message) ? 409 : 400;
+    const providerFailure = /OpenRouter|AI provider|AI model|structured response|output budget|rate or credit limit|timed out/i.test(message);
+    const status = validation ? 400 : providerFailure ? 502 : /not found/i.test(message) ? 404 : /already|conflict/i.test(message) ? 409 : 400;
     return NextResponse.json({ error: validation ? 'Invalid request' : 'Workspace operation failed', message, details: validation ? error.flatten() : undefined }, { status, headers: { 'X-Request-Id': id } });
   }
 }

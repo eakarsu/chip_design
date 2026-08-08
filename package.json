@@ -23,7 +23,8 @@
     "migrate": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=react-server\" ./scripts/run-compatible-node.sh node_modules/tsx/dist/cli.mjs scripts/migrate.ts",
     "create-admin": "./scripts/run-compatible-node.sh node_modules/tsx/dist/cli.mjs scripts/create-admin.ts",
     "backup:eda": "tsx scripts/eda-backup.ts",
-    "restore:verify": "tsx scripts/verify-restore.ts"
+    "restore:verify": "tsx scripts/verify-restore.ts",
+    "audit:production": "tsx scripts/audit-production-routes.ts"
   },
   "bin": {
     "chip-design": "bin/chip-design.ts"
@@ -55,7 +56,8 @@
     "react-dom": "^19.2.3",
     "server-only": "^0.0.1",
     "three": "^0.180.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.24.6"
   },
   "devDependencies": {
     "@playwright/test": "^1.45.0",

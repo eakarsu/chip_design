@@ -113,12 +113,26 @@ function featureRecord(row: Row): FeatureRecord {
 }
 
 function review(row: Row): DecisionBrief {
-  const brief = parse<Omit<DecisionBrief, 'provider' | 'model' | 'humanStatus' | 'createdAt'>>(row.brief_json, {
-    projectId: String(row.project_id), feature: String(row.feature), headline: 'Review unavailable',
-    executiveSummary: 'The stored review could not be decoded.', risk: 'high', confidence: 0,
-    metrics: [], sections: [], actions: [], evidence: [], assumptions: [], humanReviewGates: [],
-  });
-  return { ...brief, id: String(row.id), provider: String(row.provider), model: String(row.model), humanStatus: String(row.human_status) as DecisionBrief['humanStatus'], createdAt: String(row.created_at) };
+  const stored = parse<Partial<DecisionBrief>>(row.brief_json, {});
+  const humanStatus = String(row.human_status) as DecisionBrief['humanStatus'];
+  return {
+    projectId: String(row.project_id), feature: String(row.feature),
+    headline: stored.headline ?? 'Review unavailable',
+    executiveSummary: stored.executiveSummary ?? 'The stored review could not be decoded.',
+    risk: stored.risk ?? 'high', confidence: stored.confidence ?? 0,
+    verdict: stored.verdict ?? 'insufficient-evidence',
+    signoffPosition: stored.signoffPosition ?? 'Legacy review: repeat analysis with the current two-pass engineering review before making a signoff decision.',
+    reviewMode: stored.reviewMode === 'single-pass' ? 'single-pass' : 'two-pass', promptVersion: stored.promptVersion ?? 'legacy',
+    evidenceQuality: stored.evidenceQuality ?? { grade: 'D', score: 0, rationale: 'Legacy review has no structured evidence-quality assessment.' },
+    findings: stored.findings ?? [],
+    cornerCoverage: stored.cornerCoverage ?? { covered: [], missing: ['Structured corner assessment unavailable'], assessment: 'Repeat the review to evaluate PVT, RC and constraint coverage.' },
+    metrics: stored.metrics ?? [], sections: stored.sections ?? [], tradeoffs: stored.tradeoffs ?? [],
+    recommendedExperiments: stored.recommendedExperiments ?? [], stopConditions: stored.stopConditions ?? ['Do not use this legacy review for signoff.'],
+    dataGaps: stored.dataGaps ?? [], actions: stored.actions ?? [], evidence: stored.evidence ?? [],
+    assumptions: stored.assumptions ?? [], humanReviewGates: stored.humanReviewGates ?? [],
+    provider: String(row.provider), model: String(row.model), humanStatus,
+    humanDecision: stored.humanDecision, id: String(row.id), createdAt: String(row.created_at),
+  };
 }
 
 async function ownsProject(identity: EdaIdentity, projectId: string): Promise<void> {
@@ -248,7 +262,9 @@ export async function createCorner(identity: EdaIdentity, input: Omit<AnalysisCo
 
 export async function createPpaSnapshot(identity: EdaIdentity, input: Omit<PpaSnapshot, 'id' | 'deltas' | 'status' | 'createdAt'>, requestId: string): Promise<PpaSnapshot> {
   await ownsProject(identity, input.projectId);
-  const previousRow = await one('SELECT * FROM commercial_ppa_snapshots WHERE tenant_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 1', [identity.tenantId, input.projectId]);
+  const existingRow = await one('SELECT * FROM commercial_ppa_snapshots WHERE tenant_id = ? AND project_id = ? AND commit_sha = ?', [identity.tenantId, input.projectId, input.commitSha]);
+  const existing = existingRow ? ppa(existingRow) : undefined;
+  const previousRow = await one('SELECT * FROM commercial_ppa_snapshots WHERE tenant_id = ? AND project_id = ? AND commit_sha <> ? ORDER BY created_at DESC LIMIT 1', [identity.tenantId, input.projectId, input.commitSha]);
   const previous = previousRow ? ppa(previousRow) : undefined;
   const deltas = previous ? {
     areaPct: ((input.areaUm2 - previous.areaUm2) / previous.areaUm2) * 100,
@@ -264,10 +280,22 @@ export async function createPpaSnapshot(identity: EdaIdentity, input: Omit<PpaSn
     number(deltas.wnsNs) < number(t.wnsNs) || number(deltas.drc) > number(t.drc) ||
     number(deltas.congestionPct) > number(t.congestionPct)
   );
-  const id = randomUUID(); const timestamp = now();
-  await run('INSERT INTO commercial_ppa_snapshots (id, tenant_id, project_id, commit_sha, branch, message, author, area_um2, power_mw, wns_ns, tns_ns, drc_count, congestion_pct, deltas_json, thresholds_json, evidence_json, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, identity.tenantId, input.projectId, input.commitSha, input.branch, input.message, input.author, input.areaUm2, input.powerMw, input.wnsNs, input.tnsNs, input.drcCount, input.congestionPct, json(deltas), json(input.thresholds), json(input.evidence), previous ? regression ? 'regression' : 'pass' : 'baseline', timestamp]);
-  await audit(identity, 'create', 'ppa_snapshot', id, { projectId: input.projectId, commitSha: input.commitSha, deltas }, requestId);
-  return ppa((await one('SELECT * FROM commercial_ppa_snapshots WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]))!);
+  const id = existing?.id ?? randomUUID();
+  const timestamp = existing?.createdAt ?? now();
+  const status = previous ? regression ? 'regression' : 'pass' : 'baseline';
+  await run(`INSERT INTO commercial_ppa_snapshots
+    (id, tenant_id, project_id, commit_sha, branch, message, author, area_um2, power_mw, wns_ns, tns_ns, drc_count, congestion_pct, deltas_json, thresholds_json, evidence_json, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (tenant_id, project_id, commit_sha) DO UPDATE SET
+      branch = excluded.branch, message = excluded.message, author = excluded.author,
+      area_um2 = excluded.area_um2, power_mw = excluded.power_mw,
+      wns_ns = excluded.wns_ns, tns_ns = excluded.tns_ns,
+      drc_count = excluded.drc_count, congestion_pct = excluded.congestion_pct,
+      deltas_json = excluded.deltas_json, thresholds_json = excluded.thresholds_json,
+      evidence_json = excluded.evidence_json, status = excluded.status`,
+  [id, identity.tenantId, input.projectId, input.commitSha, input.branch, input.message, input.author, input.areaUm2, input.powerMw, input.wnsNs, input.tnsNs, input.drcCount, input.congestionPct, json(deltas), json(input.thresholds), json(input.evidence), status, timestamp]);
+  await audit(identity, existing ? 'update' : 'create', 'ppa_snapshot', id, { projectId: input.projectId, commitSha: input.commitSha, deltas, idempotent: Boolean(existing) }, requestId);
+  return ppa((await one('SELECT * FROM commercial_ppa_snapshots WHERE tenant_id = ? AND project_id = ? AND commit_sha = ?', [identity.tenantId, input.projectId, input.commitSha]))!);
 }
 
 export async function createRtlImpact(identity: EdaIdentity, input: Omit<RtlImpact, 'id' | 'risk' | 'createdAt'>, requestId: string): Promise<RtlImpact> {
@@ -325,6 +353,44 @@ export async function saveDecisionBrief(identity: EdaIdentity, brief: Omit<Decis
   await run('INSERT INTO commercial_ai_reviews (id, tenant_id, project_id, feature, brief_json, provider, model, human_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, identity.tenantId, brief.projectId, brief.feature, json(brief), brief.provider, brief.model, brief.humanStatus, timestamp]);
   await audit(identity, 'create', 'ai_review', id, { projectId: brief.projectId, feature: brief.feature, risk: brief.risk }, requestId);
   return { ...brief, id, createdAt: timestamp };
+}
+
+export async function projectReviewContext(identity: EdaIdentity, projectId: string, feature: string): Promise<Record<string, unknown>> {
+  await ownsProject(identity, projectId);
+  const [projectRow, constraintRows, cornerRows, ppaRows, impactRows, artifactRows, ecoRows, approvalRows, featureRows] = await Promise.all([
+    one('SELECT * FROM commercial_projects WHERE tenant_id = ? AND id = ?', [identity.tenantId, projectId]),
+    all('SELECT * FROM commercial_constraint_sets WHERE tenant_id = ? AND project_id = ? ORDER BY active DESC, version DESC LIMIT 5', [identity.tenantId, projectId]),
+    all('SELECT * FROM commercial_corners WHERE tenant_id = ? AND project_id = ? AND active = 1 ORDER BY name', [identity.tenantId, projectId]),
+    all('SELECT * FROM commercial_ppa_snapshots WHERE tenant_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 12', [identity.tenantId, projectId]),
+    all('SELECT * FROM commercial_rtl_impacts WHERE tenant_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 8', [identity.tenantId, projectId]),
+    all('SELECT * FROM commercial_artifacts WHERE tenant_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 30', [identity.tenantId, projectId]),
+    all('SELECT * FROM commercial_ecos WHERE tenant_id = ? AND project_id = ? ORDER BY updated_at DESC LIMIT 10', [identity.tenantId, projectId]),
+    all('SELECT * FROM commercial_approvals WHERE tenant_id = ? AND project_id = ? ORDER BY requested_at DESC LIMIT 10', [identity.tenantId, projectId]),
+    all('SELECT * FROM commercial_feature_records WHERE tenant_id = ? AND project_id = ? AND feature = ? ORDER BY created_at DESC LIMIT 10', [identity.tenantId, projectId, feature]),
+  ]);
+  if (!projectRow) throw new Error('Project was not found for this tenant');
+  return {
+    project: project(projectRow),
+    constraintVersions: constraintRows.map(constraint),
+    activeCorners: cornerRows.map(corner),
+    ppaHistory: ppaRows.map(ppa),
+    rtlImpactHistory: impactRows.map(impact),
+    artifacts: artifactRows.map(artifact).map(item => ({ id: item.id, runRef: item.runRef, kind: item.kind, name: item.name, sha256: item.sha256, sizeBytes: item.sizeBytes, metadata: item.metadata, createdAt: item.createdAt })),
+    ecos: ecoRows.map(eco),
+    approvals: approvalRows.map(approval),
+    featureHistory: featureRows.map(featureRecord),
+  };
+}
+
+export async function decideAiReview(identity: EdaIdentity, id: string, status: 'accepted' | 'rejected', rationale: string, requestId: string): Promise<DecisionBrief> {
+  const row = await one('SELECT * FROM commercial_ai_reviews WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]);
+  if (!row) throw new Error('AI review was not found for this tenant');
+  const current = review(row);
+  const decidedAt = now();
+  const updated: DecisionBrief = { ...current, humanStatus: status, humanDecision: { rationale, decidedBy: identity.userId, decidedAt } };
+  await run('UPDATE commercial_ai_reviews SET brief_json = ?, human_status = ? WHERE tenant_id = ? AND id = ?', [json(updated), status, identity.tenantId, id]);
+  await audit(identity, 'decide', 'ai_review', id, { projectId: current.projectId, status, rationale }, requestId);
+  return updated;
 }
 
 export async function artifactForTenant(identity: EdaIdentity, id: string): Promise<WorkspaceArtifact | undefined> {

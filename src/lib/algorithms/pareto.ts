@@ -10,8 +10,6 @@
  * All objectives are assumed *minimized*; callers pass negated values for
  * any metric they want to maximize.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 export interface Candidate<TMeta = Record<string, unknown>> {
   id: string;
   /** Objective vector, one entry per axis. Lower = better for every axis. */

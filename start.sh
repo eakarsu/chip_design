@@ -86,8 +86,10 @@ case "${1:-start}" in
   *) echo "Usage: $0 [start|check|migrate|worker]" >&2;exit 64 ;;
 esac
 : "${BACKEND_PORT:?BACKEND_PORT is required}";: "${FRONTEND_PORT:?FRONTEND_PORT is required}";: "${DATABASE_URL:?DATABASE_URL is required}"
+: "${FRONTEND_HOST:=127.0.0.1}"
 : "${OPENROUTER_API_KEY:?OPENROUTER_API_KEY is required}";: "${OPENROUTER_MODEL:?OPENROUTER_MODEL is required}"
 [ "${OPENROUTER_BASE_URL:-}" = "https://openrouter.ai/api/v1" ]||{ echo "Exact OPENROUTER_BASE_URL is required" >&2;exit 1; }
+[ "$FRONTEND_HOST" = "127.0.0.1" ]||[ "$FRONTEND_HOST" = "0.0.0.0" ]||{ echo "FRONTEND_HOST must be 127.0.0.1 or 0.0.0.0" >&2;exit 1; }
 [ "$BACKEND_PORT" != "$FRONTEND_PORT" ]||{ echo "Assigned ports must differ" >&2;exit 1; }
 for assigned_port in "$BACKEND_PORT" "$FRONTEND_PORT";do [[ "$assigned_port" =~ ^[0-9]+$ ]]||exit 1;lsof -nP -iTCP:"$assigned_port" -sTCP:LISTEN >/dev/null 2>&1&&{ echo "Assigned port $assigned_port is occupied" >&2;exit 1; };done
 [ -d "$PROJECT_DIR/node_modules" ]||{ echo "Dependencies are missing" >&2;exit 1; }
@@ -96,7 +98,7 @@ export RUNTIME_AI_SYSTEM_PROMPT='You are a chip-design review assistant. Provide
 node "$PROJECT_DIR/runtime/setup.mjs"
 CHILD_PIDS=()
 (cd "$PROJECT_DIR"&&exec node runtime/api.mjs)&CHILD_PIDS+=("$!")
-(cd "$PROJECT_DIR"&&exec npm run dev -- -H 127.0.0.1 -p "$FRONTEND_PORT")&CHILD_PIDS+=("$!")
+(cd "$PROJECT_DIR"&&exec npm run dev -- -H "$FRONTEND_HOST" -p "$FRONTEND_PORT")&CHILD_PIDS+=("$!")
 cleanup(){ trap - EXIT INT TERM;for pid in "${CHILD_PIDS[@]}";do kill "$pid" 2>/dev/null||true;done;for pid in "${CHILD_PIDS[@]}";do wait "$pid" 2>/dev/null||true;done; }
 trap cleanup EXIT INT TERM
 wait "${CHILD_PIDS[@]}"

@@ -9,8 +9,6 @@
  * As with the Yosys wrapper, when the binary is absent we fall back to the
  * in-repo algorithms so the flow still returns a meaningful report.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import path from 'path';
 import os from 'os';
 import { promises as fs } from 'fs';

@@ -1,6 +1,7 @@
 import { Container, Box, Typography, Paper, Grid, Card, CardContent, CardActionArea, Chip } from '@mui/material';
 import Hero from '@/components/Hero';
 import { Metadata } from 'next';
+import Link from 'next/link';
 
 export const metadata: Metadata = {
   title: 'Tutorials - Documentation',
@@ -250,16 +251,16 @@ export default function TutorialsPage() {
                 YouTube Channel →
               </Typography>
             </a>
-            <a href="/blog" style={{ textDecoration: 'none' }}>
+            <Link href="/blog" style={{ textDecoration: 'none' }}>
               <Typography variant="body2" color="primary" sx={{ '&:hover': { textDecoration: 'underline' } }}>
                 Blog Posts →
               </Typography>
-            </a>
-            <a href="/contact" style={{ textDecoration: 'none' }}>
+            </Link>
+            <Link href="/contact" style={{ textDecoration: 'none' }}>
               <Typography variant="body2" color="primary" sx={{ '&:hover': { textDecoration: 'underline' } }}>
                 Request Training →
               </Typography>
-            </a>
+            </Link>
           </Box>
         </Box>
 

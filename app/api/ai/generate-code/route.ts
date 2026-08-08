@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rateLimit';
+import { openRouterProviderPreferences } from '@/lib/openrouter';
 
 // Apply pass 5: rate-limit added (mechanical, matches /api/ai pattern)
 function getClientId(request: NextRequest): string {
@@ -50,7 +51,8 @@ Provide complete, synthesizable code with comments.`;
         'X-Title': 'NeuralChip - Code Generation',
       },
       body: JSON.stringify({
-        model: 'openai/gpt-4',
+        model: process.env.OPENROUTER_MODEL || 'openai/gpt-4',
+        provider: openRouterProviderPreferences(),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt },

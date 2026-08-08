@@ -4,10 +4,11 @@
  */
 
 import { AlgorithmCategory } from '@/types/algorithms';
+import { glossaryTerms, knowledgeTopics } from '@/lib/knowledge/catalog';
 
 export interface SearchResult {
   id: string;
-  type: 'algorithm' | 'doc' | 'page' | 'template';
+  type: 'algorithm' | 'doc' | 'page' | 'template' | 'knowledge' | 'glossary';
   title: string;
   description: string;
   url: string;
@@ -275,6 +276,27 @@ const SEARCH_INDEX = {
       keywords: ['benchmarks', 'performance', 'tests', 'results'],
       url: '/benchmarks',
     },
+    {
+      id: 'chip-design-academy',
+      title: 'Chip Design Academy',
+      description: 'Complete professional curriculum from semiconductor fundamentals through architecture, RTL, signoff, manufacturing and post-silicon.',
+      keywords: ['learn', 'academy', 'curriculum', 'chip design', 'semiconductor', 'education'],
+      url: '/learn',
+    },
+    {
+      id: 'chip-design-glossary',
+      title: 'Chip Design Glossary',
+      description: 'Search definitions for semiconductor, RTL, verification, physical-design, signoff and manufacturing terminology.',
+      keywords: ['glossary', 'definitions', 'terms', 'acronyms'],
+      url: '/glossary',
+    },
+    {
+      id: 'reference-library',
+      title: 'Chip Design Reference Library',
+      description: 'Authoritative specifications, EDA documentation, design formats and engineering relationships.',
+      keywords: ['reference', 'specification', 'formats', 'openroad', 'openlane', 'pdk'],
+      url: '/references',
+    },
   ],
 
   docs: [
@@ -283,21 +305,21 @@ const SEARCH_INDEX = {
       title: 'Placement Algorithm Guide',
       description: 'Learn about placement algorithms and how to use them effectively.',
       keywords: ['guide', 'tutorial', 'placement', 'help', 'documentation'],
-      url: '/docs/placement',
+      url: '/learn/placement-clock-tree-and-routing',
     },
     {
       id: 'routing-guide',
       title: 'Routing Algorithm Guide',
       description: 'Complete guide to routing algorithms and wire connection strategies.',
       keywords: ['guide', 'tutorial', 'routing', 'wiring', 'help'],
-      url: '/docs/routing',
+      url: '/learn/placement-clock-tree-and-routing',
     },
     {
       id: 'rl-guide',
       title: 'Reinforcement Learning Guide',
       description: 'Introduction to using RL algorithms for chip design optimization.',
       keywords: ['guide', 'tutorial', 'rl', 'machine-learning', 'ai', 'help'],
-      url: '/docs/rl',
+      url: '/learn/engineering-governance-and-ai',
     },
   ],
 };
@@ -403,6 +425,44 @@ export function search(query: string, limit: number = 10): SearchResult[] {
     }
   });
 
+  knowledgeTopics.forEach((topic) => {
+    const searchable = {
+      title: topic.title,
+      description: topic.description,
+      keywords: [...topic.keywords, topic.phase, ...topic.concepts.map(item => item.term)],
+    };
+    const relevance = calculateRelevance(searchable, query);
+    if (relevance > 0) {
+      results.push({
+        id: `knowledge-${topic.slug}`,
+        type: 'knowledge',
+        title: topic.title,
+        description: topic.description,
+        url: `/learn/${topic.slug}`,
+        category: topic.phase,
+        tags: topic.keywords,
+        relevance,
+      });
+    }
+  });
+
+  glossaryTerms.forEach((entry) => {
+    const searchable = { title: entry.term, description: entry.definition, keywords: [entry.category, ...(entry.related ?? [])] };
+    const relevance = calculateRelevance(searchable, query);
+    if (relevance > 0) {
+      results.push({
+        id: `glossary-${entry.term.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+        type: 'glossary',
+        title: entry.term,
+        description: entry.definition,
+        url: `/glossary?q=${encodeURIComponent(entry.term)}`,
+        category: entry.category,
+        tags: [entry.category],
+        relevance,
+      });
+    }
+  });
+
   // Sort by relevance (highest first)
   results.sort((a, b) => b.relevance - a.relevance);
 
@@ -423,6 +483,10 @@ export function getPopularSearches(): string[] {
     'drc',
     'floorplanning',
     'synthesis',
+    'static timing analysis',
+    'chiplet packaging',
+    'tapeout checklist',
+    'post-silicon validation',
   ];
 }
 
@@ -454,6 +518,15 @@ export function getSuggestions(query: string, limit: number = 5): string[] {
     if (page.title.toLowerCase().includes(lowerQuery)) {
       suggestions.add(page.title);
     }
+  });
+
+  knowledgeTopics.forEach((topic) => {
+    if (topic.title.toLowerCase().includes(lowerQuery)) suggestions.add(topic.title);
+    topic.keywords.forEach(keyword => { if (keyword.toLowerCase().startsWith(lowerQuery)) suggestions.add(keyword); });
+  });
+
+  glossaryTerms.forEach((entry) => {
+    if (entry.term.toLowerCase().startsWith(lowerQuery)) suggestions.add(entry.term);
   });
 
   return Array.from(suggestions).slice(0, limit);

@@ -11,7 +11,7 @@ const database = getRawDb();
 ensureTables(database);
 ensureEdaSchema(database);
 await ensureCommercialSchema();
-console.log('Core, governed EDA, and commercial workspace migrations applied');
+console.log('Core, governed EDA, commercial workspace, and Academy migrations applied');
 }
 
 main().catch(error => {

@@ -82,10 +82,18 @@ interface FlowStep {
   step: number;
   category: string;
   algorithm: string;
-  parameters: Record<string, any>;
+  parameters: Record<string, unknown>;
   reason: string;
   estimatedTime: string;
   dependencies: number[];
+}
+
+function displayParameter(value: unknown): string {
+  if (value === null || value === undefined || value === '') return 'Not specified';
+  if (typeof value === 'boolean') return value ? 'Enabled' : 'Disabled';
+  if (Array.isArray(value)) return value.map(displayParameter).join(', ');
+  if (typeof value === 'object') return Object.entries(value as Record<string, unknown>).map(([key, item]) => `${key}: ${displayParameter(item)}`).join(' · ');
+  return String(value);
 }
 
 interface DesignFlow {
@@ -109,6 +117,7 @@ export default function DesignFlowGenerator({ onExecuteFlow }: DesignFlowGenerat
   const [priority, setPriority] = useState('balanced');
   const [sampleIdx, setSampleIdx] = useState(-1);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const loadSample = () => {
     const next = (sampleIdx + 1) % FLOW_SAMPLES.length;
@@ -131,6 +140,7 @@ export default function DesignFlowGenerator({ onExecuteFlow }: DesignFlowGenerat
     setLoading(true);
     setFlow(null);
     setAlternatives([]);
+    setError('');
 
     try {
       const response = await fetch('/api/ai/generate-flow', {
@@ -149,17 +159,15 @@ export default function DesignFlowGenerator({ onExecuteFlow }: DesignFlowGenerat
         }),
       });
 
-      if (!response.ok) throw new Error('Failed to generate flow');
-
       const data = await response.json();
+      if (!response.ok) throw new Error(data.message ?? data.error ?? 'Failed to generate flow');
       setFlow(data.flow);
       if (data.alternatives) {
         setAlternatives(data.alternatives);
       }
       setShowAlternatives(withAlternatives);
     } catch (error) {
-      console.error('Flow generation error:', error);
-      alert('Failed to generate design flow. Please try again.');
+      setError(error instanceof Error ? error.message : 'Design flow generation failed');
     } finally {
       setLoading(false);
     }
@@ -199,7 +207,7 @@ export default function DesignFlowGenerator({ onExecuteFlow }: DesignFlowGenerat
                   <Box sx={{ pl: 2 }}>
                     {Object.entries(step.parameters).map(([key, value]) => (
                       <Typography key={key} variant="caption" display="block">
-                        • {key}: {JSON.stringify(value)}
+                        • {key}: {displayParameter(value)}
                       </Typography>
                     ))}
                   </Box>
@@ -237,6 +245,8 @@ export default function DesignFlowGenerator({ onExecuteFlow }: DesignFlowGenerat
           Load Sample ({Math.max(0, sampleIdx) + 1}/{FLOW_SAMPLES.length})
         </Button>
       </Box>
+
+      {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
 
       <Alert severity="info" sx={{ mb: 3 }}>
         Describe your chip design requirements in natural language, and AI will generate a complete

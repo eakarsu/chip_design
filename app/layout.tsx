@@ -14,11 +14,11 @@ const inter = Inter({
 export const metadata: Metadata = {
   metadataBase: new URL('https://neuralchip.ai'),
   title: {
-    default: 'NeuralChip - Next-Generation AI Chip Architecture',
+    default: 'NeuralChip - Professional Chip Design Platform & Academy',
     template: '%s | NeuralChip',
   },
-  description: 'Pioneering the next generation of AI chip architecture. Accelerating intelligence from edge to cloud with breakthrough performance and efficiency.',
-  keywords: ['AI chips', 'neural processors', 'machine learning hardware', 'AI accelerators', 'edge computing', 'deep learning'],
+  description: 'A professional chip-design platform and educational academy covering architecture, RTL, verification, physical design, signoff, manufacturing and post-silicon validation.',
+  keywords: ['chip design', 'semiconductor education', 'RTL', 'verification', 'physical design', 'static timing analysis', 'ASIC', 'EDA', 'tapeout'],
   authors: [{ name: 'NeuralChip, Inc.' }],
   creator: 'NeuralChip, Inc.',
   publisher: 'NeuralChip, Inc.',
@@ -74,8 +74,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={inter.variable} data-scroll-behavior="smooth">
       <head>
+        {/* This icon font is global application chrome, not page-local content. */}
+        {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link
           rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap"

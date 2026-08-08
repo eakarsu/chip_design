@@ -4,6 +4,11 @@ import { useRef, useEffect } from 'react';
 import { Box, Paper, Typography, useTheme, Grid, Chip } from '@mui/material';
 import { PartitioningResult, Cell, Net } from '@/types/algorithms';
 
+const PARTITION_COLORS = [
+  '#3f51b5', '#f44336', '#4caf50', '#ff9800',
+  '#9c27b0', '#00bcd4', '#ffeb3b', '#795548',
+];
+
 interface PartitionVisualizerProps {
   result: PartitioningResult;
   cells: Cell[];
@@ -25,11 +30,6 @@ export default function PartitionVisualizer({
 }: PartitionVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const theme = useTheme();
-
-  const partitionColors = [
-    '#3f51b5', '#f44336', '#4caf50', '#ff9800',
-    '#9c27b0', '#00bcd4', '#ffeb3b', '#795548',
-  ];
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -78,7 +78,7 @@ export default function PartitionVisualizer({
 
       if (minX !== Infinity) {
         const margin = 20;
-        ctx.fillStyle = partitionColors[idx % partitionColors.length] + '20';
+        ctx.fillStyle = PARTITION_COLORS[idx % PARTITION_COLORS.length] + '20';
         ctx.fillRect(
           padding + (minX - margin) * scale,
           padding + (minY - margin) * scale,
@@ -146,7 +146,7 @@ export default function PartitionVisualizer({
       const h = cell.height * scale;
 
       // Draw cell
-      ctx.fillStyle = partitionColors[partitionIdx % partitionColors.length];
+      ctx.fillStyle = PARTITION_COLORS[partitionIdx % PARTITION_COLORS.length];
       ctx.globalAlpha = 0.7;
       ctx.fillRect(x, y, w, h);
       ctx.globalAlpha = 1.0;
@@ -157,7 +157,7 @@ export default function PartitionVisualizer({
 
       // Draw cell label
       if (w > 20 && h > 15) {
-        ctx.fillStyle = theme.palette.getContrastText(partitionColors[partitionIdx % partitionColors.length]);
+        ctx.fillStyle = theme.palette.getContrastText(PARTITION_COLORS[partitionIdx % PARTITION_COLORS.length]);
         ctx.font = '9px Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -165,7 +165,7 @@ export default function PartitionVisualizer({
       }
     });
 
-  }, [result, cells, nets, chipWidth, chipHeight, width, height, theme, partitionColors]);
+  }, [result, cells, nets, chipWidth, chipHeight, width, height, theme]);
 
   return (
     <Box>
@@ -177,8 +177,8 @@ export default function PartitionVisualizer({
                 key={idx}
                 label={`Partition ${idx}: ${partition.length} cells`}
                 sx={{
-                  bgcolor: partitionColors[idx % partitionColors.length] + '40',
-                  borderColor: partitionColors[idx % partitionColors.length],
+                  bgcolor: PARTITION_COLORS[idx % PARTITION_COLORS.length] + '40',
+                  borderColor: PARTITION_COLORS[idx % PARTITION_COLORS.length],
                   borderWidth: 2,
                   borderStyle: 'solid',
                 }}

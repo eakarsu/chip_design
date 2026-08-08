@@ -38,7 +38,7 @@ export default function LayoutViewer({ layout }: Props) {
   const chipWidth = layout?.chipWidth ?? 0;
   const chipHeight = layout?.chipHeight ?? 0;
   const cells = layout?.cells ?? [];
-  const wires = layout?.wires ?? [];
+  const wires = useMemo(() => layout?.wires ?? [], [layout?.wires]);
   const allLayers = useMemo(
     () => Array.from(new Set(wires.map(w => w.layer))).sort((a, b) => a - b),
     [wires],

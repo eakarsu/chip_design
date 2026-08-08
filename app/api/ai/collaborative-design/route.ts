@@ -3,6 +3,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { openRouterProviderPreferences } from '@/lib/openrouter';
 
 export async function POST(request: NextRequest) {
   try {
@@ -55,6 +56,7 @@ Choose the best option and explain why.`;
       },
       body: JSON.stringify({
         model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet',
+        provider: openRouterProviderPreferences(),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },

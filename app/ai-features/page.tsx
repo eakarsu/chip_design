@@ -26,6 +26,7 @@ import {
 import AICopilot from '@/components/AICopilot';
 import DesignFlowGenerator from '@/components/DesignFlowGenerator';
 import AIFeaturesDashboard from '@/components/AIFeaturesDashboard';
+import ProfessionalAIResult from '@/components/ai/ProfessionalAIResult';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
@@ -239,6 +240,19 @@ interface TabPanelProps {
   index: number;
 }
 
+async function readAIResponse(response: Response): Promise<unknown> {
+  const data = await response.json().catch(() => ({ error: `AI service returned HTTP ${response.status}` }));
+  if (!response.ok) {
+    const record = data && typeof data === 'object' ? data as Record<string, unknown> : {};
+    throw new Error(String(record.message ?? record.error ?? `AI request failed with HTTP ${response.status}`));
+  }
+  return data;
+}
+
+function aiErrorMessage(error: unknown, operation: string): string {
+  return `${operation} could not be completed. ${error instanceof Error ? error.message : String(error)}`;
+}
+
 function TabPanel({ children, value, index }: TabPanelProps) {
   return (
     <div role="tabpanel" hidden={value !== index}>
@@ -255,10 +269,13 @@ export default function AIFeaturesPage() {
   const [predicting, setPredicting] = useState(false);
   const [predictionResult, setPredictionResult] = useState<any>(null);
   const [generatingCode, setGeneratingCode] = useState(false);
-  const [generatedCode, setGeneratedCode] = useState<string>('');
+  const [generatedCode, setGeneratedCode] = useState<unknown>(null);
   const [detectingBugs, setDetectingBugs] = useState(false);
   const [bugReport, setBugReport] = useState<any>(null);
   const [generatingTests, setGeneratingTests] = useState(false);
+  const [testResult, setTestResult] = useState<any>(null);
+  const [aiError, setAiError] = useState('');
+  const [flowNotice, setFlowNotice] = useState('');
 
   // Controlled field state, seeded from the first sample in each preset list
   // so "Load Sample" can cycle through meaningful variations.
@@ -298,7 +315,7 @@ export default function AIFeaturesPage() {
   const [docsFormat, setDocsFormat] = useState<string>(DOCS_SAMPLES[0].format);
   const [docsJson, setDocsJson] = useState<string>(JSON.stringify(DOCS_SAMPLES[0].designData, null, 2));
   const [docsBusy, setDocsBusy] = useState(false);
-  const [docsResult, setDocsResult] = useState<string>('');
+  const [docsResult, setDocsResult] = useState<unknown>(null);
 
   const [moIdx, setMoIdx] = useState(0);
   const [moObjectives, setMoObjectives] = useState<string>(MULTI_OBJ_SAMPLES[0].objectives.join(', '));
@@ -479,8 +496,8 @@ export default function AIFeaturesPage() {
           Supercharge your chip design workflow with 15 advanced AI capabilities
         </Typography>
         <Alert severity="info" sx={{ maxWidth: 800, mx: 'auto' }}>
-          All AI features are powered by Claude 3.5 Sonnet and other state-of-the-art models via
-          OpenRouter. Features include conversational design assistance, automated flow generation,
+          AI features use the server-configured, privacy-governed models available through
+          OpenRouter. Capabilities include conversational design assistance, automated flow generation,
           visual analysis, and much more.
         </Alert>
       </Box>
@@ -502,6 +519,9 @@ export default function AIFeaturesPage() {
           <Tab label="Performance & Optimization" />
         </Tabs>
       </Paper>
+
+      {aiError && <Alert severity="error" onClose={() => setAiError('')} sx={{ mb: 3 }}>{aiError}</Alert>}
+      {flowNotice && <Alert severity="success" onClose={() => setFlowNotice('')} sx={{ mb: 3 }}>{flowNotice}</Alert>}
 
       {/* Tab Panels */}
       <TabPanel value={tabValue} index={0}>
@@ -552,8 +572,7 @@ export default function AIFeaturesPage() {
       <TabPanel value={tabValue} index={2}>
         <DesignFlowGenerator
           onExecuteFlow={(flow) => {
-            console.log('Executing flow:', flow);
-            alert(`Flow "${flow.name}" ready for execution! Integrate with algorithms page.`);
+            setFlowNotice(`“${flow.name}” is ready. Review its steps and parameters before executing it from the Algorithms workspace.`);
           }}
         />
       </TabPanel>
@@ -691,11 +710,7 @@ export default function AIFeaturesPage() {
               <Alert severity="error" sx={{ mt: 2 }}>{layoutError}</Alert>
             )}
             {layoutResult && (
-              <Paper variant="outlined" sx={{ mt: 2, p: 2, bgcolor: 'background.default', maxHeight: 320, overflow: 'auto' }}>
-                <Typography variant="body2" component="pre" sx={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap' }}>
-                  {JSON.stringify(layoutResult, null, 2)}
-                </Typography>
-              </Paper>
+              <ProfessionalAIResult title="Layout engineering assessment" result={layoutResult} />
             )}
           </Box>
         </Paper>
@@ -772,6 +787,7 @@ export default function AIFeaturesPage() {
             disabled={docsBusy}
             onClick={async () => {
               setDocsBusy(true);
+              setAiError('');
               try {
                 const designData = JSON.parse(docsJson);
                 const resp = await fetch('/api/ai/generate-docs', {
@@ -779,10 +795,10 @@ export default function AIFeaturesPage() {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ designData, format: docsFormat }),
                 });
-                const data = await resp.json();
-                setDocsResult(data.documentation || JSON.stringify(data, null, 2));
+                const data = await readAIResponse(resp) as Record<string, unknown>;
+                setDocsResult(data.documentation ?? data);
               } catch (e) {
-                alert('Documentation generation failed: ' + (e instanceof Error ? e.message : String(e)));
+                setAiError(aiErrorMessage(e, 'Documentation generation'));
               }
               setDocsBusy(false);
             }}
@@ -790,12 +806,8 @@ export default function AIFeaturesPage() {
             {docsBusy ? 'Generating...' : 'Generate Documentation'}
           </Button>
 
-          {docsResult && (
-            <Paper variant="outlined" sx={{ mt: 2, p: 2, bgcolor: 'background.default', maxHeight: 300, overflow: 'auto' }}>
-              <Typography variant="body2" component="pre" sx={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap' }}>
-                {docsResult}
-              </Typography>
-            </Paper>
+          {docsResult !== null && (
+            <ProfessionalAIResult title="Generated design documentation" result={docsResult} />
           )}
         </Paper>
       </TabPanel>
@@ -880,15 +892,16 @@ export default function AIFeaturesPage() {
                     disabled={searching || !searchQuery.trim()}
                     onClick={async () => {
                       setSearching(true);
+                      setAiError('');
                       try {
                         const resp = await fetch('/api/ai/semantic-search', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ query: searchQuery, context: searchContext }),
                         });
-                        setSearchResult(await resp.json());
+                        setSearchResult(await readAIResponse(resp));
                       } catch (e) {
-                        alert('Search failed: ' + (e instanceof Error ? e.message : String(e)));
+                        setAiError(aiErrorMessage(e, 'Semantic search'));
                       }
                       setSearching(false);
                     }}
@@ -896,11 +909,7 @@ export default function AIFeaturesPage() {
                     {searching ? 'Searching...' : 'Run Semantic Search'}
                   </Button>
                   {searchResult && (
-                    <Paper variant="outlined" sx={{ mt: 2, p: 2, maxHeight: 240, overflow: 'auto' }}>
-                      <Typography component="pre" sx={{ fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre-wrap' }}>
-                        {JSON.stringify(searchResult, null, 2)}
-                      </Typography>
-                    </Paper>
+                    <ProfessionalAIResult compact title="Semantic search findings" result={searchResult} />
                   )}
                 </CardContent>
               </Card>
@@ -948,6 +957,7 @@ export default function AIFeaturesPage() {
                     disabled={nlBusy || !nlCommand.trim()}
                     onClick={async () => {
                       setNlBusy(true);
+                      setAiError('');
                       try {
                         const resp = await fetch('/api/ai/nl-parameters', {
                           method: 'POST',
@@ -959,9 +969,9 @@ export default function AIFeaturesPage() {
                             currentParams: {},
                           }),
                         });
-                        setNlResult(await resp.json());
+                        setNlResult(await readAIResponse(resp));
                       } catch (e) {
-                        alert('NL config failed: ' + (e instanceof Error ? e.message : String(e)));
+                        setAiError(aiErrorMessage(e, 'Natural-language parameter configuration'));
                       }
                       setNlBusy(false);
                     }}
@@ -969,11 +979,7 @@ export default function AIFeaturesPage() {
                     {nlBusy ? 'Translating...' : 'Translate to Parameters'}
                   </Button>
                   {nlResult && (
-                    <Paper variant="outlined" sx={{ mt: 2, p: 2, maxHeight: 240, overflow: 'auto' }}>
-                      <Typography component="pre" sx={{ fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre-wrap' }}>
-                        {JSON.stringify(nlResult, null, 2)}
-                      </Typography>
-                    </Paper>
+                    <ProfessionalAIResult compact title="Recommended parameter configuration" result={nlResult} />
                   )}
                 </CardContent>
               </Card>
@@ -1069,6 +1075,7 @@ export default function AIFeaturesPage() {
                   disabled={predicting}
                   onClick={async () => {
                     setPredicting(true);
+                    setAiError('');
                     try {
                       const response = await fetch('/api/ai/predict-performance', {
                         method: 'POST',
@@ -1079,11 +1086,10 @@ export default function AIFeaturesPage() {
                           parameters: { cellCount: perfCells, iterations: perfIters },
                         }),
                       });
-                      const data = await response.json();
+                      const data = await readAIResponse(response);
                       setPredictionResult(data);
                     } catch (error) {
-                      console.error(error);
-                      alert('Prediction failed. Make sure OPENROUTER_API_KEY is set in .env');
+                      setAiError(aiErrorMessage(error, 'Performance prediction'));
                     }
                     setPredicting(false);
                   }}
@@ -1092,15 +1098,7 @@ export default function AIFeaturesPage() {
                 </Button>
 
                 {predictionResult && (
-                  <Alert severity="success" sx={{ mt: 2 }}>
-                    <Typography variant="body2">
-                      <strong>Estimated Runtime:</strong> {predictionResult.estimatedRuntime}ms
-                      <br />
-                      <strong>Confidence:</strong> {predictionResult.confidence}
-                      <br />
-                      <strong>Quality Score:</strong> {predictionResult.qualityScore}
-                    </Typography>
-                  </Alert>
+                  <ProfessionalAIResult compact title="Performance forecast" result={predictionResult} />
                 )}
               </CardContent>
             </Card>
@@ -1162,6 +1160,7 @@ export default function AIFeaturesPage() {
                   disabled={generatingCode}
                   onClick={async () => {
                     setGeneratingCode(true);
+                    setAiError('');
                     try {
                       const response = await fetch('/api/ai/generate-code', {
                         method: 'POST',
@@ -1172,11 +1171,9 @@ export default function AIFeaturesPage() {
                           optimizeFor: 'area',
                         }),
                       });
-                      const data = await response.json();
-                      setGeneratedCode(data.code || JSON.stringify(data, null, 2));
+                      setGeneratedCode(await readAIResponse(response));
                     } catch (error) {
-                      console.error(error);
-                      alert('Code generation failed. Make sure OPENROUTER_API_KEY is set in .env');
+                      setAiError(aiErrorMessage(error, 'HDL code generation'));
                     }
                     setGeneratingCode(false);
                   }}
@@ -1184,15 +1181,8 @@ export default function AIFeaturesPage() {
                   {generatingCode ? 'Generating...' : 'Generate Code'}
                 </Button>
 
-                {generatedCode && (
-                  <Paper
-                    variant="outlined"
-                    sx={{ mt: 2, p: 2, bgcolor: 'background.default', maxHeight: 200, overflow: 'auto' }}
-                  >
-                    <Typography variant="body2" component="pre" sx={{ fontFamily: 'monospace', fontSize: 12 }}>
-                      {generatedCode}
-                    </Typography>
-                  </Paper>
+                {generatedCode !== null && (
+                  <ProfessionalAIResult compact title="Generated HDL implementation" result={generatedCode} />
                 )}
               </CardContent>
             </Card>
@@ -1242,6 +1232,7 @@ export default function AIFeaturesPage() {
                   disabled={detectingBugs}
                   onClick={async () => {
                     setDetectingBugs(true);
+                    setAiError('');
                     try {
                       const response = await fetch('/api/ai/detect-bugs', {
                         method: 'POST',
@@ -1252,11 +1243,10 @@ export default function AIFeaturesPage() {
                           checkTypes: ['syntax', 'timing', 'drc'],
                         }),
                       });
-                      const data = await response.json();
+                      const data = await readAIResponse(response);
                       setBugReport(data);
                     } catch (error) {
-                      console.error(error);
-                      alert('Bug detection failed. Make sure OPENROUTER_API_KEY is set in .env');
+                      setAiError(aiErrorMessage(error, 'HDL issue detection'));
                     }
                     setDetectingBugs(false);
                   }}
@@ -1265,16 +1255,7 @@ export default function AIFeaturesPage() {
                 </Button>
 
                 {bugReport && (
-                  <Alert
-                    severity={bugReport.issues?.length > 0 ? 'warning' : 'success'}
-                    sx={{ mt: 2 }}
-                  >
-                    <Typography variant="body2">
-                      <strong>Issues Found:</strong> {bugReport.issues?.length || 0}
-                      <br />
-                      {bugReport.summary}
-                    </Typography>
-                  </Alert>
+                  <ProfessionalAIResult compact title="HDL engineering review" result={bugReport} />
                 )}
               </CardContent>
             </Card>
@@ -1338,6 +1319,8 @@ export default function AIFeaturesPage() {
                   disabled={generatingTests}
                   onClick={async () => {
                     setGeneratingTests(true);
+                    setAiError('');
+                    setTestResult(null);
                     try {
                       const types = testType === 'all'
                         ? ['functional', 'corner', 'performance']
@@ -1351,17 +1334,16 @@ export default function AIFeaturesPage() {
                           language: 'systemverilog',
                         }),
                       });
-                      const data = await response.json();
-                      alert(`Generated ${data.tests?.length || 0} test cases!\n\n${data.summary || JSON.stringify(data, null, 2)}`);
+                      setTestResult(await readAIResponse(response));
                     } catch (error) {
-                      console.error(error);
-                      alert('Test generation failed. Make sure OPENROUTER_API_KEY is set in .env');
+                      setAiError(aiErrorMessage(error, 'Test generation'));
                     }
                     setGeneratingTests(false);
                   }}
                 >
                   {generatingTests ? 'Generating...' : 'Generate Tests'}
                 </Button>
+                {testResult && <ProfessionalAIResult compact title="Generated verification plan" result={testResult} />}
               </CardContent>
             </Card>
           </Grid>
@@ -1391,6 +1373,7 @@ export default function AIFeaturesPage() {
                   disabled={moBusy}
                   onClick={async () => {
                     setMoBusy(true);
+                    setAiError('');
                     try {
                       const resp = await fetch('/api/ai/multi-objective', {
                         method: 'POST',
@@ -1401,20 +1384,16 @@ export default function AIFeaturesPage() {
                           numPoints: moPoints,
                         }),
                       });
-                      setMoResult(await resp.json());
+                      setMoResult(await readAIResponse(resp));
                     } catch (e) {
-                      alert('Multi-objective failed: ' + (e instanceof Error ? e.message : String(e)));
+                      setAiError(aiErrorMessage(e, 'Multi-objective optimization'));
                     }
                     setMoBusy(false);
                   }}>
                   {moBusy ? 'Optimizing...' : 'Generate Pareto Points'}
                 </Button>
                 {moResult && (
-                  <Paper variant="outlined" sx={{ mt: 2, p: 1.5, maxHeight: 200, overflow: 'auto' }}>
-                    <Typography component="pre" sx={{ fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre-wrap' }}>
-                      {JSON.stringify(moResult, null, 2)}
-                    </Typography>
-                  </Paper>
+                  <ProfessionalAIResult compact title="Pareto optimization brief" result={moResult} />
                 )}
               </CardContent>
             </Card>
@@ -1448,26 +1427,23 @@ export default function AIFeaturesPage() {
                   disabled={tutBusy || !tutTopic.trim()}
                   onClick={async () => {
                     setTutBusy(true);
+                    setAiError('');
                     try {
                       const resp = await fetch('/api/ai/generate-tutorial', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ topic: tutTopic, userLevel: tutLevel, learningGoal: tutGoal }),
                       });
-                      setTutResult(await resp.json());
+                      setTutResult(await readAIResponse(resp));
                     } catch (e) {
-                      alert('Tutorial generation failed: ' + (e instanceof Error ? e.message : String(e)));
+                      setAiError(aiErrorMessage(e, 'Tutorial generation'));
                     }
                     setTutBusy(false);
                   }}>
                   {tutBusy ? 'Generating...' : 'Generate Tutorial'}
                 </Button>
                 {tutResult && (
-                  <Paper variant="outlined" sx={{ mt: 2, p: 1.5, maxHeight: 200, overflow: 'auto' }}>
-                    <Typography component="pre" sx={{ fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre-wrap' }}>
-                      {JSON.stringify(tutResult, null, 2)}
-                    </Typography>
-                  </Paper>
+                  <ProfessionalAIResult compact title="Personalized learning guide" result={tutResult} />
                 )}
               </CardContent>
             </Card>
@@ -1502,6 +1478,7 @@ export default function AIFeaturesPage() {
                   disabled={collabBusy}
                   onClick={async () => {
                     setCollabBusy(true);
+                    setAiError('');
                     try {
                       const designs = JSON.parse(collabDesigns);
                       const resp = await fetch('/api/ai/collaborative-design', {
@@ -1509,20 +1486,16 @@ export default function AIFeaturesPage() {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ action: collabAction, designs }),
                       });
-                      setCollabResult(await resp.json());
+                      setCollabResult(await readAIResponse(resp));
                     } catch (e) {
-                      alert('Collaborative design failed: ' + (e instanceof Error ? e.message : String(e)));
+                      setAiError(aiErrorMessage(e, 'Collaborative design review'));
                     }
                     setCollabBusy(false);
                   }}>
                   {collabBusy ? 'Processing...' : 'Run Collaboration'}
                 </Button>
                 {collabResult && (
-                  <Paper variant="outlined" sx={{ mt: 2, p: 1.5, maxHeight: 200, overflow: 'auto' }}>
-                    <Typography component="pre" sx={{ fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre-wrap' }}>
-                      {JSON.stringify(collabResult, null, 2)}
-                    </Typography>
-                  </Paper>
+                  <ProfessionalAIResult compact title="Collaboration decision record" result={collabResult} />
                 )}
               </CardContent>
             </Card>
@@ -1549,6 +1522,7 @@ export default function AIFeaturesPage() {
                   disabled={diagBusy || !diagError.trim()}
                   onClick={async () => {
                     setDiagBusy(true);
+                    setAiError('');
                     try {
                       const resp = await fetch('/api/ai/diagnose-error', {
                         method: 'POST',
@@ -1560,20 +1534,16 @@ export default function AIFeaturesPage() {
                           parameters: DIAGNOSE_SAMPLES[diagIdx].parameters,
                         }),
                       });
-                      setDiagResult(await resp.json());
+                      setDiagResult(await readAIResponse(resp));
                     } catch (e) {
-                      alert('Diagnosis failed: ' + (e instanceof Error ? e.message : String(e)));
+                      setAiError(aiErrorMessage(e, 'AI error diagnosis'));
                     }
                     setDiagBusy(false);
                   }}>
                   {diagBusy ? 'Diagnosing...' : 'Diagnose Error'}
                 </Button>
                 {diagResult && (
-                  <Paper variant="outlined" sx={{ mt: 2, p: 1.5, maxHeight: 200, overflow: 'auto' }}>
-                    <Typography component="pre" sx={{ fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre-wrap' }}>
-                      {JSON.stringify(diagResult, null, 2)}
-                    </Typography>
-                  </Paper>
+                  <ProfessionalAIResult compact title="Root-cause diagnosis" result={diagResult} />
                 )}
               </CardContent>
             </Card>
@@ -1658,11 +1628,7 @@ export default function AIFeaturesPage() {
                   <Alert severity="error" sx={{ mt: 2 }}>{recError}</Alert>
                 )}
                 {recResult && (
-                  <Paper variant="outlined" sx={{ mt: 2, p: 1.5, maxHeight: 240, overflow: 'auto' }}>
-                    <Typography component="pre" sx={{ fontFamily: 'monospace', fontSize: 11, whiteSpace: 'pre-wrap' }}>
-                      {JSON.stringify(recResult, null, 2)}
-                    </Typography>
-                  </Paper>
+                  <ProfessionalAIResult compact title="Optimization recommendations" result={recResult} />
                 )}
               </CardContent>
             </Card>

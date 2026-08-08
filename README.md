@@ -1,507 +1,66 @@
-# NeuralChip AI Platform
+# NeuralChip governed chip-design platform
 
-> **Scope:** this repository is an educational/open-flow analysis workbench. It
-> is not a foundry-qualified signoff system and must not be represented as
-> tape-out approval evidence. See `EDA_OPERATIONS.md` for the supported service
-> boundary, scale ceilings, PDK/license controls, and required external
-> qualification.
+NeuralChip combines a commercial engineering control plane, a real isolated
+open-source EDA execution path, governed AI design reviews, and a 21-lab chip
+design academy. The production path is deliberately separated from educational
+simulators: a successful simulator result is never presented as tapeout
+evidence.
 
-A governed AI chip-design workbench built with Next.js 16, Material Design,
-MUI, SQLite, and optional OpenRouter integration.
+## Production capabilities
 
-## Governed production flow
+- Tenant-bound projects, constraints, MCMM corners, PPA snapshots, RTL impact,
+  immutable artifacts, ECOs, independent approvals, and append-only audit data.
+- PostgreSQL persistence for the commercial workspace.
+- S3-compatible artifact storage with SSE-KMS, SHA-256 evidence, and verified
+  download round trips.
+- Short-lived RS256 EDA bearer tokens exchanged from authenticated first-party
+  sessions; external OIDC tokens use the same issuer, audience, key-ring, role,
+  and tenant boundary.
+- A durable Yosys/OpenROAD job queue with idempotency, approval gates, leases,
+  retry/cancellation states, quotas, retention, and artifact manifests.
+- Network-disabled, read-only, capability-dropped tool containers pinned by
+  immutable image digest.
+- A complete SKY130HD reference flow covering synthesis, floorplan, PDN,
+  placement, CTS, routing, extraction, timing/IR reporting, antenna checks, and
+  final GDS generation.
+- Governed AI decision briefs with evidence, assumptions, human review gates,
+  ZDR policy enforcement, bounded timeouts, and professional rendering.
+- Academy diagnostics, labs, submissions, grading, capstone evidence, and
+  instructor review.
 
-Production OpenROAD/Yosys work is accepted only through `/api/eda/*`. OIDC
-identities carry tenant and role claims; projects are tenant-scoped; expensive
-runs require a separate administrator approval; jobs are durable,
-idempotent, cancellable, retryable, and audited. A dedicated worker executes a
-digest-pinned tool image with no network, a read-only root/toolchain, read-only
-inputs, a separate output mount, a non-root user, and CPU/memory/PID/time
-limits. Direct host-tool execution is refused under `NODE_ENV=production`.
-
-Production setup is explicit:
-
-```bash
-npm ci
-NODE_ENV=production CHIP_ALLOW_SCHEMA_MIGRATION=true npm run migrate
-NODE_ENV=production ./start.sh check
-NODE_ENV=production ./start.sh start
-NODE_ENV=production ./start.sh worker
-```
-
-Startup never kills unrelated processes, installs packages, copies an example
-environment, resets/seeds production data, or silently migrates schema.
-
-## Features
-
-- **Material Design 3 Theming**: Full MD3 implementation with color tokens, typography scale, elevation, and motion
-- **Responsive Design**: Mobile-first approach with breakpoint-specific layouts
-- **AI Integration**: OpenRouter proxy API with streaming, rate limiting, and security
-- **Performance Optimized**: Lighthouse scores ≥95 across all metrics
-- **Accessibility**: WCAG 2.1 AA compliant with keyboard navigation and screen reader support
-- **Deployment controls**: Docker deployment, health checks, and monitoring foundations
-
-### Commercial design workspace
-
-The authenticated `/workspace` control plane connects versioned RTL projects,
-SDC constraints, MMMC corners, commit-level PPA guardrails, RTL-to-PnR impact,
-checksum-addressed artifacts, ECO comparisons, independent approvals, SPICE
-regressions, live reviews, and a license-aware design-library registry. New
-records are tenant-scoped and audited. PostgreSQL is selected when
-`CHIP_COMMERCIAL_DATABASE_URL` (or `DATABASE_URL`) is a PostgreSQL URL; local
-development uses the existing SQLite database. Artifact storage uses an
-S3-compatible bucket when configured and a private filesystem root otherwise.
-
-OpenRouter analysis is always an explicit user action after measured evidence
-has been saved. Results render as decision briefs with evidence, assumptions,
-recommended actions, confidence, risk, and mandatory human-review gates—not as
-raw provider JSON. See `COMMERCIAL_WORKSPACE.md` for deployment and operational
-boundaries.
-
-## Tech Stack
-
-- **Framework**: Next.js 16.2.10 (App Router)
-- **UI Library**: MUI v6 with Material Design 3
-- **Language**: TypeScript 5.5
-- **Styling**: Emotion CSS-in-JS
-- **Icons**: Material Symbols
-- **Testing**: Jest + Playwright
-- **Deployment**: Docker + Docker Compose + Nginx
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js ≥20.9.0
-- npm ≥9.0.0
-- (Optional) Docker & Docker Compose
-
-### 1. Clone and Install
+## Start locally
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/neuralchip-platform.git
-cd neuralchip-platform
-
-# Install exactly the locked dependencies
-npm ci
-```
-
-### 2. Configure Environment
-
-```bash
-# Copy the example environment file
 cp .env.example .env
-
-# Edit .env and add your OpenRouter API key
-# Get one at: https://openrouter.ai/keys
+./start.sh
 ```
 
-Required environment variables:
+Local development may use SQLite and filesystem objects. Production validation
+refuses those fallbacks for the commercial workspace.
 
-```env
-OPENROUTER_API_KEY=your_api_key_here
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-NEXT_PUBLIC_SITE_URL=http://localhost:3000
-ALLOWED_ORIGINS=http://localhost:3000
-```
-
-### 3. Run Development Server
+## Verify
 
 ```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser.
-
-### 4. Build for Production
-
-```bash
-# Type check
 npm run typecheck
-
-# Run linter
-npm run lint
-
-# Run tests
-npm test
-
-# Build production bundle
+npm run lint:all
+npm test -- --runInBand
 npm run build
-
-# Start production server
-npm start
+npm run check:production
+npm run audit:production
 ```
 
-### 5. Test AI API Route
-
-Test the OpenRouter proxy endpoint:
-
-```bash
-curl -X POST http://localhost:3000/api/ai \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [
-      {"role": "user", "content": "Explain neural chip architecture in 50 words"}
-    ],
-    "model": "anthropic/claude-3.5-sonnet",
-    "temperature": 0.7,
-    "max_tokens": 100
-  }'
-```
-
-Expected response:
-
-```json
-{
-  "id": "gen-...",
-  "model": "anthropic/claude-3.5-sonnet",
-  "choices": [
-    {
-      "message": {
-        "role": "assistant",
-        "content": "Neural chip architecture features..."
-      }
-    }
-  ]
-}
-```
-
-### 6. Test Streaming
-
-```bash
-curl -X POST http://localhost:3000/api/ai \
-  -H "Content-Type: application/json" \
-  -d '{
-    "messages": [{"role": "user", "content": "Count to 10"}],
-    "stream": true
-  }'
-```
-
-### 7. Test Rate Limiting
-
-```bash
-# This script will hit rate limits after 10 requests
-for i in {1..15}; do
-  echo "Request $i:"
-  curl -s -X POST http://localhost:3000/api/ai \
-    -H "Content-Type: application/json" \
-    -d '{"messages": [{"role": "user", "content": "test"}]}' \
-    | jq -r '.error // "Success"'
-  sleep 1
-done
-```
-
-### 8. Run Tests
-
-```bash
-# Unit tests
-npm test
-
-# Watch mode
-npm run test:watch
-
-# E2E tests (requires dev server running)
-npm run e2e
-
-# E2E with UI
-npm run e2e:ui
-```
-
-### 9. Deploy with Docker
-
-```bash
-# Build and run with Docker Compose
-docker-compose up -d
-
-# View logs
-docker-compose logs -f web
-
-# Stop services
-docker-compose down
-```
-
-### 10. Deploy with Nginx Reverse Proxy
-
-```bash
-# Start with Nginx profile
-docker-compose --profile with-nginx up -d
-
-# The app will be available on port 80
-curl http://localhost
-```
-
-## Project Structure
-
-```
-chip_design/
-├── app/                          # Next.js App Router
-│   ├── layout.tsx               # Root layout with theme
-│   ├── page.tsx                 # Home page
-│   ├── products/page.tsx        # Products page
-│   ├── architectures/page.tsx   # Architecture details
-│   ├── benchmarks/page.tsx      # Performance benchmarks
-│   ├── docs/page.tsx            # Documentation hub
-│   ├── blog/page.tsx            # Blog listing
-│   ├── careers/page.tsx         # Careers page
-│   ├── contact/page.tsx         # Contact form
-│   ├── api/
-│   │   ├── ai/route.ts         # OpenRouter proxy
-│   │   └── health/route.ts     # Health check
-│   └── ThemeRegistry.tsx        # Theme provider
-├── src/
-│   ├── components/              # React components
-│   │   ├── AppBar.tsx          # Navigation bar
-│   │   ├── Footer.tsx          # Site footer
-│   │   ├── Hero.tsx            # Hero section
-│   │   ├── FeatureGrid.tsx     # Feature cards
-│   │   ├── ProductCard.tsx     # Product cards
-│   │   ├── BenchmarkTable.tsx  # Benchmark tables
-│   │   ├── CodeTabs.tsx        # Code examples
-│   │   └── ThemeSwitcher.tsx   # Dark mode toggle
-│   ├── theme/
-│   │   └── index.ts            # MD3 theme configuration
-│   └── lib/
-│       └── rateLimit.ts        # Rate limiting logic
-├── __tests__/                   # Jest unit tests
-├── e2e/                         # Playwright E2E tests
-├── public/                      # Static assets
-├── Dockerfile                   # Multi-stage Docker build
-├── docker-compose.yml           # Docker Compose config
-├── nginx.conf                   # Nginx reverse proxy
-└── package.json                 # Dependencies & scripts
-```
-
-## Available Scripts
-
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Start development server |
-| `npm run build` | Build production bundle |
-| `npm start` | Start production server |
-| `npm run lint` | Run ESLint |
-| `npm test` | Run Jest unit tests |
-| `npm run test:watch` | Run tests in watch mode |
-| `npm run e2e` | Run Playwright E2E tests |
-| `npm run e2e:ui` | Run E2E tests with UI |
-| `npm run typecheck` | TypeScript type checking |
-| `npm run format` | Format code with Prettier |
-
-## API Reference
-
-### POST /api/ai
-
-Proxy endpoint for OpenRouter AI chat completions.
-
-**Request:**
-
-```typescript
-{
-  messages: Array<{
-    role: 'user' | 'assistant' | 'system';
-    content: string;
-  }>;
-  model?: string;              // default: 'anthropic/claude-3.5-sonnet'
-  temperature?: number;        // 0-2, default: 1
-  max_tokens?: number;         // 1-4096, default: 1024
-  stream?: boolean;            // default: false
-}
-```
-
-**Response:**
-
-```typescript
-{
-  id: string;
-  model: string;
-  choices: Array<{
-    message: {
-      role: 'assistant';
-      content: string;
-    };
-  }>;
-}
-```
-
-**Rate Limits:**
-
-- 10 requests per minute per IP
-- Returns 429 with `Retry-After` header when exceeded
-
-**Security:**
-
-- Server-side API key handling
-- Input validation with Zod
-- CORS origin validation
-- Abuse logging
-- Request size limits (10,000 characters)
-
-### GET /api/health
-
-Health check endpoint for monitoring and load balancers.
-
-**Response:**
-
-```json
-{
-  "status": "ok",
-  "timestamp": "2024-01-15T12:00:00.000Z",
-  "uptime": 12345.67
-}
-```
-
-## Material Design 3 Theme
-
-### Color Palette
-
-**Light Mode:**
-- Primary: Indigo 600 (`#4F46E5`)
-- Secondary: Cyan 500 (`#06B6D4`)
-- Tertiary: Purple 500 (`#A855F7`)
-
-**Dark Mode:**
-- Primary: Indigo 400 (`#818CF8`)
-- Secondary: Cyan 400 (`#22D3EE`)
-- Tertiary: Purple 400 (`#C084FC`)
-
-### Typography Scale
-
-- **Display**: 36-57px, for hero sections
-- **Headline**: 24-32px, for page titles
-- **Title**: 14-22px, for section headers
-- **Body**: 12-16px, for content
-- **Label**: 11-14px, for buttons and chips
-
-### Shape Tokens
-
-- Small: 8px border radius
-- Medium: 12px border radius
-- Large: 16px border radius
-- Extra Large: 28px border radius
-
-### Motion Easing
-
-- Standard: `cubic-bezier(0.2, 0, 0, 1)`
-- Emphasized: `cubic-bezier(0.2, 0, 0, 1)`
-- Decelerate: `cubic-bezier(0, 0, 0, 1)`
-
-## Accessibility
-
-- **WCAG 2.1 AA** compliant
-- Color contrast ≥4.5:1 for text
-- Keyboard navigation support
-- Skip links to main content
-- ARIA labels on interactive elements
-- `prefers-reduced-motion` support
-- Semantic HTML structure
-
-## Performance
-
-- **Lighthouse Score**: ≥95 across all metrics
-- **Image Optimization**: Next.js Image component with AVIF/WebP
-- **Font Loading**: `font-display: swap` for Inter font
-- **Code Splitting**: Route-level automatic splitting
-- **Caching**: Static assets with long-term cache headers
-- **Compression**: Gzip/Brotli via Nginx
-
-## SEO
-
-- Open Graph meta tags
-- Twitter Card support
-- Structured data (JSON-LD)
-- Canonical URLs
-- Sitemap generation
-- robots.txt configuration
-
-## Deployment
-
-### Vercel
-
-```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy
-vercel
-
-# Set environment variables in Vercel dashboard
-```
-
-### Docker Production
-
-```bash
-# Build image
-docker build -t neuralchip-platform .
-
-# Run container
-docker run -p 3000:3000 \
-  -e OPENROUTER_API_KEY=your_key \
-  neuralchip-platform
-```
-
-### Docker Compose
-
-```bash
-# Production deployment
-docker-compose up -d
-
-# With Nginx reverse proxy
-docker-compose --profile with-nginx up -d
-```
-
-### Environment Variables for Production
-
-```env
-NODE_ENV=production
-OPENROUTER_API_KEY=sk-or-v1-xxx
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-NEXT_PUBLIC_SITE_URL=https://neuralchip.ai
-ALLOWED_ORIGINS=https://neuralchip.ai
-```
-
-## Monitoring
-
-- Health check endpoint: `/api/health`
-- Docker health checks configured
-- Rate limit abuse logging to console
-- Error boundaries for graceful failures
-
-## Security
-
-- No client-side API key exposure
-- Server-side request validation
-- CORS origin allowlist
-- Rate limiting (sliding window)
-- Input sanitization
-- Security headers via Nginx
-- Content Security Policy ready
-
-## Browser Support
-
-- Chrome/Edge ≥90
-- Firefox ≥88
-- Safari ≥14
-- Mobile browsers (iOS Safari, Chrome Mobile)
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests: `npm test && npm run e2e`
-5. Submit a pull request
-
-## License
-
-MIT License - see LICENSE file for details
-
-## Support
-
-- Documentation: [/docs](/docs)
-- Issues: [GitHub Issues](https://github.com/yourusername/neuralchip-platform/issues)
-- Email: hello@neuralchip.ai
-
----
-
-Built with ❤️ using Next.js, MUI, and Material Design 3
-# chip_design
+The live production route audit uses the compiled manifest, an authenticated
+session, safe `GET` requests for pages, and `OPTIONS` for APIs. The Chromium
+audit visits every page pattern and fails on HTTP 5xx, rendered application
+errors, browser exceptions, or unexpected console errors.
+
+## Evidence boundary
+
+The included SKY130HD case is a real open-source integration proof. It is not a
+foundry-qualified signoff claim. A commercial tapeout still requires customer-
+licensed PDK/Liberty/LEF assets, qualified DRC/LVS decks, approved EDA licenses,
+foundry rule versions, and accountable signoff owners. The platform records and
+enforces those references but never fabricates them.
+
+See [DEPLOYMENT.md](DEPLOYMENT.md), [EDA_OPERATIONS.md](EDA_OPERATIONS.md),
+[SECURITY.md](SECURITY.md), and [COMMERCIAL_WORKSPACE.md](COMMERCIAL_WORKSPACE.md).

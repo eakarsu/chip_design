@@ -11,12 +11,13 @@ import {
   Settings, AutoGraph, MenuBook, GridOn, FlashOn, ImportExport,
   Architecture, History as HistoryIcon, BugReport, Search, Gavel,
   Star, StarBorder, Replay, PlayArrow,
-  Hub,
+  Hub, School, PrecisionManufacturing,
 } from '@mui/icons-material';
 import type { ReactNode } from 'react';
 import {
   listFavorites, toggleFavorite, isFavorite, subscribeFavorites, type FavoriteId,
 } from '@/lib/favorites';
+import { useAuth } from '@/lib/auth/context';
 
 /**
  * A single clickable card on the dashboard. Clicking it navigates to `href`.
@@ -36,9 +37,62 @@ interface Section {
 
 const SECTIONS: Section[] = [
   {
+    title: 'Governed AI Engineering',
+    cards: [
+      {
+        title: 'Chip Design Workspace',
+        description: 'Unified projects, RTL, constraints, PDK corners, PPA runs, artifacts, ECOs, approvals and evidence.',
+        icon: <Hub />,
+        href: '/workspace',
+        badge: 'control plane',
+      },
+      {
+        title: 'Governed EDA Runs',
+        description: 'Execute real digest-pinned Yosys synthesis and SKY130 RTL-to-GDS jobs with audit evidence and checksummed artifacts.',
+        icon: <PrecisionManufacturing />,
+        href: '/workspace/execution',
+        badge: 'real EDA',
+      },
+      {
+        title: 'Continuous PPA Tracking',
+        description: 'Compare commit-level power, performance, area, timing, congestion and DRC against governed thresholds.',
+        icon: <AutoGraph />,
+        href: '/batch09/cfs/continuous-ppa-tracking-across-commits',
+        badge: '2-pass AI',
+      },
+      {
+        title: 'RTL Change Impact',
+        description: 'Trace an RTL change into affected timing paths, power, congestion and DRC with reviewable evidence.',
+        icon: <Compare />,
+        href: '/batch09/cfs/ai-agent-that-ties-rtl-change-to-downstream-pnr-impact-predi',
+        badge: '2-pass AI',
+      },
+      {
+        title: 'SPICE Regression Review',
+        description: 'Review PVT coverage, numerical deltas, failed simulations and golden-model provenance before signoff.',
+        icon: <BugReport />,
+        href: '/batch09/cfs/gpu-accelerated-spice-net-regression-dashboard',
+        badge: 'PVT',
+      },
+      {
+        title: 'Live Co-Design Review',
+        description: 'Capture design decisions, unresolved comments, accountable owners, artifacts and session exit gates.',
+        icon: <AccountTree />,
+        href: '/batch09/cfs/live-co-design-sessions-with-cursor-share',
+        badge: 'review',
+      },
+      {
+        title: 'Design Library Registry',
+        description: 'Qualify versioned cells and IP by PDK, license, checksums, characterization and DRC/LVS evidence.',
+        icon: <MenuBook />,
+        href: '/batch09/cfs/marketplace-of-community-design-libraries',
+        badge: 'qualified IP',
+      },
+    ],
+  },
+  {
     title: 'Design Flow',
     cards: [
-      { title: 'Design Workspace', description: 'Governed RTL, constraints, PPA, evidence, ECO and approval control plane.', icon: <Hub />, href: '/workspace', badge: 'commercial' },
       { title: 'Full Flow',        description: 'Run synthesis → PnR → signoff end-to-end.',          icon: <AccountTree />, href: '/flow' },
       { title: 'OpenLane',         description: 'OpenLane-style RTL→GDS simulation: designs, 11-stage runs, reports.', icon: <Architecture />, href: '/openlane', badge: 'new' },
       { title: 'Algorithms',       description: 'Browse the full algorithm catalog and run any one.', icon: <Memory />,      href: '/algorithms' },
@@ -72,7 +126,8 @@ const SECTIONS: Section[] = [
   {
     title: 'Resources',
     cards: [
-      { title: 'Docs',       description: 'Product documentation.',               icon: <MenuBook />, href: '/docs' },
+      { title: 'Chip Design Academy', description: 'Open your graded curriculum, evidence labs, progress, diagnostic and capstone workspace.', icon: <School />, href: '/academy', badge: '21 labs' },
+      { title: 'Learning Library', description: 'Browse the complete chip-design curriculum, glossary and engineering references.', icon: <MenuBook />, href: '/learn' },
       { title: 'Products',   description: 'Product lineup.',                      icon: <Memory />,   href: '/products' },
       { title: 'AI Features',description: 'AI-assisted workflows and copilots.', icon: <FlashOn />,  href: '/ai-features', badge: 'new' },
       { title: 'Admin',      description: 'Administrative settings.',             icon: <Settings />, href: '/admin' },
@@ -93,6 +148,7 @@ interface RecentRun {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [favorites, setFavorites] = useState<FavoriteId[]>([]);
   const [runs, setRuns] = useState<RecentRun[] | null>(null);
   const [runsError, setRunsError] = useState<string | null>(null);
@@ -106,6 +162,13 @@ export default function DashboardPage() {
   // Fetch recent runs. /api/history may 404 in dev before the DB is seeded —
   // treat that as "empty", not a user-facing error.
   useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      setRuns([]);
+      setRunsError(null);
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       try {
@@ -122,7 +185,7 @@ export default function DashboardPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [authLoading, isAuthenticated]);
 
   const fmtTime = (iso: string) => {
     const d = new Date(iso);

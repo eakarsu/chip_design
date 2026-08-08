@@ -73,7 +73,9 @@ export default function GdsCanvas({
   const rulerDraggingRef = useRef(false);
 
   // Re-render on prop change.
-  useEffect(() => { draw(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [layers, visible, view, highlight, lyp, ruler, tool, highlightRects, densityOverlay]);
+  // draw intentionally closes over the complete render state listed below.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { draw(); }, [layers, visible, view, highlight, lyp, ruler, tool, highlightRects, densityOverlay]);
 
   // Resize: re-render when canvas dimensions change.
   useEffect(() => {

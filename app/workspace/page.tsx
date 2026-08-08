@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Container, Divider, Drawer,
   FormControl, InputLabel, MenuItem, Paper, Select, Stack, Tab, Table, TableBody,
   TableCell, TableContainer, TableHead, TableRow, Tabs, TextField, Typography,
 } from '@mui/material';
 import Grid from '@mui/material/Grid2';
-import { Add, Approval, Architecture, Assessment, Cloud, CompareArrows, DataObject, Download, FactCheck, Hub, Rule, Storage } from '@mui/icons-material';
+import { Add, Approval, Architecture, Assessment, Cloud, CompareArrows, DataObject, Download, FactCheck, Hub, PrecisionManufacturing, Rule, Storage, Timeline } from '@mui/icons-material';
 import type { WorkspaceBundle } from '@/lib/commercial/types';
+import { useAuth } from '@/lib/auth/context';
 
 type Detail = { title: string; data: Record<string, unknown> };
 
@@ -35,6 +37,9 @@ function DetailValues({ data }: { data: Record<string, unknown> }) {
 }
 
 export default function CommercialWorkspacePage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [workspace, setWorkspace] = useState<WorkspaceBundle | null>(null);
   const [projectId, setProjectId] = useState('');
   const [tab, setTab] = useState(0);
@@ -52,12 +57,23 @@ export default function CommercialWorkspacePage() {
   const load = useCallback(async () => {
     try {
       const response = await fetch('/api/workspace/bootstrap'); const data = await response.json();
+      if (response.status === 401) {
+        router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
+        return;
+      }
       if (!response.ok) throw new Error(data.message ?? data.error ?? 'Workspace load failed');
       setWorkspace(data.workspace); setProjectId(current => current || data.workspace.projects[0]?.id || '');
     } catch (loadError) { setError(loadError instanceof Error ? loadError.message : 'Workspace load failed'); }
     finally { setLoading(false); }
-  }, []);
-  useEffect(() => { void load(); }, [load]);
+  }, [pathname, router]);
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
+      return;
+    }
+    void load();
+  }, [authLoading, isAuthenticated, load, pathname, router]);
 
   const project = workspace?.projects.find(item => item.id === projectId);
   const scoped = useMemo(() => workspace ? {
@@ -77,7 +93,7 @@ export default function CommercialWorkspacePage() {
     finally { setBusy(false); }
   };
 
-  if (loading && !workspace) return <Container sx={{ py: 6 }}><CircularProgress /></Container>;
+  if (authLoading || !isAuthenticated || (loading && !workspace)) return <Container sx={{ py: 6 }}><CircularProgress /></Container>;
   if (!workspace) return <Container sx={{ py: 6 }}><Alert severity="error">{error || 'Workspace unavailable'}</Alert></Container>;
 
   const constraintId = scoped?.constraints.find(item => item.active)?.id ?? scoped?.constraints[0]?.id ?? '';
@@ -90,7 +106,7 @@ export default function CommercialWorkspacePage() {
     <Container maxWidth="xl" sx={{ py: 4 }}>
       <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={2}>
         <Box><Typography variant="overline" color="primary">Governed commercial control plane</Typography><Typography variant="h3" fontWeight={800}>Chip Design Workspace</Typography><Typography color="text.secondary">One evidence chain from RTL and constraints through PPA, artifacts, ECO review and accountable approval.</Typography></Box>
-        <Stack direction="row" gap={1} alignItems="center"><Chip icon={<Storage />} label={`DB · ${workspace.databaseBackend}`} /><Chip icon={<Cloud />} label={`Objects · ${workspace.storageBackend}`} /></Stack>
+        <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap" useFlexGap><Button component={Link} href="/workspace/execution" startIcon={<PrecisionManufacturing />} variant="contained">Run governed EDA</Button><Button component={Link} href={`/governed-ai/lifecycle?projectId=${encodeURIComponent(projectId)}`} startIcon={<Timeline />} variant="outlined">Full design lifecycle</Button><Chip icon={<Storage />} label={`DB · ${workspace.databaseBackend}`} /><Chip icon={<Cloud />} label={`Objects · ${workspace.storageBackend}`} /></Stack>
       </Stack>
       <FormControl sx={{ minWidth: 320, mt: 3 }}><InputLabel>Active project</InputLabel><Select value={projectId} label="Active project" onChange={event => setProjectId(event.target.value)}>{workspace.projects.map(item => <MenuItem key={item.id} value={item.id}>{item.name} · {item.status}</MenuItem>)}</Select></FormControl>
       {notice && <Alert severity="success" sx={{ mt: 2 }}>{notice}</Alert>}{error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}

@@ -30,7 +30,9 @@ export default function StimGenPage() {
     ],
     vectors: n, seed: 11, maxRetries: 32,
   }), [n]);
-  const refs = [useRef<HTMLCanvasElement>(null), useRef<HTMLCanvasElement>(null)];
+  const opCanvasRef = useRef<HTMLCanvasElement>(null);
+  const addressCanvasRef = useRef<HTMLCanvasElement>(null);
+  const refs = useMemo(() => [opCanvasRef, addressCanvasRef], []);
   useEffect(() => {
     r.histograms.forEach((h, fi) => {
       const c = refs[fi].current; if (!c) return;
@@ -46,7 +48,7 @@ export default function StimGenPage() {
       ctx.fillStyle = '#475569'; ctx.font = '10px sans-serif';
       ctx.fillText(`${h.field}: [${h.min}, ${h.max}]`, 4, 14);
     });
-  }, [r]);
+  }, [r, refs]);
   return (
     <Box p={3}>
       <Stack direction="row" spacing={2} mb={2} alignItems="center" flexWrap="wrap">

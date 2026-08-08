@@ -18,8 +18,8 @@ import {
   Dashboard, AccountTree, Memory, Compare, AutoGraph, FlashOn, Timeline,
   ImportExport, GridOn, Speed, Settings, MenuBook, ViewInAr, Insights,
   History, Gavel, Architecture, AdminPanelSettings, Search as SearchIcon,
-  Logout, Person, Build, GridView, FactCheck, BugReport,
-  Hub,
+  Logout, Person, Build, GridView, FactCheck, BugReport, PrecisionManufacturing,
+  ArrowBack, Hub, School, SmartToy, Close,
 } from '@mui/icons-material';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -27,6 +27,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import ThemeSwitcher from './ThemeSwitcher';
 import SearchDialog from './SearchDialog';
 import { useAuth } from '@/lib/auth/context';
+import { CHIP_DESIGN_LIFECYCLE } from '@/lib/commercial/lifecycle';
 
 export const SIDENAV_WIDTH = 240;
 
@@ -39,6 +40,27 @@ const GROUPS: Group[] = [
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: <Dashboard /> },
       { label: 'Design Workspace', href: '/workspace', icon: <Hub /> },
+      { label: 'Governed EDA Runs', href: '/workspace/execution', icon: <PrecisionManufacturing /> },
+    ],
+  },
+  {
+    title: 'Governed AI',
+    items: [
+      {
+        label: 'AI Chat',
+        href: '/governed-ai/chat',
+        icon: <SmartToy />,
+      },
+      {
+        label: 'Lifecycle Overview',
+        href: '/governed-ai/lifecycle',
+        icon: <Timeline />,
+      },
+      ...CHIP_DESIGN_LIFECYCLE.map(phase => ({
+        label: `${String(phase.order).padStart(2, '0')} · ${phase.title}`,
+        href: `/governed-ai/lifecycle#phase-${phase.id}`,
+        icon: <FactCheck key={phase.id} />,
+      })),
     ],
   },
   {
@@ -159,7 +181,11 @@ const GROUPS: Group[] = [
   {
     title: 'Resources',
     items: [
-      { label: 'Docs',     href: '/docs',     icon: <MenuBook /> },
+      { label: 'Academy Workspace', href: '/academy', icon: <School /> },
+      { label: 'Learning Library', href: '/learn', icon: <MenuBook /> },
+      { label: 'Glossary', href: '/glossary', icon: <SearchIcon /> },
+      { label: 'Reference Library', href: '/references', icon: <FactCheck /> },
+      { label: 'Platform Docs', href: '/docs', icon: <MenuBook /> },
       { label: 'Products', href: '/products', icon: <Memory /> },
       { label: 'Contact',  href: '/contact',  icon: <Person /> },
     ],
@@ -167,6 +193,7 @@ const GROUPS: Group[] = [
   {
     title: 'Admin',
     items: [
+      { label: 'Academy Instructor', href: '/academy/instructor', icon: <School /> },
       { label: 'Admin', href: '/admin', icon: <AdminPanelSettings /> },
     ],
   },
@@ -184,9 +211,15 @@ export default function SideNav({ open, onClose, variant = 'permanent' }: SideNa
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [searchOpen, setSearchOpen] = useState(false);
   const [userAnchor, setUserAnchor] = useState<null | HTMLElement>(null);
+  const [currentHash, setCurrentHash] = useState('');
 
-  const isActive = (href: string) =>
-    href === '/dashboard' ? pathname === href : pathname?.startsWith(href);
+  const isActive = (href: string) => {
+    const [hrefPath, hrefHash] = href.split('#');
+    if (hrefHash) return pathname === hrefPath && currentHash === `#${hrefHash}`;
+    if (href === '/governed-ai/lifecycle') return pathname === href && !currentHash;
+    if (href === '/dashboard' || href === '/academy') return pathname === href;
+    return pathname?.startsWith(href);
+  };
 
   const handleLogout = async () => {
     setUserAnchor(null);
@@ -202,11 +235,27 @@ export default function SideNav({ open, onClose, variant = 'permanent' }: SideNa
     return () => window.removeEventListener('search:open', openSearch);
   }, []);
 
+  useEffect(() => {
+    const updateHash = () => setCurrentHash(window.location.hash);
+    updateHash();
+    window.addEventListener('hashchange', updateHash);
+    return () => window.removeEventListener('hashchange', updateHash);
+  }, [pathname]);
+
   // Header block: brand + controls that used to live in the top AppBar
   // (search, theme toggle, user menu / login). Keeps everything compact so
   // it fits inside the 240px drawer without clipping the wordmark.
   const header = (
-    <Box sx={{ px: 1.5, pt: 2, pb: 1, overflow: 'visible' }}>
+    <Box sx={{ px: 1.5, pt: 2, pb: 1, pr: variant === 'temporary' ? 6 : 1.5, overflow: 'visible', position: 'relative' }}>
+      {variant === 'temporary' && (
+        <IconButton
+          aria-label="Close navigation menu"
+          onClick={onClose}
+          sx={{ position: 'absolute', top: 10, right: 8, minWidth: 44, minHeight: 44 }}
+        >
+          <Close />
+        </IconButton>
+      )}
       <Box
         component={Link}
         href="/"
@@ -244,6 +293,11 @@ export default function SideNav({ open, onClose, variant = 'permanent' }: SideNa
         </Box>
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <Tooltip title="Go back to the previous page">
+          <Button size="small" startIcon={<ArrowBack />} onClick={() => router.back()} aria-label="Go back" sx={{ minWidth: 0, px: 1 }}>
+            Back
+          </Button>
+        </Tooltip>
         <Tooltip title="Search">
           <IconButton size="small" onClick={() => setSearchOpen(true)} aria-label="search">
             <SearchIcon fontSize="small" />
@@ -315,10 +369,10 @@ export default function SideNav({ open, onClose, variant = 'permanent' }: SideNa
   );
 
   const content = (
-    <Box role="navigation" aria-label="Side navigation" sx={{ overflowY: 'auto', overflowX: 'visible' }}>
+    <Box id={variant === 'temporary' ? 'mobile-side-navigation' : undefined} role="navigation" aria-label="Side navigation" sx={{ height: '100%', overflowY: 'auto', overflowX: 'visible', overscrollBehavior: 'contain' }}>
       {header}
       <Divider />
-      {GROUPS.map((group, idx) => (
+      {GROUPS.filter(group => group.title !== 'Admin' || user?.role === 'admin').map((group, idx) => (
         <Box key={group.title}>
           {idx > 0 && <Divider />}
           <Typography
@@ -358,7 +412,9 @@ export default function SideNav({ open, onClose, variant = 'permanent' }: SideNa
           flexShrink: 0,
           display: { xs: variant === 'temporary' ? 'block' : 'none', md: variant === 'permanent' ? 'block' : 'none' },
           '& .MuiDrawer-paper': {
-            width: SIDENAV_WIDTH,
+            width: variant === 'temporary' ? { xs: 'min(88vw, 320px)', sm: SIDENAV_WIDTH } : SIDENAV_WIDTH,
+            maxWidth: '100vw',
+            height: '100dvh',
             boxSizing: 'border-box',
           },
         }}

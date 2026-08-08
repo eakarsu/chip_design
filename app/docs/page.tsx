@@ -1,128 +1,35 @@
-import { Container, Box, Typography, Grid, Card, CardContent, CardActionArea } from '@mui/material';
-import Hero from '@/components/Hero';
-import Link from 'next/link';
-import { Metadata } from 'next';
+import type { Metadata } from 'next';
+import { Box, Button, Card, CardContent, Chip, Container, Stack, Typography } from '@mui/material';
+import Grid from '@mui/material/Grid2';
+import { ArrowForward, Code, FactCheck, MenuBook, RocketLaunch, School, Search, Settings } from '@mui/icons-material';
+import { glossaryTerms, knowledgeTopics, learningPaths } from '@/lib/knowledge/catalog';
 
 export const metadata: Metadata = {
-  title: 'Documentation',
-  description: 'Complete documentation for NeuralChip SDK, APIs, and hardware integration.',
+  title: 'Chip Design Knowledge Center',
+  description: 'Professional chip-design education, searchable terminology, engineering references, platform documentation and guided tutorials.',
 };
 
-const docSections = [
-  {
-    title: 'Getting Started',
-    icon: 'rocket_launch',
-    description: 'Quick start guide to set up your development environment and run your first model',
-    href: '/docs/getting-started',
-  },
-  {
-    title: 'API Reference',
-    icon: 'api',
-    description: 'Complete API documentation for Python, C++, and REST interfaces',
-    href: '/docs/api',
-  },
-  {
-    title: 'Model Optimization',
-    icon: 'tune',
-    description: 'Learn how to optimize models for maximum performance on NeuralChip hardware',
-    href: '/docs/optimization',
-  },
-  {
-    title: 'Hardware Specs',
-    icon: 'developer_board',
-    description: 'Technical specifications and architecture details for all NeuralChip products',
-    href: '/docs/hardware',
-  },
-  {
-    title: 'SDKs & Tools',
-    icon: 'construction',
-    description: 'Download SDKs, command-line tools, and IDE integrations',
-    href: '/docs/sdks',
-  },
-  {
-    title: 'Tutorials',
-    icon: 'school',
-    description: 'Step-by-step tutorials covering common use cases and deployment scenarios',
-    href: '/docs/tutorials',
-  },
+const platformDocs = [
+  { title: 'Getting Started', description: 'Set up the platform and run your first design exercise.', href: '/docs/getting-started', icon: <RocketLaunch /> },
+  { title: 'Tutorials', description: 'Step-by-step exercises for algorithms, flows and analysis.', href: '/docs/tutorials', icon: <School /> },
+  { title: 'API Reference', description: 'Integrate platform operations through documented interfaces.', href: '/docs/api', icon: <Code /> },
+  { title: 'Optimization Guide', description: 'Explore PPA objectives, tradeoffs and tuning strategies.', href: '/docs/optimization', icon: <Settings /> },
+  { title: 'Hardware Guide', description: 'Review architecture and hardware integration material.', href: '/docs/hardware', icon: <FactCheck /> },
+  { title: 'SDKs & Tools', description: 'Understand CLI, SDK and development-tool entry points.', href: '/docs/sdks', icon: <MenuBook /> },
 ];
 
 export default function DocsPage() {
   return (
-    <>
-      <Hero
-        title="Documentation"
-        subtitle="Everything you need to build, optimize, and deploy AI models on NeuralChip hardware"
-        primaryCta={{ label: 'Get Started', href: '/docs/getting-started' }}
-        secondaryCta={{ label: 'API Reference', href: '/docs/api' }}
-        backgroundGradient={false}
-      />
+    <Box>
+      <Box sx={{ color: 'white', background: 'linear-gradient(135deg,#071426 0%,#1e3a8a 70%,#4f46e5 150%)', py: { xs: 7, md: 9 } }}>
+        <Container maxWidth="xl"><Chip label="KNOWLEDGE CENTER" sx={{ bgcolor: 'rgba(255,255,255,.12)', color: 'white', fontWeight: 800 }} /><Typography component="h1" sx={{ mt: 2, maxWidth: 940, fontSize: { xs: '2.8rem', md: '4.7rem' }, lineHeight: 1.03, letterSpacing: '-.045em', fontWeight: 900 }}>Learn the discipline. Use the tools. Preserve the evidence.</Typography><Typography sx={{ mt: 2, maxWidth: 830, fontSize: '1.2rem', color: 'rgba(255,255,255,.75)', lineHeight: 1.65 }}>Professional education for the complete chip lifecycle, backed by searchable reference material and direct access to implementation and analysis workflows.</Typography><Stack direction={{ xs: 'column', sm: 'row' }} gap={1.5} sx={{ mt: 4 }}><Button component="a" href="/learn" variant="contained" size="large" endIcon={<ArrowForward />} sx={{ bgcolor: 'white', color: '#111827' }}>Open Chip Design Academy</Button><Button component="a" href="/glossary" variant="outlined" size="large" startIcon={<Search />} sx={{ color: 'white', borderColor: 'rgba(255,255,255,.4)' }}>Search terminology</Button></Stack></Container>
+      </Box>
+      <Container maxWidth="xl" sx={{ py: { xs: 6, md: 9 } }}>
+        <Grid container spacing={2.5}>{[[knowledgeTopics.length, 'Curriculum modules', '/learn'], [learningPaths.length, 'Role-based paths', '/learn'], [glossaryTerms.length, 'Technical definitions', '/glossary'], ['Primary', 'Engineering references', '/references']].map(([value, label, href]) => <Grid key={String(label)} size={{ xs: 12, sm: 6, md: 3 }}><Card component="a" href={String(href)} variant="outlined" sx={{ display: 'block', height: '100%', p: 1, textDecoration: 'none', color: 'inherit', borderRadius: 3, '&:hover': { borderColor: 'primary.main', boxShadow: 3 } }}><CardContent><Typography variant="h3" fontWeight={900} color="primary.main">{value}</Typography><Typography fontWeight={750}>{label}</Typography></CardContent></Card></Grid>)}</Grid>
 
-      <Container maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
-        <Grid container spacing={3}>
-          {docSections.map((section, index) => (
-            <Grid item xs={12} sm={6} md={4} key={index}>
-              <Card elevation={0} sx={{ height: '100%', border: '1px solid', borderColor: 'divider' }}>
-                <Link href={section.href} style={{ color: 'inherit', textDecoration: 'none' }}>
-                <CardActionArea component="div" sx={{ height: '100%' }}>
-                  <CardContent sx={{ p: 3, height: '100%' }}>
-                    <Box
-                      sx={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        width: 56,
-                        height: 56,
-                        borderRadius: 2,
-                        bgcolor: 'primary.main',
-                        color: 'primary.contrastText',
-                        mb: 2,
-                      }}
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: 32 }}>
-                        {section.icon}
-                      </span>
-                    </Box>
-                    <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
-                      {section.title}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {section.description}
-                    </Typography>
-                  </CardContent>
-                </CardActionArea>
-                </Link>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-
-        <Box sx={{ mt: 10, p: 4, bgcolor: 'background.paper', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
-          <Typography variant="h5" sx={{ fontWeight: 600, mb: 2 }}>
-            Need Help?
-          </Typography>
-          <Typography variant="body1" color="text.secondary" paragraph>
-            Can't find what you're looking for? Our support team is here to help.
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <Link href="/contact" style={{ textDecoration: 'none' }}>
-              <Typography variant="body2" color="primary" sx={{ '&:hover': { textDecoration: 'underline' } }}>
-                Contact Support →
-              </Typography>
-            </Link>
-            <Link href="https://github.com" style={{ textDecoration: 'none' }}>
-              <Typography variant="body2" color="primary" sx={{ '&:hover': { textDecoration: 'underline' } }}>
-                GitHub Issues →
-              </Typography>
-            </Link>
-            <Link href="https://discord.com" style={{ textDecoration: 'none' }}>
-              <Typography variant="body2" color="primary" sx={{ '&:hover': { textDecoration: 'underline' } }}>
-                Community Discord →
-              </Typography>
-            </Link>
-          </Box>
-        </Box>
+        <Typography variant="overline" color="primary" fontWeight={800} sx={{ display: 'block', mt: 8 }}>PLATFORM DOCUMENTATION</Typography><Typography variant="h3" fontWeight={900}>Build and operate</Typography><Typography color="text.secondary" sx={{ mt: 1, maxWidth: 760 }}>Use these guides for the software platform itself. For semiconductor theory and professional workflows, use the Academy.</Typography>
+        <Grid container spacing={2.5} sx={{ mt: 1 }}>{platformDocs.map(item => <Grid key={item.href} size={{ xs: 12, md: 6, xl: 4 }}><Card variant="outlined" sx={{ height: '100%', borderRadius: 3 }}><CardContent sx={{ p: 3 }}><Box sx={{ width: 46, height: 46, display: 'grid', placeItems: 'center', borderRadius: 2, bgcolor: 'primary.50', color: 'primary.main' }}>{item.icon}</Box><Typography variant="h5" fontWeight={850} sx={{ mt: 2 }}>{item.title}</Typography><Typography color="text.secondary" sx={{ mt: 1 }}>{item.description}</Typography><Button component="a" href={item.href} endIcon={<ArrowForward />} sx={{ mt: 1.5 }}>Open guide</Button></CardContent></Card></Grid>)}</Grid>
       </Container>
-    </>
+    </Box>
   );
 }

@@ -150,6 +150,54 @@ const schemaSql = `
     details_json TEXT NOT NULL, request_id TEXT NOT NULL, created_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS commercial_audit_tenant_idx ON commercial_audit_events(tenant_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS academy_enrollments (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL,
+    path_slug TEXT NOT NULL, status TEXT NOT NULL, diagnostic_score INTEGER,
+    started_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    UNIQUE(tenant_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS academy_enrollments_tenant_user_idx ON academy_enrollments(tenant_id, user_id);
+
+  CREATE TABLE IF NOT EXISTS academy_progress (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL,
+    topic_slug TEXT NOT NULL, status TEXT NOT NULL, best_score INTEGER NOT NULL,
+    attempts INTEGER NOT NULL, completed_at TEXT, updated_at TEXT NOT NULL,
+    UNIQUE(tenant_id, user_id, topic_slug)
+  );
+  CREATE INDEX IF NOT EXISTS academy_progress_tenant_user_idx ON academy_progress(tenant_id, user_id, updated_at);
+
+  CREATE TABLE IF NOT EXISTS academy_submissions (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL,
+    lab_slug TEXT NOT NULL, topic_slug TEXT NOT NULL, response_text TEXT NOT NULL,
+    evidence_json TEXT NOT NULL, grade_json TEXT NOT NULL, score INTEGER NOT NULL,
+    passed INTEGER NOT NULL, attempt INTEGER NOT NULL, created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS academy_submissions_tenant_user_idx ON academy_submissions(tenant_id, user_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS academy_assessments (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL,
+    kind TEXT NOT NULL, answers_json TEXT NOT NULL, score INTEGER NOT NULL,
+    result_json TEXT NOT NULL, created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS academy_assessments_tenant_user_idx ON academy_assessments(tenant_id, user_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS academy_capstones (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL,
+    title TEXT NOT NULL, specification TEXT NOT NULL, architecture TEXT NOT NULL,
+    verification_plan TEXT NOT NULL, evidence_json TEXT NOT NULL,
+    status TEXT NOT NULL, score INTEGER NOT NULL, feedback TEXT NOT NULL,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    UNIQUE(tenant_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS academy_capstones_tenant_user_idx ON academy_capstones(tenant_id, user_id);
+
+  CREATE TABLE IF NOT EXISTS academy_tutor_messages (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL,
+    topic_slug TEXT NOT NULL, question TEXT NOT NULL, response_json TEXT NOT NULL,
+    model TEXT NOT NULL, created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS academy_tutor_tenant_user_idx ON academy_tutor_messages(tenant_id, user_id, created_at);
 `;
 
 function ensureSqliteSchema(db: SqliteDatabase): void {
@@ -165,17 +213,21 @@ const requiredCommercialTables = [
   'commercial_ppa_snapshots', 'commercial_rtl_impacts', 'commercial_artifacts',
   'commercial_approvals', 'commercial_ecos', 'commercial_feature_records',
   'commercial_ai_reviews', 'commercial_audit_events',
+  'academy_enrollments', 'academy_progress', 'academy_submissions',
+  'academy_assessments', 'academy_capstones', 'academy_tutor_messages',
 ];
 
 function validateSqliteSchema(db: SqliteDatabase): void {
-  const rows = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'commercial_%'").all() as Array<{ name: string }>;
+  // Academy tables deliberately share this governed database but do not use
+  // the commercial_ prefix. Validate the complete required table set.
+  const rows = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>;
   const present = new Set(rows.map(row => row.name));
   const missing = requiredCommercialTables.filter(table => !present.has(table));
   if (missing.length) throw new Error(`commercial database migration required; missing: ${missing.join(', ')}`);
 }
 
 async function validatePostgresSchema(client: PoolClient): Promise<void> {
-  const result = await client.query<{ table_name: string }>("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'commercial_%'");
+  const result = await client.query<{ table_name: string }>("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
   const present = new Set(result.rows.map(row => row.table_name));
   const missing = requiredCommercialTables.filter(table => !present.has(table));
   if (missing.length) throw new Error(`commercial database migration required; missing: ${missing.join(', ')}`);
