@@ -16,8 +16,6 @@
  * commit), the bridge (to ship the diff to the Python service for an
  * incremental analysis), and the persistence layer.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import type { DesignSnapshot } from '@/lib/bridge/design_state';
 import { diffSnapshots, type SnapshotDiff } from '@/lib/bridge/design_state';
 import type { Cell, Net, Pin } from '@/types/algorithms';

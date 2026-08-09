@@ -9,7 +9,7 @@
  */
 
 import { useState } from 'react';
-import { Box, IconButton, useMediaQuery, useTheme } from '@mui/material';
+import { Box, Button, Typography, useMediaQuery, useTheme } from '@mui/material';
 import { Menu } from '@mui/icons-material';
 import Footer from './Footer';
 import SideNav, { SIDENAV_WIDTH } from './SideNav';
@@ -19,6 +19,8 @@ import ToastProvider from './ToastProvider';
 
 export default function LayoutWithSideNav({ children }: { children: React.ReactNode }) {
   const theme = useTheme();
+  // Keep the SSR-safe two-pass behavior so the initial client tree matches the
+  // server before MUI resolves the real viewport breakpoint.
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -64,10 +66,35 @@ export default function LayoutWithSideNav({ children }: { children: React.ReactN
           {/* Mobile-only hamburger — the only top-of-page chrome now that the
               AppBar is gone. Sticky so it remains reachable while scrolling. */}
           {!isDesktop && (
-            <Box sx={{ position: 'sticky', top: 0, zIndex: 1, bgcolor: 'background.paper', borderBottom: 1, borderColor: 'divider' }}>
-              <IconButton aria-label="Open navigation" onClick={() => setMobileOpen(true)}>
-                <Menu />
-              </IconButton>
+            <Box
+              component="header"
+              sx={{
+                position: 'sticky',
+                top: 0,
+                zIndex: theme.zIndex.appBar,
+                minHeight: 58,
+                px: 1.25,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.25,
+                bgcolor: 'background.paper',
+                borderBottom: 1,
+                borderColor: 'divider',
+                boxShadow: 1,
+              }}
+            >
+              <Button
+                aria-label="Open navigation menu"
+                aria-expanded={mobileOpen}
+                aria-controls="mobile-side-navigation"
+                variant="contained"
+                startIcon={<Menu />}
+                onClick={() => setMobileOpen(true)}
+                sx={{ minWidth: 104, minHeight: 44, fontWeight: 800 }}
+              >
+                Menu
+              </Button>
+              <Typography fontWeight={850} noWrap>NeuralChip</Typography>
             </Box>
           )}
           <Breadcrumbs />

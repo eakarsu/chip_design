@@ -47,6 +47,7 @@ import AutoTuneDialog from '@/components/AutoTuneDialog';
 import AIAlgorithmSelector from '@/components/AIAlgorithmSelector';
 import AlgorithmCodeViewer from '@/components/AlgorithmCodeViewer';
 import AICopilot from '@/components/AICopilot';
+import ProfessionalAIResult from '@/components/ai/ProfessionalAIResult';
 import ScenarioDialog from '@/components/ScenarioDialog';
 import type { Scenario } from '@/lib/scenarios';
 import { AlgorithmTemplate } from '@/lib/templates';
@@ -182,6 +183,9 @@ export default function AlgorithmsPage() {
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [aiDiagnosis, setAiDiagnosis] = useState<unknown>(null);
+  const [aiDiagnosisError, setAiDiagnosisError] = useState('');
+  const [aiDiagnosing, setAiDiagnosing] = useState(false);
   const [tabValue, setTabValue] = useState<number>(0);
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [autoTuneDialogOpen, setAutoTuneDialogOpen] = useState(false);
@@ -1193,8 +1197,12 @@ endmodule`,
                     <Button
                       color="inherit"
                       size="small"
-                      startIcon={<AIIcon />}
+                      disabled={aiDiagnosing}
+                      startIcon={aiDiagnosing ? <CircularProgress size={16} /> : <AIIcon />}
                       onClick={async () => {
+                        setAiDiagnosing(true);
+                        setAiDiagnosis(null);
+                        setAiDiagnosisError('');
                         try {
                           const response = await fetch('/api/ai/diagnose-error', {
                             method: 'POST',
@@ -1207,9 +1215,12 @@ endmodule`,
                             }),
                           });
                           const diagnosis = await response.json();
-                          alert(`AI Diagnosis:\n\n${diagnosis.diagnosis}\n\nRoot Cause: ${diagnosis.rootCause}\n\nSolutions:\n${diagnosis.solutions.map((s: any) => `- ${s.fix}: ${s.explanation}`).join('\n')}`);
+                          if (!response.ok) throw new Error(diagnosis.message ?? diagnosis.error ?? `AI diagnosis failed with HTTP ${response.status}`);
+                          setAiDiagnosis(diagnosis);
                         } catch (err) {
-                          alert('Failed to get AI diagnosis');
+                          setAiDiagnosisError(err instanceof Error ? err.message : 'Failed to get AI diagnosis');
+                        } finally {
+                          setAiDiagnosing(false);
                         }
                       }}
                     >
@@ -1220,6 +1231,8 @@ endmodule`,
                   {error}
                 </Alert>
               )}
+              {aiDiagnosisError && <Alert severity="error" sx={{ mt: 2 }}>{aiDiagnosisError}</Alert>}
+              {aiDiagnosis !== null && <ProfessionalAIResult title="Algorithm failure diagnosis" result={aiDiagnosis} compact />}
             </Paper>
           </Grid>
 

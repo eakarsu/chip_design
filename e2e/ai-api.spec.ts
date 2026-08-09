@@ -1,8 +1,14 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('AI API', () => {
+  const allowedOrigin = 'http://127.0.0.1:30815';
+
   test('should return 400 for invalid request', async ({ request }) => {
     const response = await request.post('/api/ai', {
+      headers: {
+        Origin: allowedOrigin,
+        'X-Forwarded-For': '192.0.2.10',
+      },
       data: {
         messages: 'invalid',
       },
@@ -14,11 +20,16 @@ test.describe('AI API', () => {
   });
 
   test('should enforce rate limiting', async ({ request }) => {
-    // Make multiple requests rapidly
+    // Invalid payloads exercise the local limiter without contacting the AI
+    // provider. A dedicated client address keeps this test isolated.
     const requests = Array(15).fill(null).map(() =>
       request.post('/api/ai', {
+        headers: {
+          Origin: allowedOrigin,
+          'X-Forwarded-For': '192.0.2.20',
+        },
         data: {
-          messages: [{ role: 'user', content: 'test' }],
+          messages: 'invalid',
         },
       })
     );
@@ -32,26 +43,30 @@ test.describe('AI API', () => {
   test('should handle OPTIONS request for CORS', async ({ request }) => {
     const response = await request.fetch('/api/ai', {
       method: 'OPTIONS',
+      headers: {
+        Origin: allowedOrigin,
+      },
     });
 
     expect(response.status()).toBe(204);
     expect(response.headers()['access-control-allow-methods']).toContain('POST');
   });
 
-  test('should validate message structure', async ({ request }) => {
+  test('should reject an invalid message role', async ({ request }) => {
     const response = await request.post('/api/ai', {
+      headers: {
+        Origin: allowedOrigin,
+        'X-Forwarded-For': '192.0.2.30',
+      },
       data: {
         messages: [
-          { role: 'user', content: 'Hello' },
+          { role: 'operator', content: 'Hello' },
         ],
-        model: 'anthropic/claude-3.5-sonnet',
-        temperature: 0.7,
-        max_tokens: 100,
       },
     });
 
-    // Without actual API key, this will fail at OpenRouter
-    // but validates our request structure is correct
-    expect([400, 401, 403, 500]).toContain(response.status());
+    expect(response.status()).toBe(400);
+    const body = await response.json();
+    expect(body.error).toBe('Invalid request');
   });
 });

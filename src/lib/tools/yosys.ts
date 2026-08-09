@@ -11,8 +11,6 @@
  * stdout/stderr in buffers and parses the final Yosys "Number of cells"
  * report. Long-running flows should use the streaming variant added later.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { spawn, SpawnOptionsWithoutStdio } from 'child_process';
 import { promises as fs } from 'fs';
 import path from 'path';

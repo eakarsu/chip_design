@@ -16,34 +16,50 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Set build-time environment variables
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_OPTIONS=--max-old-space-size=1536
 
 RUN npm run build
+
+# Explicit schema migrator. Production startup validates schema and never
+# mutates it, so operators run this target as a separate, auditable step.
+FROM node:22-alpine AS migrator
+WORKDIR /app
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN apk add --no-cache bash libc6-compat \
+    && addgroup --system --gid 1001 nodejs \
+    && adduser --system --uid 1001 --ingroup nodejs nextjs
+COPY --chown=nextjs:nodejs --from=deps /app/node_modules ./node_modules
+COPY --chown=nextjs:nodejs package.json package-lock.json tsconfig.json ./
+COPY --chown=nextjs:nodejs src ./src
+COPY --chown=nextjs:nodejs scripts ./scripts
+RUN mkdir -p /var/lib/chip /var/backups/chip \
+    && chown -R nextjs:nodejs /var/lib/chip /var/backups/chip
+USER nextjs
+CMD ["npm", "run", "migrate"]
 
 # Stage 3: Runner
 FROM node:22-alpine AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 # Copy necessary files from builder
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-
-# Set correct permissions
-RUN chown -R nextjs:nodejs /app
+COPY --chown=nextjs:nodejs --from=builder /app/public ./public
+COPY --chown=nextjs:nodejs --from=builder /app/.next/standalone ./
+COPY --chown=nextjs:nodejs --from=builder /app/.next/static ./.next/static
 
 USER nextjs
 
 EXPOSE 3000
 
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
@@ -56,14 +72,18 @@ CMD ["node", "server.js"]
 FROM node:22-alpine AS eda-worker
 WORKDIR /app
 ENV NODE_ENV=production
-RUN apk add --no-cache docker-cli \
+RUN apk add --no-cache bash docker-cli \
     && addgroup --system --gid 1001 nodejs \
     && adduser --system --uid 1001 --ingroup nodejs nextjs
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json package-lock.json tsconfig.json ./
-COPY src ./src
-COPY scripts ./scripts
+COPY --chown=nextjs:nodejs --from=deps /app/node_modules ./node_modules
+COPY --chown=nextjs:nodejs package.json package-lock.json tsconfig.json ./
+COPY --chown=nextjs:nodejs src ./src
+COPY --chown=nextjs:nodejs scripts ./scripts
 RUN mkdir -p /var/lib/chip /var/backups/chip \
-    && chown -R nextjs:nodejs /app /var/lib/chip /var/backups/chip
+    && chown -R nextjs:nodejs /var/lib/chip /var/backups/chip
 USER nextjs
 CMD ["npm", "run", "eda:worker"]
+
+# Keep the production web server as the default image when callers use
+# `docker build .` without an explicit target.
+FROM runner AS production

@@ -20,8 +20,6 @@
  * parser is a small tokenizer + recursive-descent that recognises those
  * START/END bookends.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 export interface Rect { xl: number; yl: number; xh: number; yh: number; }
 
 export interface LefSite {

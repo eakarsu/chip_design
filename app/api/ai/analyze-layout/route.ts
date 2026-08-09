@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
+import { openRouterProviderPreferences } from '@/lib/openrouter';
 
 const layoutAnalysisSchema = z.object({
   image: z.string(), // base64 encoded
@@ -60,6 +61,7 @@ Provide specific, actionable recommendations with coordinates when possible.`;
         },
         body: JSON.stringify({
           model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet', // vision-capable model
+          provider: openRouterProviderPreferences(),
           messages: [
             { role: 'system', content: systemPrompt },
             {

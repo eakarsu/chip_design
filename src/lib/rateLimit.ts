@@ -43,7 +43,7 @@ export function rateLimit(
 }
 
 // Clean up old entries periodically
-setInterval(() => {
+const cleanupTimer = setInterval(() => {
   const now = Date.now();
   const maxAge = 3600000; // 1 hour
 
@@ -54,3 +54,6 @@ setInterval(() => {
     }
   }
 }, 300000); // Clean every 5 minutes
+
+// Housekeeping must never keep a CLI, test worker, or graceful server shutdown alive.
+cleanupTimer.unref?.();

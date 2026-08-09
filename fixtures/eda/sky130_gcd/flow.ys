@@ -1,0 +1,13 @@
+read_verilog /input/gcd.v
+hierarchy -check -top gcd
+proc
+flatten
+opt
+memory
+opt
+techmap
+opt
+check
+tee -o /output/synthesis-stat.txt stat
+write_json /output/netlist.json
+write_verilog -noattr /output/netlist.v

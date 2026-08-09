@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rateLimit';
+import { openRouterProviderPreferences } from '@/lib/openrouter';
 
 function getClientId(request: NextRequest): string {
   const forwarded = request.headers.get('x-forwarded-for');
@@ -83,6 +84,7 @@ Respond with JSON:
       },
       body: JSON.stringify({
         model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet',
+        provider: openRouterProviderPreferences(),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt },

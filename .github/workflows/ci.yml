@@ -13,6 +13,20 @@ jobs:
   application:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: chip_design
+          POSTGRES_USER: chip_app
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U chip_app -d chip_design"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     strategy:
       matrix:
         node: [20, 22]
@@ -23,8 +37,20 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      - name: Generate ephemeral CI deployment credentials
+        shell: bash
+        run: |
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "${RUNNER_TEMP}/oidc-private.pem" 2>/dev/null
+          openssl pkey -in "${RUNNER_TEMP}/oidc-private.pem" -pubout -out "${RUNNER_TEMP}/oidc-public.pem" 2>/dev/null
+          {
+            echo "CHIP_OIDC_INTERNAL_KEY_ID=ci"
+            echo "CHIP_OIDC_INTERNAL_PRIVATE_KEY_BASE64=$(base64 -w 0 "${RUNNER_TEMP}/oidc-private.pem")"
+            echo "CHIP_OIDC_PUBLIC_KEYS_JSON={\"ci\":\"$(base64 -w 0 "${RUNNER_TEMP}/oidc-public.pem")\"}"
+            echo "CHIP_OBJECT_STORAGE_ACCESS_KEY=$(openssl rand -hex 16)"
+            echo "CHIP_OBJECT_STORAGE_SECRET_KEY=$(openssl rand -hex 32)"
+          } >> "$GITHUB_ENV"
       - run: npm run typecheck
-      - run: npm run lint
+      - run: npm run lint:all
       - run: npm test -- --runInBand
       - run: npm run eda:golden
       - name: Replay governed migration and verify backup/restore
@@ -37,9 +63,13 @@ jobs:
           CHIP_BACKUP_DIR: ${{ runner.temp }}/chip-backups
           CHIP_OIDC_ISSUER: https://identity.ci.example
           CHIP_OIDC_AUDIENCE: chip-design-ci
-          CHIP_OIDC_PUBLIC_KEYS_JSON: '{"ci":"ZmFrZQ=="}'
           CHIP_YOSYS_IMAGE: registry.ci/yosys@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           CHIP_OPENROAD_IMAGE: registry.ci/openroad@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          CHIP_COMMERCIAL_DATABASE_URL: postgresql://chip_app@127.0.0.1:5432/chip_design
+          CHIP_COMMERCIAL_DB_SSL: disable
+          CHIP_OBJECT_STORAGE_BUCKET: ci-artifacts
+          CHIP_OBJECT_STORAGE_ENDPOINT: http://127.0.0.1:9000
+          CHIP_OBJECT_STORAGE_KMS_KEY: ci-ephemeral-kms-key
         run: |
           mkdir -p "$CHIP_EDA_OBJECT_DIR" "$CHIP_BACKUP_DIR"
           npm run migrate

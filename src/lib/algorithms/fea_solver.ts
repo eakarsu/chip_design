@@ -18,8 +18,6 @@
  * That's still enough to catch hot spots and brownouts early in the flow,
  * and it runs in seconds on designs with <1M tiles.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 export interface GridSpec {
   nx: number; ny: number;
   /** Physical tile spacing (µm). */

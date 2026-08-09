@@ -9,16 +9,16 @@ test.describe('Navigation', () => {
 
   test('should navigate to products page', async ({ page }) => {
     await page.goto('/');
-    await page.click('text=Products');
+    await page.getByRole('link', { name: 'Products', exact: true }).first().click();
     await expect(page).toHaveURL('/products');
-    await expect(page.locator('h1')).toContainText('AI Accelerators');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('AI Accelerators');
   });
 
   test('should navigate to docs page', async ({ page }) => {
     await page.goto('/');
-    await page.click('text=Docs');
+    await page.getByRole('link', { name: 'Platform Docs', exact: true }).click();
     await expect(page).toHaveURL('/docs');
-    await expect(page.locator('h1')).toContainText('Documentation');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Learn the discipline');
   });
 
   test('should toggle theme', async ({ page }) => {

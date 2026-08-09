@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sessions, auditLogs, users } from '@/lib/db';
 import { handleApiError } from '@/lib/middleware/errorHandler';
+import { authCookieOptions } from '@/lib/auth/cookies';
 
 export async function POST(request: Request) {
   try {
@@ -27,13 +28,7 @@ export async function POST(request: Request) {
     }
 
     const response = NextResponse.json({ message: 'Logged out successfully' });
-    response.cookies.set('auth-token', '', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 0,
-      path: '/',
-    });
+    response.cookies.set('auth-token', '', authCookieOptions(request, 0));
 
     return response;
   } catch (error) {

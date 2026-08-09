@@ -3,15 +3,36 @@ import { z } from 'zod';
 import { users, sessions, auditLogs } from '@/lib/db';
 import { verifyPassword, generateToken } from '@/lib/auth/password';
 import { handleApiError } from '@/lib/middleware/errorHandler';
+import { authCookieOptions } from '@/lib/auth/cookies';
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
 
+function publicRequestUrl(pathname: string, request: Request): URL {
+  const internalUrl = new URL(request.url);
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+    ?.split(',')[0]
+    ?.trim();
+  const forwardedHost = request.headers.get('x-forwarded-host')
+    ?.split(',')[0]
+    ?.trim();
+  const host = forwardedHost || request.headers.get('host') || internalUrl.host;
+  const protocol = forwardedProto || internalUrl.protocol.replace(':', '');
+
+  return new URL(pathname, `${protocol}://${host}`);
+}
+
 export async function POST(request: Request) {
+  const contentType = request.headers.get('content-type') || '';
+  const browserForm = contentType.includes('application/x-www-form-urlencoded')
+    || contentType.includes('multipart/form-data');
+
   try {
-    const body = await request.json();
+    const body = browserForm
+      ? Object.fromEntries((await request.formData()).entries())
+      : await request.json();
     const data = loginSchema.parse(body);
 
     const user = users.getByEmail(data.email);
@@ -56,22 +77,35 @@ export async function POST(request: Request) {
       createdAt: now,
     });
 
-    const response = NextResponse.json({
-      user: { id: user.id, email: user.email, name: user.name, role: user.role, emailVerified: user.emailVerified, avatar: user.avatar },
-      token,
-    });
+    const requestedRedirect = new URL(request.url).searchParams.get('redirect') || '/dashboard';
+    const safeRedirect = requestedRedirect.startsWith('/') && !requestedRedirect.startsWith('//')
+      ? requestedRedirect
+      : '/dashboard';
+    const response = browserForm
+      ? NextResponse.redirect(publicRequestUrl(safeRedirect, request), 303)
+      : NextResponse.json({
+          user: { id: user.id, email: user.email, name: user.name, role: user.role, emailVerified: user.emailVerified, avatar: user.avatar },
+          token,
+        });
 
     // Set auth cookie
-    response.cookies.set('auth-token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60,
-      path: '/',
-    });
+    response.cookies.set(
+      'auth-token',
+      token,
+      authCookieOptions(request, 7 * 24 * 60 * 60),
+    );
 
     return response;
   } catch (error) {
+    if (browserForm) {
+      const loginUrl = publicRequestUrl('/login', request);
+      const requestedRedirect = new URL(request.url).searchParams.get('redirect');
+      if (requestedRedirect?.startsWith('/') && !requestedRedirect.startsWith('//')) {
+        loginUrl.searchParams.set('redirect', requestedRedirect);
+      }
+      loginUrl.searchParams.set('error', 'Invalid email or password');
+      return NextResponse.redirect(loginUrl, 303);
+    }
     return handleApiError(error);
   }
 }

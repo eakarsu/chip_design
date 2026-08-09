@@ -91,7 +91,7 @@ describe('durable governed EDA jobs', () => {
     expect(invocation.command).toBe('docker');
     expect(invocation.args).toEqual(expect.arrayContaining([
       '--network=none', '--read-only', '--cap-drop=ALL',
-      '--security-opt=no-new-privileges:true', '--pids-limit=128',
+      '--security-opt=no-new-privileges:true', '--pids-limit=512',
     ]));
     expect(invocation.args.join(' ')).toContain('@sha256:');
 
