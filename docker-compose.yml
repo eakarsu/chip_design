@@ -89,7 +89,7 @@ services:
     environment:
       POSTGRES_DB: ${CHIP_POSTGRES_DB:-chip_design}
       POSTGRES_USER: ${CHIP_POSTGRES_USER:-chip_app}
-      POSTGRES_PASSWORD: ${CHIP_POSTGRES_PASSWORD:?set CHIP_POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${CHIP_POSTGRES_PASSWORD}
     volumes:
       - chip-postgres-data:/var/lib/postgresql/data
     healthcheck:
