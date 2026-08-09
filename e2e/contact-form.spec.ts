@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Contact Form', () => {
+  test.describe.configure({ mode: 'serial' });
+
   test.beforeEach(async ({ page }) => {
     await page.goto('/contact');
   });
@@ -9,7 +11,7 @@ test.describe('Contact Form', () => {
     await expect(page.locator('text=Send us a message')).toBeVisible();
     await expect(page.locator('input[name="name"]')).toBeVisible();
     await expect(page.locator('input[name="email"]')).toBeVisible();
-    await expect(page.locator('textarea[name="message"]')).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
   });
 
   test('should validate required fields', async ({ page }) => {
@@ -24,10 +26,10 @@ test.describe('Contact Form', () => {
   });
 
   test('should fill and submit form', async ({ page }) => {
-    await page.fill('input[name="name"]', 'John Doe');
-    await page.fill('input[name="email"]', 'john@example.com');
-    await page.fill('input[name="company"]', 'Test Corp');
-    await page.fill('textarea[name="message"]', 'This is a test message');
+    await page.getByRole('textbox', { name: 'Name' }).fill('John Doe');
+    await page.getByRole('textbox', { name: 'Email', exact: true }).fill('john@example.com');
+    await page.getByRole('textbox', { name: 'Company' }).fill('Test Corp');
+    await page.getByRole('textbox', { name: 'Message' }).fill('This is a test message');
 
     const sendButton = page.getByRole('button', { name: /Send Message/i });
     await sendButton.click();
