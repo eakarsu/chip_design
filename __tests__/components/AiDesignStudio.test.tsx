@@ -16,7 +16,7 @@ describe('AI Design Studio', () => {
     else delete (globalThis as { fetch?: typeof fetch }).fetch;
   });
 
-  it('shows the visible governed AI design sequence and switches workflows', () => {
+  it('shows all 14 canonical design phases and switches operational workflows', () => {
     render(
       <AiDesignStudio
         workspace={workspace}
@@ -28,6 +28,14 @@ describe('AI Design Studio', () => {
     );
 
     expect(screen.getByRole('heading', { name: /Design with AI, with every engineering step visible/i })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Canonical 14-step AI design sequence' })).toBeVisible();
+    expect(screen.getAllByRole('link', { name: /^\d+\./ })).toHaveLength(14);
+    expect(screen.getByRole('link', { name: '1. Product requirements & acceptance criteria' })).toHaveAttribute(
+      'href',
+      '/governed-ai/lifecycle?projectId=project-1#phase-requirements'
+    );
+    expect(screen.getByRole('link', { name: '14. Manufacturing, package & silicon validation' })).toBeVisible();
+    expect(screen.getByRole('heading', { name: 'Seven operational AI workflows' })).toBeVisible();
     expect(screen.getByText('1. Capture design intent')).toBeVisible();
     expect(screen.getByText('4. Generate the AI design plan')).toBeVisible();
     expect(screen.getByText('6. Record the architecture decision')).toBeVisible();

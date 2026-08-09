@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   Alert,
   Box,
@@ -33,6 +34,7 @@ import {
   type AiDesignWorkflowId,
 } from '@/lib/commercial/aiDesignWorkflows';
 import { capabilityAction } from '@/lib/commercial/capabilityActionCatalog';
+import { CHIP_DESIGN_LIFECYCLE } from '@/lib/commercial/lifecycle';
 import type { DecisionBrief, WorkspaceBundle } from '@/lib/commercial/types';
 
 const statusLabel: Record<AiDesignStepStatus, string> = {
@@ -233,15 +235,16 @@ export default function AiDesignStudio({
             <Stack direction="row" gap={1} alignItems="center">
               <AutoAwesome color="secondary" />
               <Typography variant="overline" color="secondary.main" fontWeight={900}>
-                AI DESIGN STUDIO · SEVEN REIMPLEMENTED WORKFLOWS
+                AI DESIGN STUDIO · 14-PHASE LIFECYCLE
               </Typography>
             </Stack>
             <Typography variant="h4" fontWeight={900}>
               Design with AI, with every engineering step visible
             </Typography>
             <Typography color="text.secondary" sx={{ mt: 1, maxWidth: 940 }}>
-              AI challenges evidence and proposes experiments. Governed tools produce results. Named engineers decide.
-              Nothing advances silently, and no AI response is presented as simulator, signoff or tapeout authority.
+              The canonical chip-design process contains 14 phases. Seven operational AI workflows overlay those
+              phases to challenge evidence, propose experiments and retain named human decisions. Nothing advances
+              silently, and no AI response is presented as simulator, signoff or tapeout authority.
             </Typography>
           </Box>
           <Stack minWidth={{ md: 220 }}>
@@ -257,6 +260,46 @@ export default function AiDesignStudio({
           </Stack>
         </Stack>
       </Paper>
+
+      <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={1} sx={{ mb: 1.5 }}>
+          <Box>
+            <Typography variant="h6" fontWeight={900}>
+              Canonical 14-step AI design sequence
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Open any phase to execute tools, retain evidence, run its AI gate and record an independent human
+              disposition.
+            </Typography>
+          </Box>
+          <Button
+            component={Link}
+            href={`/governed-ai/lifecycle?projectId=${encodeURIComponent(projectId)}`}
+            variant="outlined"
+          >
+            Open full lifecycle
+          </Button>
+        </Stack>
+        <Grid container spacing={1}>
+          {CHIP_DESIGN_LIFECYCLE.map((phase) => (
+            <Grid key={phase.id} size={{ xs: 12, sm: 6, lg: 3 }}>
+              <Button
+                component={Link}
+                href={`/governed-ai/lifecycle?projectId=${encodeURIComponent(projectId)}#phase-${phase.id}`}
+                variant="text"
+                fullWidth
+                sx={{ justifyContent: 'flex-start', textAlign: 'left', height: '100%' }}
+              >
+                {phase.order}. {phase.title}
+              </Button>
+            </Grid>
+          ))}
+        </Grid>
+      </Paper>
+
+      <Typography variant="h6" fontWeight={900} sx={{ mb: 1 }}>
+        Seven operational AI workflows
+      </Typography>
 
       <Grid container spacing={1.5} sx={{ mb: 2 }}>
         {assessments.map((item) => (

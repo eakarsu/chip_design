@@ -1,10 +1,10 @@
 # AI design studio, capability center and phase gates
 
-## Seven reimplemented workflows
+## Fourteen design phases and seven reimplemented workflows
 
-The top of `/capabilities` is now a guided AI Design Studio rather than another
-flat feature catalog. It reimplements seven product areas as connected,
-evidence-driven workflows:
+The top of `/capabilities` now starts with the canonical 14-phase chip-design
+sequence rather than another flat feature catalog. Seven reimplemented product
+areas overlay those phases as connected, evidence-driven workflows:
 
 1. AI-guided design intake.
 2. Verification closure.
