@@ -42,12 +42,17 @@ jobs:
         run: |
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "${RUNNER_TEMP}/oidc-private.pem" 2>/dev/null
           openssl pkey -in "${RUNNER_TEMP}/oidc-private.pem" -pubout -out "${RUNNER_TEMP}/oidc-public.pem" 2>/dev/null
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "${RUNNER_TEMP}/release-private.pem" 2>/dev/null
           {
             echo "CHIP_OIDC_INTERNAL_KEY_ID=ci"
             echo "CHIP_OIDC_INTERNAL_PRIVATE_KEY_BASE64=$(base64 -w 0 "${RUNNER_TEMP}/oidc-private.pem")"
             echo "CHIP_OIDC_PUBLIC_KEYS_JSON={\"ci\":\"$(base64 -w 0 "${RUNNER_TEMP}/oidc-public.pem")\"}"
             echo "CHIP_OBJECT_STORAGE_ACCESS_KEY=$(openssl rand -hex 16)"
             echo "CHIP_OBJECT_STORAGE_SECRET_KEY=$(openssl rand -hex 32)"
+            echo "CHIP_ENTERPRISE_ADAPTER_URL=https://integrations.ci.example/chip-capabilities"
+            echo "CHIP_ENTERPRISE_ADAPTER_TOKEN=$(openssl rand -hex 32)"
+            echo "CHIP_RELEASE_SIGNING_PRIVATE_KEY_BASE64=$(base64 -w 0 "${RUNNER_TEMP}/release-private.pem")"
+            echo "CHIP_RELEASE_SIGNING_KEY_ID=ci-release"
           } >> "$GITHUB_ENV"
       - run: npm run typecheck
       - run: npm run lint:all
