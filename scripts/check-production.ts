@@ -4,6 +4,7 @@ import { getRawDb } from '../src/lib/db/connection';
 import { validateCoreSchema } from '../src/lib/db/connection';
 import { validateEdaSchema } from '../src/lib/eda/store';
 import { ensureCommercialSchema } from '../src/lib/commercial/database';
+import { validateProductionCapabilityConfiguration } from '../src/lib/commercial/productionConfiguration';
 
 async function main(): Promise<void> {
 
@@ -48,6 +49,7 @@ if (process.env.NODE_ENV === 'production') {
   requireValue('CHIP_OBJECT_STORAGE_KMS_KEY');
   requireValue('CHIP_OBJECT_STORAGE_ACCESS_KEY');
   requireValue('CHIP_OBJECT_STORAGE_SECRET_KEY');
+  validateProductionCapabilityConfiguration();
   if (process.env.CHIP_ALLOW_DEMO_SEED === 'true') throw new Error('demo seed is forbidden in production');
 }
 

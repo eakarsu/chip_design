@@ -66,7 +66,7 @@ const aiGateLabel = {
 export default function DesignLifecyclePage() {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [workspace, setWorkspace] = useState<WorkspaceBundle | null>(null);
   const [projectId, setProjectId] = useState('');
   const [error, setError] = useState('');
@@ -603,6 +603,7 @@ export default function DesignLifecyclePage() {
         <Box id="ai-phase-brief" sx={{ scrollMarginTop: 24 }}>
           <DecisionBriefView
             brief={phaseBrief}
+            viewerId={user?.id}
             onDecision={phaseBrief.humanStatus === 'pending' ? decidePhaseReview : undefined}
           />
         </Box>

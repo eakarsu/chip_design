@@ -22,9 +22,10 @@ function BulletList({ items, icon = 'check' }: { items: string[]; icon?: 'check'
   return items.length ? <List dense disablePadding>{items.map(item => <ListItem key={item} disableGutters alignItems="flex-start"><ListItemIcon sx={{ minWidth: 32, mt: 0.25 }}>{icons[icon]}</ListItemIcon><ListItemText primary={item} /></ListItem>)}</List> : <Typography variant="body2" color="text.secondary">None reported.</Typography>;
 }
 
-export default function DecisionBriefView({ brief, onDecision }: {
+export default function DecisionBriefView({ brief, onDecision, viewerId }: {
   brief: DecisionBrief;
   onDecision?: (status: 'accepted' | 'rejected', rationale: string) => Promise<void>;
+  viewerId?: string;
 }) {
   const [rationale, setRationale] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -34,6 +35,7 @@ export default function DecisionBriefView({ brief, onDecision }: {
   const lifecyclePhase = CHIP_DESIGN_LIFECYCLE[lifecycleIndex];
   const previousLifecyclePhase = lifecycleIndex > 0 ? CHIP_DESIGN_LIFECYCLE[lifecycleIndex - 1] : null;
   const nextLifecyclePhases = CHIP_DESIGN_LIFECYCLE.slice(lifecycleIndex + 1, lifecycleIndex + 4);
+  const viewerRequestedReview = Boolean(brief.requestedBy && viewerId === brief.requestedBy);
 
   const decide = async (status: 'accepted' | 'rejected') => {
     if (!onDecision || rationale.trim().length < 20) return;
@@ -104,7 +106,7 @@ export default function DecisionBriefView({ brief, onDecision }: {
         <Divider sx={{ my: 2 }} />
         <Box sx={{ p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
           <Stack direction="row" gap={1} alignItems="center"><FactCheck color={brief.humanStatus === 'accepted' ? 'success' : brief.humanStatus === 'rejected' ? 'error' : 'warning'} /><Typography variant="h6" fontWeight={800}>Accountable human decision</Typography><Chip size="small" label={brief.humanStatus} /></Stack>
-          {brief.humanDecision ? <Alert severity={brief.humanStatus === 'accepted' ? 'success' : 'error'} sx={{ mt: 1 }}>{brief.humanDecision.rationale}<br /><small>{brief.humanDecision.decidedBy} · {new Date(brief.humanDecision.decidedAt).toLocaleString()}</small></Alert> : onDecision && brief.id ? <Stack gap={1.5} sx={{ mt: 1.5 }}><TextField label="Decision rationale" helperText="At least 20 characters. Cite the evidence and gates you personally reviewed." multiline minRows={2} value={rationale} onChange={event => setRationale(event.target.value)} /><Stack direction="row" gap={1}><Button variant="contained" color="success" startIcon={<FactCheck />} disabled={submitting || rationale.trim().length < 20} onClick={() => void decide('accepted')}>Accept as advisory input</Button><Button variant="outlined" color="error" startIcon={<Biotech />} disabled={submitting || rationale.trim().length < 20} onClick={() => void decide('rejected')}>Reject analysis</Button></Stack>{decisionError && <Alert severity="error">{decisionError}</Alert>}</Stack> : null}
+          {brief.humanDecision ? <Alert severity={brief.humanStatus === 'accepted' ? 'success' : 'error'} sx={{ mt: 1 }}>{brief.humanDecision.rationale}<br /><small>{brief.humanDecision.decidedBy} · {new Date(brief.humanDecision.decidedAt).toLocaleString()}</small></Alert> : viewerRequestedReview ? <Alert severity="warning" sx={{ mt: 1.5 }}>Independent review required. The engineer who requested this AI brief cannot accept or reject it.</Alert> : onDecision && brief.id ? <Stack gap={1.5} sx={{ mt: 1.5 }}><TextField label="Decision rationale" helperText="At least 20 characters. Cite the evidence and gates you personally reviewed." multiline minRows={2} value={rationale} onChange={event => setRationale(event.target.value)} /><Stack direction="row" gap={1}><Button variant="contained" color="success" startIcon={<FactCheck />} disabled={submitting || rationale.trim().length < 20} onClick={() => void decide('accepted')}>Accept as advisory input</Button><Button variant="outlined" color="error" startIcon={<Biotech />} disabled={submitting || rationale.trim().length < 20} onClick={() => void decide('rejected')}>Reject analysis</Button></Stack>{decisionError && <Alert severity="error">{decisionError}</Alert>}</Stack> : brief.humanStatus === 'pending' ? <Alert severity="warning" sx={{ mt: 1.5 }}>An authenticated independent reviewer must record the disposition.</Alert> : null}
         </Box>
         <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 2 }}>Provider: {brief.provider} · Model: {brief.model} · Prompt: {brief.promptVersion}. AI review is advisory and cannot approve tape-out or replace signoff tools.</Typography>
         <Button component={Link} href={`/governed-ai/lifecycle?projectId=${encodeURIComponent(brief.projectId)}#phase-${encodeURIComponent(lifecyclePhaseId)}`} startIcon={<Timeline />} variant="outlined" sx={{ mt: 2 }}>View exact lifecycle phase</Button>

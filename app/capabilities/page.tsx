@@ -31,6 +31,7 @@ import { assessPlatformCapabilities, type PlatformCapabilityAssessment } from '@
 import { CAPABILITY_ACTIONS } from '@/lib/commercial/capabilityActionCatalog';
 import type { DecisionBrief, WorkspaceBundle } from '@/lib/commercial/types';
 import { useAuth } from '@/lib/auth/context';
+import AiDesignStudio from '@/components/commercial/AiDesignStudio';
 import CapabilityExecutionWorkbench from '@/components/commercial/CapabilityExecutionWorkbench';
 import DecisionBriefView from '@/components/commercial/DecisionBriefView';
 
@@ -82,7 +83,7 @@ const emptyForm: RecordForm = {
 export default function PlatformCapabilitiesPage() {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [workspace, setWorkspace] = useState<WorkspaceBundle | null>(null);
   const [projectId, setProjectId] = useState('');
   const [loading, setLoading] = useState(true);
@@ -90,7 +91,10 @@ export default function PlatformCapabilitiesPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [activeCapability, setActiveCapability] = useState<PlatformCapabilityAssessment | null>(null);
-  const [executionCapability, setExecutionCapability] = useState<PlatformCapabilityAssessment | null>(null);
+  const [executionTarget, setExecutionTarget] = useState<{
+    capability: PlatformCapabilityAssessment;
+    actionId?: string;
+  } | null>(null);
   const [form, setForm] = useState<RecordForm>(emptyForm);
   const [brief, setBrief] = useState<DecisionBrief | null>(null);
 
@@ -278,15 +282,16 @@ export default function PlatformCapabilitiesPage() {
           <Stack direction="row" gap={1} alignItems="center">
             <Hub color="primary" />
             <Typography variant="overline" color="primary" fontWeight={900}>
-              PLATFORM CAPABILITIES
+              GOVERNED AI DESIGN
             </Typography>
           </Stack>
           <Typography component="h1" variant="h3" fontWeight={900}>
-            Chip lifecycle capability center
+            AI chip design studio
           </Typography>
           <Typography color="text.secondary" sx={{ mt: 1, maxWidth: 920 }}>
-            Ten production workspaces connect verification, closure, enterprise controls, power, IP, analog, packaging,
-            silicon feedback, tapeout and cost to the same tenant-bound evidence chain.
+            Seven reimplemented guided workflows connect design intent, primary evidence, governed tools, independent AI
+            challenge, controlled experiments and accountable human decisions. The deeper capability catalog remains
+            available below for specialist work.
           </Typography>
         </Box>
         <Stack direction="row" gap={1} alignItems="flex-start" flexWrap="wrap" useFlexGap>
@@ -305,8 +310,8 @@ export default function PlatformCapabilitiesPage() {
       </Stack>
 
       <Alert severity="info" sx={{ mt: 2 }}>
-        These workspaces retain engineering records, evidence references and governed AI/human decisions. They integrate
-        with the existing tools; they do not fabricate licensed simulator, foundry or signoff results.
+        Every AI design step is visible. The system records concise decision summaries and evidence—not hidden
+        chain-of-thought—and never fabricates licensed simulator, foundry or signoff results.
       </Alert>
       {notice && (
         <Alert severity="success" sx={{ mt: 2 }}>
@@ -336,6 +341,19 @@ export default function PlatformCapabilitiesPage() {
           ))}
         </Select>
       </FormControl>
+
+      <Box sx={{ mt: 3 }}>
+        <AiDesignStudio
+          workspace={workspace}
+          projectId={projectId}
+          onReload={load}
+          onBrief={(nextBrief) => setBrief(nextBrief)}
+          onOpenAction={(reference) => {
+            const capability = capabilities.find((item) => item.id === reference.capabilityId);
+            if (capability) setExecutionTarget({ capability, actionId: reference.actionId });
+          }}
+        />
+      </Box>
 
       <Grid container spacing={2} sx={{ my: 2 }}>
         {[
@@ -462,7 +480,7 @@ export default function PlatformCapabilitiesPage() {
                     variant="contained"
                     color="success"
                     startIcon={<PlayArrow />}
-                    onClick={() => setExecutionCapability(capability)}
+                    onClick={() => setExecutionTarget({ capability })}
                   >
                     Open workbench
                   </Button>
@@ -491,18 +509,23 @@ export default function PlatformCapabilitiesPage() {
       </Grid>
 
       {brief && (
-        <DecisionBriefView brief={brief} onDecision={brief.humanStatus === 'pending' ? decideReview : undefined} />
+        <DecisionBriefView
+          brief={brief}
+          viewerId={user?.id}
+          onDecision={brief.humanStatus === 'pending' ? decideReview : undefined}
+        />
       )}
 
-      {executionCapability && (
+      {executionTarget && (
         <CapabilityExecutionWorkbench
-          capabilityId={executionCapability.id}
-          capabilityTitle={executionCapability.title}
+          capabilityId={executionTarget.capability.id}
+          capabilityTitle={executionTarget.capability.title}
           projectId={projectId}
+          initialActionId={executionTarget.actionId}
           open
-          onClose={() => setExecutionCapability(null)}
+          onClose={() => setExecutionTarget(null)}
           onComplete={async () => {
-            setNotice(`${executionCapability.title} execution was retained as governed project evidence.`);
+            setNotice(`${executionTarget.capability.title} execution was retained as governed project evidence.`);
             await load();
           }}
         />

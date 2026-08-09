@@ -33,7 +33,7 @@ export const openrouter = {
     completions: {
       create(
         body: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
-        options?: { maxRetries?: number; timeout?: number },
+        options?: { maxRetries?: number; timeout?: number; signal?: AbortSignal },
       ) {
         return getOpenRouterClient().chat.completions.create(body, options);
       },
@@ -197,8 +197,35 @@ export async function generateJSONCompletion<T = unknown>(
     reasoning?: { max_tokens: number; exclude: boolean };
   };
 
-  const createStructuredCompletion = (payload: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) =>
-    openrouter.chat.completions.create(payload, { maxRetries: 0, timeout: options?.timeoutMs ?? 60_000 });
+  const configuredTimeoutMs = Number(options?.timeoutMs ?? 60_000);
+  const totalTimeoutMs = Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+    ? configuredTimeoutMs
+    : 60_000;
+  const deadline = Date.now() + totalTimeoutMs;
+  const createStructuredCompletion = async (payload: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) => {
+    const remainingMs = Math.floor(deadline - Date.now());
+    if (remainingMs <= 0) throw new Error('OpenRouter chip-design review timed out before a complete structured response was available.');
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const deadlineReached = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(() => {
+        controller.abort();
+        reject(new Error('OpenRouter chip-design review timed out before a complete structured response was available.'));
+      }, remainingMs);
+    });
+    try {
+      return await Promise.race([
+        openrouter.chat.completions.create(payload, {
+          maxRetries: 0,
+          timeout: remainingMs,
+          signal: controller.signal,
+        }),
+        deadlineReached,
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
+  };
 
   const isZdrStructuredRoutingConflict = (error: unknown) =>
     /no endpoints found.*(?:data policy|zero data retention)/i.test(error instanceof Error ? error.message : '');

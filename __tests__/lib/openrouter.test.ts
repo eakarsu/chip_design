@@ -52,4 +52,19 @@ describe('OpenRouter structured response recovery', () => {
     expect(fallback).not.toHaveProperty('response_format');
     expect(fallback).toMatchObject({ provider: { zdr: true, data_collection: 'deny', require_parameters: false } });
   });
+
+  it('applies one wall-clock timeout budget across the initial and recovery requests', async () => {
+    const create = jest.spyOn(openrouter.chat.completions, 'create')
+      .mockResolvedValueOnce({
+        id: 'empty', object: 'chat.completion', created: 1, model: 'test',
+        choices: [{ index: 0, finish_reason: 'length', logprobs: null, message: { role: 'assistant', content: '', refusal: null } }],
+      } as never)
+      .mockImplementationOnce(() => new Promise(() => undefined) as never);
+
+    const startedAt = Date.now();
+    await expect(generateJSONCompletion('review', { timeoutMs: 30 })).rejects.toThrow(/timed out/i);
+    expect(Date.now() - startedAt).toBeLessThan(250);
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[1][1]?.timeout).toBeLessThanOrEqual(30);
+  });
 });

@@ -56,11 +56,13 @@ describe('capability execution engine', () => {
   it('executes every action contract with its supplied workbench template', async () => {
     for (const capabilityId of PLATFORM_CAPABILITY_IDS) {
       for (const action of CAPABILITY_ACTIONS[capabilityId]) {
+        const input = structuredClone(action.inputTemplate);
+        if (action.id === 'sandbox-rerun') input.edaProjectId = 'eda-project-test';
         const execution = await executeCapabilityAction({
           identity,
           capabilityId,
           actionId: action.id,
-          input: structuredClone(action.inputTemplate),
+          input,
         });
         expect(execution.capabilityId).toBe(capabilityId);
         expect(execution.actionId).toBe(action.id);
@@ -81,5 +83,17 @@ describe('capability execution engine', () => {
         input: {},
       })
     ).rejects.toThrow('Unsupported capability action');
+  });
+
+  it('rejects the sandbox template placeholder before job submission', async () => {
+    const action = CAPABILITY_ACTIONS['ai-ppa-closure'].find((item) => item.id === 'sandbox-rerun')!;
+    await expect(
+      executeCapabilityAction({
+        identity,
+        capabilityId: 'ai-ppa-closure',
+        actionId: action.id,
+        input: structuredClone(action.inputTemplate),
+      })
+    ).rejects.toThrow(/Select a tenant-owned governed EDA project/);
   });
 });

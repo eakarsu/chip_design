@@ -131,7 +131,8 @@ function review(row: Row): DecisionBrief {
     dataGaps: stored.dataGaps ?? [], actions: stored.actions ?? [], evidence: stored.evidence ?? [],
     assumptions: stored.assumptions ?? [], humanReviewGates: stored.humanReviewGates ?? [],
     provider: String(row.provider), model: String(row.model), humanStatus,
-    humanDecision: stored.humanDecision, id: String(row.id), createdAt: String(row.created_at),
+    requestedBy: stored.requestedBy, humanDecision: stored.humanDecision,
+    id: String(row.id), createdAt: String(row.created_at),
   };
 }
 
@@ -354,9 +355,10 @@ export async function createFeatureRecord(identity: EdaIdentity, input: Omit<Fea
 
 export async function saveDecisionBrief(identity: EdaIdentity, brief: Omit<DecisionBrief, 'id' | 'createdAt'>, requestId: string): Promise<DecisionBrief> {
   await ownsProject(identity, brief.projectId); const id = randomUUID(); const timestamp = now();
-  await run('INSERT INTO commercial_ai_reviews (id, tenant_id, project_id, feature, brief_json, provider, model, human_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, identity.tenantId, brief.projectId, brief.feature, json(brief), brief.provider, brief.model, brief.humanStatus, timestamp]);
+  const stored: Omit<DecisionBrief, 'id' | 'createdAt'> = { ...brief, requestedBy: identity.userId };
+  await run('INSERT INTO commercial_ai_reviews (id, tenant_id, project_id, feature, brief_json, provider, model, human_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, identity.tenantId, brief.projectId, brief.feature, json(stored), brief.provider, brief.model, brief.humanStatus, timestamp]);
   await audit(identity, 'create', 'ai_review', id, { projectId: brief.projectId, feature: brief.feature, risk: brief.risk }, requestId);
-  return { ...brief, id, createdAt: timestamp };
+  return { ...stored, id, createdAt: timestamp };
 }
 
 export async function projectReviewContext(identity: EdaIdentity, projectId: string, feature: string): Promise<Record<string, unknown>> {
@@ -390,8 +392,15 @@ export async function decideAiReview(identity: EdaIdentity, id: string, status: 
   const row = await one('SELECT * FROM commercial_ai_reviews WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]);
   if (!row) throw new Error('AI review was not found for this tenant');
   const current = review(row);
+  const requestAudit = current.requestedBy
+    ? undefined
+    : await one('SELECT actor_id FROM commercial_audit_events WHERE tenant_id = ? AND resource = ? AND resource_id = ? AND action = ? ORDER BY created_at ASC LIMIT 1', [identity.tenantId, 'ai_review', id, 'create']);
+  const requestedBy = current.requestedBy ?? (requestAudit ? String(requestAudit.actor_id) : undefined);
+  if (!requestedBy) throw new Error('AI review request provenance is unavailable; generate a new review before disposition');
+  if (requestedBy === identity.userId) throw new Error('Independent reviewer is required for an AI disposition');
+  if (current.humanStatus !== 'pending') throw new Error('AI review was already decided');
   const decidedAt = now();
-  const updated: DecisionBrief = { ...current, humanStatus: status, humanDecision: { rationale, decidedBy: identity.userId, decidedAt } };
+  const updated: DecisionBrief = { ...current, requestedBy, humanStatus: status, humanDecision: { rationale, decidedBy: identity.userId, decidedAt } };
   await run('UPDATE commercial_ai_reviews SET brief_json = ?, human_status = ? WHERE tenant_id = ? AND id = ?', [json(updated), status, identity.tenantId, id]);
   await audit(identity, 'decide', 'ai_review', id, { projectId: current.projectId, status, rationale }, requestId);
   return updated;

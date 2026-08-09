@@ -1,4 +1,36 @@
-# Capability center and AI phase gates
+# AI design studio, capability center and phase gates
+
+## Seven reimplemented workflows
+
+The top of `/capabilities` is now a guided AI Design Studio rather than another
+flat feature catalog. It reimplements seven product areas as connected,
+evidence-driven workflows:
+
+1. AI-guided design intake.
+2. Verification closure.
+3. Timing and PPA closure.
+4. Execution and evidence.
+5. Enterprise integration controls.
+6. Tapeout release.
+7. Resource and cost operations.
+
+The capability-center UI is itself reimplemented as the guided shell for these
+tracks, with the specialist action catalog retained below it rather than
+duplicated into more navigation pages.
+
+Each operational track exposes seven visible steps: human intent, evidence
+baseline, governed tool execution, independent AI challenge, controlled
+experiment, human decision, and retained advancement. The wording, required
+evidence, action set, acceptance criteria, AI role, and human authority are
+specific to the selected track.
+
+A workflow starts when its intent step is retained. Only records and AI reviews
+created after that intent anchor count toward its progress, so an old project
+result cannot silently complete a new workflow. Manual steps are stored through
+the tenant-protected `POST /api/ai-design/steps` endpoint. Tool steps use the
+existing secured execution endpoint; AI steps use the governed decision-brief
+service; and the decision step remains incomplete until a named human accepts
+or rejects the brief with rationale.
 
 `/capabilities` extends the governed workspace with ten production capability
 tracks: verification closure, AI timing/PPA closure, enterprise integrations,
@@ -49,10 +81,15 @@ Production adapter URLs must use HTTPS. The adapter receives a `POST` body with
 `action` and `payload`, and must return a bounded JSON or text receipt.
 
 Tapeout manifest signing activates with
-`CHIP_RELEASE_SIGNING_PRIVATE_KEY_BASE64` and optional
+`CHIP_RELEASE_SIGNING_PRIVATE_KEY_BASE64` and
 `CHIP_RELEASE_SIGNING_KEY_ID`. The workbench canonicalizes and hashes the
 manifest even when signing is not configured, but clearly reports that the
 digest is not a signature.
+
+Production preflight requires all five enterprise adapter paths plus a valid
+release signing key and key identifier. Adapter and signing secrets remain in
+the deployment secret store; they are never generated, returned, or embedded by
+the application.
 
 Licensed SPICE, package SI/PI, foundry DRC/LVS, thermal, extraction, and
 production identity/KMS systems remain external authorities. The workbenches

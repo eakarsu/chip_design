@@ -267,7 +267,7 @@ const num = (value: string) => Number(value);
 export default function CommercialFeaturePage({ feature }: { feature: CommercialFeature }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const config = configurations[feature];
   const [workspace, setWorkspace] = useState<WorkspaceBundle | null>(null);
   const [projectId, setProjectId] = useState('');
@@ -419,7 +419,7 @@ export default function CommercialFeaturePage({ feature }: { feature: Commercial
           {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
         </CardContent></Card>
       )}
-      {brief && <DecisionBriefView brief={brief} onDecision={decideReview} />}
+      {brief && <DecisionBriefView brief={brief} viewerId={user?.id} onDecision={decideReview} />}
       <Box sx={{ mt: 2 }}><Typography variant="caption" color="text.secondary">AI output is advisory. Foundry qualification, signoff evidence and accountable human approval remain mandatory.</Typography></Box>
     </Container>
   );

@@ -88,7 +88,7 @@ const GROUPS: Group[] = [
       { label: 'Design Workspace', href: '/workspace', icon: <Hub /> },
       { label: 'Governed EDA Runs', href: '/workspace/execution', icon: <PrecisionManufacturing /> },
       { label: 'Engineering Operations', href: '/operations', icon: <FactCheck /> },
-      { label: 'Capability Center', href: '/capabilities', icon: <AutoGraph /> },
+      { label: 'AI Design Studio', href: '/capabilities', icon: <AutoGraph /> },
     ],
   },
   {

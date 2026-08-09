@@ -162,6 +162,7 @@ export interface DecisionBrief {
   humanReviewGates: string[];
   provider: string;
   model: string;
+  requestedBy?: string;
   humanStatus: 'pending' | 'accepted' | 'rejected';
   humanDecision?: { rationale: string; decidedBy: string; decidedAt: string };
   createdAt?: string;

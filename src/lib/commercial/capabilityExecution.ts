@@ -480,8 +480,12 @@ export async function executeCapabilityAction(args: {
       });
     }
     case 'sandbox-rerun': {
+      const edaProjectId = stringValue(input.edaProjectId, 'edaProjectId', 100);
+      if (edaProjectId === 'replace-with-governed-eda-project-id') {
+        throw new Error('Select a tenant-owned governed EDA project before submitting the sandbox rerun');
+      }
       const job = createJob(identity, {
-        projectId: stringValue(input.edaProjectId, 'edaProjectId', 100),
+        projectId: edaProjectId,
         kind: z.enum(['yosys', 'openroad']).parse(input.kind),
         idempotencyKey: stringValue(input.idempotencyKey, 'idempotencyKey', 128),
         inputs: z.record(z.string()).parse(input.inputs),

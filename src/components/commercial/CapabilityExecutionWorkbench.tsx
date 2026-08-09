@@ -16,19 +16,71 @@ import {
   Paper,
   Select,
   Stack,
+  Tab,
+  Tabs,
   TextField,
   Typography,
 } from '@mui/material';
+import Grid from '@mui/material/Grid2';
 import { PlayArrow } from '@mui/icons-material';
 import type { PlatformCapabilityId } from '@/lib/commercial/capabilities';
 import { CAPABILITY_ACTIONS } from '@/lib/commercial/capabilityActionCatalog';
 import type { CapabilityExecutionResult, CapabilityVisualization } from '@/lib/commercial/capabilityExecution';
+
+type EdaProjectOption = { id: string; name: string; pdkRef: string; createdAt: string };
 
 const evidenceLines = (value: string) =>
   value
     .split('\n')
     .map((item) => item.trim())
     .filter(Boolean);
+
+function StructuredInputField({
+  name,
+  value,
+  onChange,
+}: {
+  name: string;
+  value: Record<string, unknown> | unknown[];
+  onChange: (value: Record<string, unknown> | unknown[]) => void;
+}) {
+  const serialized = JSON.stringify(value, null, 2);
+  const [draft, setDraft] = useState(serialized);
+  const [error, setError] = useState('');
+
+  useEffect(() => setDraft(serialized), [serialized]);
+
+  const commit = () => {
+    try {
+      const parsed = JSON.parse(draft) as unknown;
+      if (!parsed || typeof parsed !== 'object') throw new Error('Value must be an object or array');
+      if (Array.isArray(value) !== Array.isArray(parsed)) {
+        throw new Error(Array.isArray(value) ? 'Value must remain an array' : 'Value must remain an object');
+      }
+      onChange(parsed as Record<string, unknown> | unknown[]);
+      setError('');
+    } catch (parseError) {
+      setError(parseError instanceof Error ? parseError.message : 'Invalid structured value');
+    }
+  };
+
+  return (
+    <TextField
+      label={name.replaceAll(/[-_]/g, ' ')}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      multiline
+      minRows={Math.min(12, Math.max(4, draft.split('\n').length))}
+      error={Boolean(error)}
+      helperText={
+        error ||
+        `${Array.isArray(value) ? value.length : Object.keys(value).length} structured item(s) · validated on blur`
+      }
+      sx={{ '& textarea': { fontFamily: 'monospace', fontSize: 13 } }}
+    />
+  );
+}
 
 function ExecutionVisualization({ visualization }: { visualization: CapabilityVisualization }) {
   if (visualization.type === 'line' && visualization.points?.length) {
@@ -171,6 +223,7 @@ export default function CapabilityExecutionWorkbench({
   capabilityId,
   capabilityTitle,
   projectId,
+  initialActionId,
   open,
   onClose,
   onComplete,
@@ -178,6 +231,7 @@ export default function CapabilityExecutionWorkbench({
   capabilityId: PlatformCapabilityId;
   capabilityTitle: string;
   projectId: string;
+  initialActionId?: string;
   open: boolean;
   onClose: () => void;
   onComplete: () => Promise<void>;
@@ -186,20 +240,59 @@ export default function CapabilityExecutionWorkbench({
   const [actionId, setActionId] = useState(actions[0].id);
   const action = useMemo(() => actions.find((item) => item.id === actionId) ?? actions[0], [actionId, actions]);
   const [input, setInput] = useState(JSON.stringify(action.inputTemplate, null, 2));
+  const [editorMode, setEditorMode] = useState<'guided' | 'advanced'>('guided');
   const [evidence, setEvidence] = useState('');
   const [execution, setExecution] = useState<CapabilityExecutionResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [edaProjects, setEdaProjects] = useState<EdaProjectOption[]>([]);
+  const [edaProjectsLoading, setEdaProjectsLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    const first = CAPABILITY_ACTIONS[capabilityId][0];
+    const available = CAPABILITY_ACTIONS[capabilityId];
+    const first = available.find((item) => item.id === initialActionId) ?? available[0];
     setActionId(first.id);
     setInput(JSON.stringify(first.inputTemplate, null, 2));
     setEvidence('');
+    setEditorMode('guided');
     setExecution(null);
     setError('');
-  }, [capabilityId, open]);
+  }, [capabilityId, initialActionId, open]);
+
+  useEffect(() => {
+    if (!open || actionId !== 'sandbox-rerun') return;
+    const controller = new AbortController();
+    setEdaProjectsLoading(true);
+    fetch('/api/capabilities/eda-projects', { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message ?? data.error ?? 'Governed EDA projects could not be loaded');
+        const projects = Array.isArray(data.projects) ? data.projects as EdaProjectOption[] : [];
+        setEdaProjects(projects);
+        if (projects[0]) {
+          setInput((current) => {
+            try {
+              const parsed = JSON.parse(current) as Record<string, unknown>;
+              const selected = typeof parsed.edaProjectId === 'string' ? parsed.edaProjectId : '';
+              if (projects.some((project) => project.id === selected)) return current;
+              return JSON.stringify({ ...parsed, edaProjectId: projects[0].id }, null, 2);
+            } catch {
+              return current;
+            }
+          });
+        }
+      })
+      .catch((loadError) => {
+        if (loadError instanceof DOMException && loadError.name === 'AbortError') return;
+        setEdaProjects([]);
+        setError(loadError instanceof Error ? loadError.message : 'Governed EDA projects could not be loaded');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setEdaProjectsLoading(false);
+      });
+    return () => controller.abort();
+  }, [actionId, open]);
 
   const selectAction = (nextId: string) => {
     const next = actions.find((item) => item.id === nextId) ?? actions[0];
@@ -238,6 +331,42 @@ export default function CapabilityExecutionWorkbench({
     }
   };
 
+  const parsedInput = useMemo(() => {
+    try {
+      const parsed = JSON.parse(input) as unknown;
+      return parsed && !Array.isArray(parsed) && typeof parsed === 'object'
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  }, [input]);
+
+  const updateInputField = (name: string, value: unknown) => {
+    if (!parsedInput) return;
+    setInput(JSON.stringify({ ...parsedInput, [name]: value }, null, 2));
+  };
+
+  const sandboxProjectUnavailable = actionId === 'sandbox-rerun' && !edaProjectsLoading && edaProjects.length === 0;
+
+  const importInput = async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > 100_000) {
+      setError('Imported JSON exceeds 100 KB');
+      return;
+    }
+    try {
+      const content = await file.text();
+      const parsed = JSON.parse(content) as unknown;
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object')
+        throw new Error('JSON must contain an object');
+      setInput(JSON.stringify(parsed, null, 2));
+      setError('');
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : 'Input file is not valid JSON');
+    }
+  };
+
   return (
     <Dialog open={open} onClose={() => !busy && onClose()} fullWidth maxWidth="lg">
       <DialogTitle>{capabilityTitle} execution workbench</DialogTitle>
@@ -261,16 +390,109 @@ export default function CapabilityExecutionWorkbench({
             </Select>
           </FormControl>
           <Typography color="text.secondary">{action.description}</Typography>
-          <TextField
-            label="Structured JSON input"
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            multiline
-            minRows={12}
-            maxRows={24}
-            slotProps={{ htmlInput: { spellCheck: false } }}
-            sx={{ '& textarea': { fontFamily: 'monospace', fontSize: 13 } }}
-          />
+          <Stack direction="row" justifyContent="space-between" alignItems="center" gap={1} flexWrap="wrap" useFlexGap>
+            <Tabs value={editorMode} onChange={(_event, value: 'guided' | 'advanced') => setEditorMode(value)}>
+              <Tab value="guided" label="Guided fields" />
+              <Tab value="advanced" label="Expert JSON" />
+            </Tabs>
+            <Stack direction="row" gap={1}>
+              <Button component="label" variant="outlined" size="small">
+                Import JSON
+                <input
+                  hidden
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={(event) => void importInput(event.target.files?.[0])}
+                />
+              </Button>
+              <Button size="small" onClick={() => setInput(JSON.stringify(action.inputTemplate, null, 2))}>
+                Reset template
+              </Button>
+            </Stack>
+          </Stack>
+          {editorMode === 'guided' ? (
+            parsedInput ? (
+              <>
+                {sandboxProjectUnavailable && (
+                  <Alert severity="warning" sx={{ mb: 1.5 }}>
+                    No tenant-owned governed EDA project is available. Create one in Governed EDA Runs before submitting
+                    this sandbox experiment.
+                  </Alert>
+                )}
+                <Grid container spacing={1.5}>
+                {Object.entries(parsedInput).map(([name, value]) => (
+                  <Grid key={name} size={{ xs: 12, md: value && typeof value === 'object' ? 12 : 6 }}>
+                    {name === 'edaProjectId' && actionId === 'sandbox-rerun' ? (
+                      <FormControl fullWidth disabled={edaProjectsLoading || edaProjects.length === 0}>
+                        <InputLabel id="governed-eda-project-label">Governed EDA project</InputLabel>
+                        <Select
+                          labelId="governed-eda-project-label"
+                          label="Governed EDA project"
+                          value={edaProjects.some((project) => project.id === value) ? String(value) : ''}
+                          onChange={(event) => updateInputField(name, event.target.value)}
+                        >
+                          {edaProjects.map((project) => (
+                            <MenuItem key={project.id} value={project.id}>
+                              {project.name} · {project.pdkRef}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    ) : value && typeof value === 'object' ? (
+                      <StructuredInputField
+                        name={name}
+                        value={value as Record<string, unknown> | unknown[]}
+                        onChange={(next) => updateInputField(name, next)}
+                      />
+                    ) : typeof value === 'boolean' ? (
+                      <FormControl fullWidth>
+                        <InputLabel>{name.replaceAll(/[-_]/g, ' ')}</InputLabel>
+                        <Select
+                          label={name.replaceAll(/[-_]/g, ' ')}
+                          value={String(value)}
+                          onChange={(event) => updateInputField(name, event.target.value === 'true')}
+                        >
+                          <MenuItem value="true">true</MenuItem>
+                          <MenuItem value="false">false</MenuItem>
+                        </Select>
+                      </FormControl>
+                    ) : (
+                      <TextField
+                        fullWidth
+                        type={typeof value === 'number' ? 'number' : 'text'}
+                        label={name.replaceAll(/[-_]/g, ' ')}
+                        value={String(value ?? '')}
+                        multiline={typeof value === 'string' && (value.includes('\n') || value.length > 100)}
+                        minRows={
+                          typeof value === 'string' && (value.includes('\n') || value.length > 100) ? 3 : undefined
+                        }
+                        onChange={(event) =>
+                          updateInputField(
+                            name,
+                            typeof value === 'number' ? Number(event.target.value) : event.target.value
+                          )
+                        }
+                      />
+                    )}
+                  </Grid>
+                ))}
+                </Grid>
+              </>
+            ) : (
+              <Alert severity="error">The expert JSON is invalid. Correct it before returning to guided fields.</Alert>
+            )
+          ) : (
+            <TextField
+              label="Structured JSON input"
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              multiline
+              minRows={12}
+              maxRows={24}
+              slotProps={{ htmlInput: { spellCheck: false } }}
+              sx={{ '& textarea': { fontFamily: 'monospace', fontSize: 13 } }}
+            />
+          )}
           <TextField
             label="Primary evidence references (optional, one per line)"
             value={evidence}
@@ -339,7 +561,7 @@ export default function CapabilityExecutionWorkbench({
         <Button disabled={busy} onClick={onClose}>
           Close
         </Button>
-        <Button variant="contained" startIcon={<PlayArrow />} disabled={busy} onClick={() => void run()}>
+        <Button variant="contained" startIcon={<PlayArrow />} disabled={busy || sandboxProjectUnavailable} onClick={() => void run()}>
           {busy ? 'Running…' : 'Run and retain evidence'}
         </Button>
       </DialogActions>

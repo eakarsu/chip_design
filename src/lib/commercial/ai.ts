@@ -105,6 +105,13 @@ const featurePlaybooks: Record<string, string> = {
   'silicon-yield-feedback': `Act as a product and yield engineering lead. Verify lot/wafer/die/test-program provenance, bin definitions, sample size, bench/ATE correlation, guardband changes, characterization conditions, failure-analysis evidence and traceable feedback to requirements or design revisions.`,
   'tapeout-release': `Act as an independent tapeout release authority. Reconcile exact RTL/netlist/layout hashes, PDK and deck locks, signoff scenario coverage, waivers, stream-out verification, foundry checklist items and named approvals. AI must never authorize tapeout.`,
   'resource-cost-optimization': `Act as an EDA infrastructure and program-controls lead. Review license telemetry, compute/storage rates, queue forecasts, run criticality, retention obligations, quotas, cancellation safety, schedule risk and cost assumptions. Do not recommend deleting or cancelling required evidence.`,
+  'ai-design:guided-design-intake': `Act as an independent semiconductor design-intake chair. Reconcile product intent, workloads, interfaces, clocks, power states, PPA guardrails, source/IP provenance and downstream impact evidence. Convert ambiguity into measurable experiments and human-owned gates; never invent a requirement or freeze an architecture.`,
+  'ai-design:verification-closure': `Act as an independent verification-closure challenger. Reconcile requirements, UVM regressions, functional/code/assertion coverage, formal results, failure clusters, waveform references, exclusions and waivers. Refuse closure claims based on aggregate percentages without plan scope and primary report provenance.`,
+  'ai-design:ppa-closure': `Act as an independent MCMM timing/PPA closure challenger. Verify baseline comparability, constraints, path groups, corners, RC/PDK/tool identities, power activity, congestion and DRC before evaluating ECO experiments. Never present a proposal or prediction as a measured improvement.`,
+  'ai-design:execution-evidence': `Act as an execution-provenance and evidence auditor. Trace conclusions to immutable source, constraint, PDK and tool identities, governed job receipts, logs, artifacts, checksums and comparable results. Identify stale evidence and nondeterminism; never accept a conclusion whose producing run cannot be reproduced.`,
+  'ai-design:enterprise-control': `Act as an enterprise integration assurance reviewer. Verify tenant scope, least privilege, endpoint ownership, secret custody, identity/MFA/SCIM behavior, KMS round trips, webhook security, provider receipts, retries and idempotency. Configuration is not activation, and a request is not delivery.`,
+  'ai-design:tapeout-release': `Act as an independent tapeout release challenger with no approval authority. Reconcile the exact design hashes, PDK/deck locks, signoff evidence, waivers, GDS/OASIS verification, manifest signature, approval separation and release-bundle immutability. Missing primary evidence requires a hold.`,
+  'ai-design:resource-cost': `Act as an EDA capacity, cost and schedule challenger. Reconcile license telemetry, queue history, cloud rates, budgets, quotas, retention rules and evidence criticality. Optimize within explicit uncertainty and never recommend cancelling or deleting work required for engineering or release evidence.`,
 };
 
 const outputContract = `Return one concise JSON object under 2,400 output tokens. Every listed top-level field is mandatory. Use at most 4 findings, 6 metrics, 3 sections, 4 tradeoffs, 4 experiments, 4 stop conditions, 5 data gaps, 5 actions, 10 evidence references, 5 assumptions and 5 human gates. Each finding must contain every nested field. Return exactly these fields:
@@ -159,15 +166,15 @@ function sourceRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-function boundedString(value: unknown, fallback: string, max: number): string {
+function boundedString(value: unknown, fallback: string, min: number, max: number): string {
   const text = typeof value === 'string' ? value.trim() : '';
-  return (text || fallback).slice(0, max);
+  return (text.length >= min ? text : fallback).slice(0, max);
 }
 
-function boundedStrings(value: unknown, maxItems: number, maxLength: number): string[] {
+function boundedStrings(value: unknown, maxItems: number, minLength: number, maxLength: number): string[] {
   return Array.isArray(value)
     ? value
-        .filter((item): item is string => typeof item === 'string' && item.trim().length >= 1)
+        .filter((item): item is string => typeof item === 'string' && item.trim().length >= minLength)
         .slice(0, maxItems)
         .map((item) => item.trim().slice(0, maxLength))
     : [];
@@ -180,7 +187,9 @@ function normalizeIncompleteBrief(value: unknown, issues: Array<{ path: string; 
   const sourceRisk = risks.find((item) => item === source.risk) ?? 'high';
   const sourceVerdict = verdicts.find((item) => item === source.verdict) ?? 'insufficient-evidence';
   const verdict = sourceVerdict === 'proceed' ? 'proceed-with-conditions' : sourceVerdict;
-  const rawConfidence = typeof source.confidence === 'number' ? source.confidence : 40;
+  const rawConfidence = typeof source.confidence === 'number' && Number.isFinite(source.confidence)
+    ? source.confidence
+    : 40;
   const confidence = Math.min(
     70,
     Math.max(0, rawConfidence >= 0 && rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence)
@@ -195,10 +204,10 @@ function normalizeIncompleteBrief(value: unknown, issues: Array<{ path: string; 
       return [
         {
           severity: risks.find((risk) => risk === item.severity) ?? sourceRisk,
-          domain: boundedString(item.domain, 'Engineering assurance', 80),
+          domain: boundedString(item.domain, 'Engineering assurance', 2, 80),
           finding: finding.slice(0, 300),
           impact: impact.slice(0, 300),
-          evidenceRefs: boundedStrings(item.evidenceRefs, 4, 300),
+          evidenceRefs: boundedStrings(item.evidenceRefs, 4, 1, 300),
         },
       ];
     })
@@ -221,7 +230,10 @@ function normalizeIncompleteBrief(value: unknown, issues: Array<{ path: string; 
     .map(sourceRecord)
     .flatMap((item) => {
       if (typeof item.label !== 'string' || typeof item.value !== 'string') return [];
-      return [{ label: item.label.slice(0, 100), value: item.value.slice(0, 220) }];
+      const label = item.label.trim();
+      const value = item.value.trim();
+      if (!label || !value) return [];
+      return [{ label: label.slice(0, 100), value: value.slice(0, 220) }];
     })
     .slice(0, 8);
   if (!metrics.length) metrics.push({ label: 'Review confidence', value: `${confidence}% (format-degraded)` });
@@ -231,7 +243,10 @@ function normalizeIncompleteBrief(value: unknown, issues: Array<{ path: string; 
     .flatMap((item) => {
       if (typeof item.title !== 'string' || typeof item.detail !== 'string' || item.detail.trim().length < 10)
         return [];
-      return [{ title: item.title.slice(0, 120), detail: item.detail.slice(0, 600) }];
+      return [{
+        title: boundedString(item.title, 'Engineering assessment', 1, 120),
+        detail: item.detail.trim().slice(0, 600),
+      }];
     })
     .slice(0, 4);
   if (sections.length < 2)
@@ -247,31 +262,32 @@ function normalizeIncompleteBrief(value: unknown, issues: Array<{ path: string; 
         'Use this brief as advisory triage only. Reconcile every retained claim with primary EDA reports before changing the design or release state.',
     });
 
-  const tradeoffs = boundedStrings(source.tradeoffs, 5, 300);
+  const tradeoffs = boundedStrings(source.tradeoffs, 5, 5, 300);
   if (!tradeoffs.length)
     tradeoffs.push(
       'No complete evidence-supported tradeoff statement was returned; compare timing, power, area, congestion, verification effort and schedule before advancing.'
     );
-  const stopConditions = boundedStrings(source.stopConditions, 5, 300);
+  const stopConditions = boundedStrings(source.stopConditions, 5, 5, 300);
   if (!stopConditions.length)
     stopConditions.push(
       'Stop advancement while any required signoff scenario, report provenance or configured regression guardrail remains unverified.'
     );
-  const actions = boundedStrings(source.actions, 6, 300);
+  const actions = boundedStrings(source.actions, 6, 5, 300);
   if (!actions.length)
     actions.push(
       'Reconcile the retained findings against primary reports, identical run configurations and the active corner set.'
     );
-  const gates = boundedStrings(source.humanReviewGates, 6, 300);
+  const gates = boundedStrings(source.humanReviewGates, 6, 5, 300);
   gates.push(
     'An accountable engineer must verify all retained claims because the provider response required deterministic schema completion.'
   );
 
   return briefSchema.parse({
-    headline: boundedString(source.headline, 'Engineering review requires additional evidence', 180),
+    headline: boundedString(source.headline, 'Engineering review requires additional evidence', 5, 180),
     executiveSummary: boundedString(
       source.executiveSummary,
       'The provider returned an incomplete structured review. Valid engineering conclusions were retained conservatively, but the result cannot support signoff or design advancement without direct evidence review.',
+      30,
       900
     ),
     risk: sourceRisk,
@@ -280,42 +296,48 @@ function normalizeIncompleteBrief(value: unknown, issues: Array<{ path: string; 
     signoffPosition: boundedString(
       source.signoffPosition,
       'Hold any signoff-affecting decision until an accountable engineer verifies the primary reports, scenario coverage and run comparability.',
+      20,
       1_000
     ),
     evidenceQuality: {
       grade,
-      score: Math.min(70, Math.max(0, typeof quality.score === 'number' ? quality.score : 35)),
+      score: Math.min(
+        70,
+        Math.max(0, typeof quality.score === 'number' && Number.isFinite(quality.score) ? quality.score : 35)
+      ),
       rationale: boundedString(
         quality.rationale,
         'Evidence quality is capped because the provider response was structurally incomplete and required deterministic completion.',
+        20,
         400
       ),
     },
     findings,
     cornerCoverage: {
-      covered: boundedStrings(coverage.covered, 12, 160),
-      missing: boundedStrings(coverage.missing, 12, 160),
+      covered: boundedStrings(coverage.covered, 12, 1, 160),
+      missing: boundedStrings(coverage.missing, 12, 1, 160),
       assessment: boundedString(
         coverage.assessment,
         'Scenario coverage was not returned in a complete structure; verify active PVT, RC, constraint and operating-mode coverage manually.',
+        20,
         500
       ),
     },
     metrics,
     sections,
     tradeoffs,
-    recommendedExperiments: boundedStrings(source.recommendedExperiments, 5, 300),
+    recommendedExperiments: boundedStrings(source.recommendedExperiments, 5, 5, 300),
     stopConditions,
     dataGaps: [
-      ...boundedStrings(source.dataGaps, 5, 300),
+      ...boundedStrings(source.dataGaps, 5, 5, 300),
       `Provider structure incomplete: ${issues
         .slice(0, 3)
         .map((issue) => issue.path || 'root')
         .join(', ')}`,
     ].slice(0, 6),
     actions,
-    evidence: boundedStrings(source.evidence, 12, 300),
-    assumptions: boundedStrings(source.assumptions, 6, 300),
+    evidence: boundedStrings(source.evidence, 12, 1, 300),
+    assumptions: boundedStrings(source.assumptions, 6, 1, 300),
     humanReviewGates: [...new Set(gates)].slice(0, 6),
   });
 }

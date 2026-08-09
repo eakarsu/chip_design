@@ -225,6 +225,16 @@ describe('commercial chip-design workspace', () => {
       },
       'ai-save'
     );
+    expect(saved.requestedBy).toBe(admin.userId);
+    await expect(
+      decideAiReview(
+        admin,
+        saved.id!,
+        'accepted',
+        'The requester must not be able to approve the AI review they initiated.',
+        'ai-self-decision'
+      )
+    ).rejects.toThrow(/Independent reviewer/);
     const decided = await decideAiReview(
       reviewer,
       saved.id!,
@@ -234,6 +244,15 @@ describe('commercial chip-design workspace', () => {
     );
     expect(decided.humanStatus).toBe('accepted');
     expect(decided.humanDecision?.decidedBy).toBe(reviewer.userId);
+    await expect(
+      decideAiReview(
+        reviewer,
+        saved.id!,
+        'rejected',
+        'A decided AI review must remain immutable and cannot be overwritten.',
+        'ai-repeat-decision'
+      )
+    ).rejects.toThrow(/already decided/);
   });
 
   it('persists tenant-bound operations and requires approved waiver activation', async () => {

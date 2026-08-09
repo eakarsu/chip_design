@@ -39,6 +39,9 @@ evidence.
 - A five-step lifecycle gate at every design phase: execute, retain evidence,
   run an advisory AI challenge, record human disposition, and make the
   accountable advancement decision.
+- A seven-workflow AI Design Studio that visibly connects human intent,
+  versioned evidence, governed tools, independent AI challenge, controlled
+  experiments, human decisions, and retained phase advancement.
 
 ## Start locally
 
