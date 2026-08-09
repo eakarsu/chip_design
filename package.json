@@ -18,6 +18,7 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,mdx}\"",
     "cli": "tsx bin/chip-design.ts",
     "eda:worker": "tsx scripts/eda-worker.ts",
+    "integrations:adapter": "tsx scripts/enterprise-adapter.ts",
     "eda:golden": "tsx scripts/verify-golden.ts",
     "check:production": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=react-server\" tsx scripts/check-production.ts",
     "migrate": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=react-server\" ./scripts/run-compatible-node.sh node_modules/tsx/dist/cli.mjs scripts/migrate.ts",
@@ -30,6 +31,7 @@
     "chip-design": "bin/chip-design.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-kms": "^3.1106.0",
     "@aws-sdk/client-s3": "^3.1105.0",
     "@emotion/cache": "^11.11.0",
     "@emotion/react": "^11.11.4",

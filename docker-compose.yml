@@ -83,6 +83,25 @@ services:
     security_opt: [no-new-privileges:true]
     restart: unless-stopped
 
+  enterprise-adapter:
+    profiles: [enterprise-adapter]
+    build:
+      context: .
+      target: enterprise-adapter
+    env_file: ${CHIP_ADAPTER_ENV_FILE:-.env.adapter}
+    environment:
+      NODE_ENV: production
+      CHIP_ADAPTER_HOST: 0.0.0.0
+      CHIP_ADAPTER_PORT: 3010
+    ports:
+      - "127.0.0.1:${CHIP_ADAPTER_HOST_PORT:-5033}:3010"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
   postgres:
     profiles: [commercial]
     image: postgres:17-alpine

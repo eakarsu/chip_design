@@ -14,6 +14,8 @@ reachable.
 5. `eda-worker`: non-root queue worker connected to an approved restricted
    container engine.
 6. Digest-pinned Yosys/OpenROAD image and approved PDK mounts.
+7. `enterprise-adapter`: independently deployed, bearer-authenticated provider
+   gateway exposed only through `https://integrations.chipdesign.shop`.
 
 ## Deployment sequence
 
@@ -30,6 +32,20 @@ reachable.
    artifact round-trip, route, and browser audits.
 8. Retain the previous stopped web container/image and pre-migration database
    backup until acceptance is recorded.
+
+## Enterprise adapter
+
+Build the `enterprise-adapter` Docker target and keep its provider credentials
+in a dedicated root-owned secret file. The web app receives only
+`CHIP_ENTERPRISE_ADAPTER_URL` and the shared bearer token; GitHub/GitLab, Jira,
+Slack/email, OIDC/SCIM and AWS KMS credentials belong exclusively to the
+adapter container. The endpoint accepts `POST /v1/capabilities` and dispatches
+the five action IDs documented in `CAPABILITY_CENTER.md`.
+
+Use `deploy/nginx/integrations.chipdesign.shop.conf` after the DNS A record has
+been created and the TLS certificate has been issued. Do not activate the web
+release when adapter health succeeds but any requested provider action still
+returns `configuration-required` or `provider-rejected`.
 
 ## Production gates
 

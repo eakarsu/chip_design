@@ -119,6 +119,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: docker build --target runner -t chip-web:ci .
       - run: docker build --target eda-worker -t chip-worker:ci .
+      - run: docker build --target enterprise-adapter -t chip-enterprise-adapter:ci .
 
   approved-eda-golden:
     if: ${{ vars.CHIP_OPENROAD_IMAGE != '' && vars.CHIP_GOLDEN_BUNDLE != '' }}
