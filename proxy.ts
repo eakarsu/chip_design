@@ -17,6 +17,7 @@ const protectedRoutes = [
   '/profile',
   '/workspace',
   '/operations',
+  '/capabilities',
   '/academy',
   '/governed-ai/chat',
   '/governed-ai/lifecycle',

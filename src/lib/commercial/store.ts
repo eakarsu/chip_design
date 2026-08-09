@@ -140,6 +140,10 @@ async function ownsProject(identity: EdaIdentity, projectId: string): Promise<vo
   if (!found) throw new Error('Project was not found for this tenant');
 }
 
+export async function assertWorkspaceProjectOwnership(identity: EdaIdentity, projectId: string): Promise<void> {
+  await ownsProject(identity, projectId);
+}
+
 async function audit(identity: EdaIdentity, action: string, resource: string, resourceId: string, details: unknown, requestId: string): Promise<void> {
   await run('INSERT INTO commercial_audit_events (id, tenant_id, actor_id, action, resource, resource_id, details_json, request_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     [randomUUID(), identity.tenantId, identity.userId, action, resource, resourceId, json(details), requestId, now()]);

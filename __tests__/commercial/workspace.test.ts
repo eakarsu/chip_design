@@ -11,6 +11,7 @@ import type { EdaIdentity } from '@/lib/eda/identity';
 import {
   createApproval,
   createArtifact,
+  createFeatureRecord,
   createPpaSnapshot,
   createRtlImpact,
   decideAiReview,
@@ -133,6 +134,34 @@ describe('commercial chip-design workspace', () => {
     );
     expect(approved.status).toBe('approved');
     expect(approved.decidedBy).toBe(reviewer.userId);
+  });
+
+  it('persists the new lifecycle capability records in the tenant evidence chain', async () => {
+    const projectId = (await workspaceBundle(admin)).projects[0].id;
+    const record = await createFeatureRecord(
+      admin,
+      {
+        projectId,
+        feature: 'verification-closure',
+        recordType: 'coverage',
+        title: 'Atlas functional coverage closure',
+        status: 'active',
+        payload: {
+          owner: 'verification-lead',
+          metricSummary: 'Functional coverage 96.2%; two reviewed holes remain.',
+          lifecyclePhases: ['verification'],
+        },
+        evidence: ['verification/run-42/coverage-summary.rpt'],
+      },
+      'capability-record'
+    );
+    expect(record.feature).toBe('verification-closure');
+    expect((await workspaceBundle(admin)).featureRecords.find((item) => item.id === record.id)).toMatchObject({
+      projectId,
+      recordType: 'coverage',
+      status: 'active',
+    });
+    expect((await workspaceBundle(otherTenant)).featureRecords.find((item) => item.id === record.id)).toBeUndefined();
   });
 
   it('grounds AI review context by tenant and records an accountable human decision', async () => {

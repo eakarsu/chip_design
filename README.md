@@ -32,6 +32,13 @@ evidence.
 - A tenant-scoped engineering-operations cockpit for MCMM signoff readiness,
   expiring waivers, accountable review items, CI evidence, notification rules,
   SPICE matrices, commercial-tool adapters, and enterprise control records.
+- Ten evidence-backed capability workspaces with 50 executable local,
+  governed-job, and enterprise-adapter actions for verification closure, AI
+  PPA closure, integrations, power/thermal, RTL/IP, analog/mixed-signal,
+  chiplets, silicon yield, tapeout, and resource/cost operations.
+- A five-step lifecycle gate at every design phase: execute, retain evidence,
+  run an advisory AI challenge, record human disposition, and make the
+  accountable advancement decision.
 
 ## Start locally
 
@@ -69,4 +76,5 @@ enforces those references but never fabricates them.
 
 See [DEPLOYMENT.md](DEPLOYMENT.md), [EDA_OPERATIONS.md](EDA_OPERATIONS.md),
 [ENGINEERING_OPERATIONS.md](ENGINEERING_OPERATIONS.md),
+[CAPABILITY_CENTER.md](CAPABILITY_CENTER.md),
 [SECURITY.md](SECURITY.md), and [COMMERCIAL_WORKSPACE.md](COMMERCIAL_WORKSPACE.md).
