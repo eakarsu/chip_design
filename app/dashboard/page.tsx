@@ -3,20 +3,50 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Container, Typography, Grid, Card, CardActionArea, CardContent, Box, Chip,
-  Paper, Skeleton, IconButton, Tooltip, Alert,
+  Container,
+  Typography,
+  Grid,
+  Card,
+  CardActionArea,
+  CardContent,
+  Box,
+  Chip,
+  Paper,
+  Skeleton,
+  IconButton,
+  Tooltip,
+  Alert,
 } from '@mui/material';
 import {
-  AccountTree, Compare, Speed, Memory, Insights, Timeline, ViewInAr,
-  Settings, AutoGraph, MenuBook, GridOn, FlashOn, ImportExport,
-  Architecture, History as HistoryIcon, BugReport, Search, Gavel,
-  Star, StarBorder, Replay, PlayArrow,
-  Hub, School, PrecisionManufacturing,
+  AccountTree,
+  Compare,
+  Speed,
+  Memory,
+  Insights,
+  Timeline,
+  ViewInAr,
+  Settings,
+  AutoGraph,
+  MenuBook,
+  GridOn,
+  FlashOn,
+  ImportExport,
+  Architecture,
+  History as HistoryIcon,
+  BugReport,
+  Search,
+  Gavel,
+  Star,
+  StarBorder,
+  Replay,
+  PlayArrow,
+  FactCheck,
+  Hub,
+  School,
+  PrecisionManufacturing,
 } from '@mui/icons-material';
 import type { ReactNode } from 'react';
-import {
-  listFavorites, toggleFavorite, isFavorite, subscribeFavorites, type FavoriteId,
-} from '@/lib/favorites';
+import { listFavorites, toggleFavorite, isFavorite, subscribeFavorites, type FavoriteId } from '@/lib/favorites';
 import { useAuth } from '@/lib/auth/context';
 
 /**
@@ -41,49 +71,64 @@ const SECTIONS: Section[] = [
     cards: [
       {
         title: 'Chip Design Workspace',
-        description: 'Unified projects, RTL, constraints, PDK corners, PPA runs, artifacts, ECOs, approvals and evidence.',
+        description:
+          'Unified projects, RTL, constraints, PDK corners, PPA runs, artifacts, ECOs, approvals and evidence.',
         icon: <Hub />,
         href: '/workspace',
         badge: 'control plane',
       },
       {
         title: 'Governed EDA Runs',
-        description: 'Execute real digest-pinned Yosys synthesis and SKY130 RTL-to-GDS jobs with audit evidence and checksummed artifacts.',
+        description:
+          'Execute real digest-pinned Yosys synthesis and SKY130 RTL-to-GDS jobs with audit evidence and checksummed artifacts.',
         icon: <PrecisionManufacturing />,
         href: '/workspace/execution',
         badge: 'real EDA',
       },
       {
+        title: 'Engineering Operations',
+        description:
+          'Custom runs, comparisons, signoff readiness, waivers, collaboration, CI, SPICE, adapters and enterprise controls.',
+        icon: <FactCheck />,
+        href: '/operations',
+        badge: 'new',
+      },
+      {
         title: 'Continuous PPA Tracking',
-        description: 'Compare commit-level power, performance, area, timing, congestion and DRC against governed thresholds.',
+        description:
+          'Compare commit-level power, performance, area, timing, congestion and DRC against governed thresholds.',
         icon: <AutoGraph />,
         href: '/batch09/cfs/continuous-ppa-tracking-across-commits',
         badge: '2-pass AI',
       },
       {
         title: 'RTL Change Impact',
-        description: 'Trace an RTL change into affected timing paths, power, congestion and DRC with reviewable evidence.',
+        description:
+          'Trace an RTL change into affected timing paths, power, congestion and DRC with reviewable evidence.',
         icon: <Compare />,
         href: '/batch09/cfs/ai-agent-that-ties-rtl-change-to-downstream-pnr-impact-predi',
         badge: '2-pass AI',
       },
       {
         title: 'SPICE Regression Review',
-        description: 'Review PVT coverage, numerical deltas, failed simulations and golden-model provenance before signoff.',
+        description:
+          'Review PVT coverage, numerical deltas, failed simulations and golden-model provenance before signoff.',
         icon: <BugReport />,
         href: '/batch09/cfs/gpu-accelerated-spice-net-regression-dashboard',
         badge: 'PVT',
       },
       {
         title: 'Live Co-Design Review',
-        description: 'Capture design decisions, unresolved comments, accountable owners, artifacts and session exit gates.',
+        description:
+          'Capture design decisions, unresolved comments, accountable owners, artifacts and session exit gates.',
         icon: <AccountTree />,
         href: '/batch09/cfs/live-co-design-sessions-with-cursor-share',
         badge: 'review',
       },
       {
         title: 'Design Library Registry',
-        description: 'Qualify versioned cells and IP by PDK, license, checksums, characterization and DRC/LVS evidence.',
+        description:
+          'Qualify versioned cells and IP by PDK, license, checksums, characterization and DRC/LVS evidence.',
         icon: <MenuBook />,
         href: '/batch09/cfs/marketplace-of-community-design-libraries',
         badge: 'qualified IP',
@@ -93,44 +138,118 @@ const SECTIONS: Section[] = [
   {
     title: 'Design Flow',
     cards: [
-      { title: 'Full Flow',        description: 'Run synthesis → PnR → signoff end-to-end.',          icon: <AccountTree />, href: '/flow' },
-      { title: 'OpenLane',         description: 'OpenLane-style RTL→GDS simulation: designs, 11-stage runs, reports.', icon: <Architecture />, href: '/openlane', badge: 'new' },
-      { title: 'Algorithms',       description: 'Browse the full algorithm catalog and run any one.', icon: <Memory />,      href: '/algorithms' },
-      { title: 'Compare',          description: 'Head-to-head comparison of multiple algorithms.',    icon: <Compare />,     href: '/compare', badge: 'updated' },
-      { title: 'Sweep',            description: 'Parameter sweeps across a design space.',            icon: <AutoGraph />,   href: '/sweep' },
-      { title: 'Auto-Tune',        description: 'Automatic parameter optimization via Bayes-opt.',    icon: <FlashOn />,     href: '/autotune' },
-      { title: 'Stream',           description: 'Live-streaming algorithm output.',                   icon: <Timeline />,    href: '/stream' },
-      { title: 'Import',           description: 'Load LEF/DEF/Verilog netlists.',                     icon: <ImportExport />, href: '/import' },
+      {
+        title: 'Full Flow',
+        description: 'Run synthesis → PnR → signoff end-to-end.',
+        icon: <AccountTree />,
+        href: '/flow',
+      },
+      {
+        title: 'OpenLane',
+        description: 'OpenLane-style RTL→GDS simulation: designs, 11-stage runs, reports.',
+        icon: <Architecture />,
+        href: '/openlane',
+        badge: 'new',
+      },
+      {
+        title: 'Algorithms',
+        description: 'Browse the full algorithm catalog and run any one.',
+        icon: <Memory />,
+        href: '/algorithms',
+      },
+      {
+        title: 'Compare',
+        description: 'Head-to-head comparison of multiple algorithms.',
+        icon: <Compare />,
+        href: '/compare',
+        badge: 'updated',
+      },
+      { title: 'Sweep', description: 'Parameter sweeps across a design space.', icon: <AutoGraph />, href: '/sweep' },
+      {
+        title: 'Auto-Tune',
+        description: 'Automatic parameter optimization via Bayes-opt.',
+        icon: <FlashOn />,
+        href: '/autotune',
+      },
+      { title: 'Stream', description: 'Live-streaming algorithm output.', icon: <Timeline />, href: '/stream' },
+      { title: 'Import', description: 'Load LEF/DEF/Verilog netlists.', icon: <ImportExport />, href: '/import' },
     ],
   },
   {
     title: 'Analysis',
     cards: [
-      { title: 'Congestion',   description: 'Routing-congestion heatmaps.',                        icon: <GridOn />,     href: '/congestion' },
-      { title: 'IR Drop',      description: 'Power-grid IR-drop analysis and hotspot finding.',    icon: <FlashOn />,    href: '/ir-drop' },
-      { title: 'Timing',       description: 'Static timing analysis (STA) and slack reports.',     icon: <Speed />,      href: '/timing' },
-      { title: 'Pin Assign',   description: 'Automatic IO-pin placement on the die boundary.',     icon: <Settings />,   href: '/pin-assignment' },
-      { title: 'Library',      description: 'Standard-cell library browser.',                      icon: <MenuBook />,   href: '/library' },
+      { title: 'Congestion', description: 'Routing-congestion heatmaps.', icon: <GridOn />, href: '/congestion' },
+      {
+        title: 'IR Drop',
+        description: 'Power-grid IR-drop analysis and hotspot finding.',
+        icon: <FlashOn />,
+        href: '/ir-drop',
+      },
+      {
+        title: 'Timing',
+        description: 'Static timing analysis (STA) and slack reports.',
+        icon: <Speed />,
+        href: '/timing',
+      },
+      {
+        title: 'Pin Assign',
+        description: 'Automatic IO-pin placement on the die boundary.',
+        icon: <Settings />,
+        href: '/pin-assignment',
+      },
+      { title: 'Library', description: 'Standard-cell library browser.', icon: <MenuBook />, href: '/library' },
     ],
   },
   {
     title: 'Reports & Insights',
     cards: [
-      { title: 'Visualizations', description: '2D/3D design visualization.',                       icon: <ViewInAr />,   href: '/visualizations' },
-      { title: 'Analytics',      description: 'Usage and performance analytics.',                  icon: <Insights />,   href: '/analytics' },
-      { title: 'History',        description: 'Past algorithm runs and their results.',            icon: <HistoryIcon />,    href: '/history' },
-      { title: 'Benchmarks',     description: 'Benchmark scores and known results.',               icon: <Gavel />,      href: '/benchmarks' },
-      { title: 'Architectures',  description: 'Chip architecture catalog.',                        icon: <Architecture />, href: '/architectures' },
+      {
+        title: 'Visualizations',
+        description: '2D/3D design visualization.',
+        icon: <ViewInAr />,
+        href: '/visualizations',
+      },
+      { title: 'Analytics', description: 'Usage and performance analytics.', icon: <Insights />, href: '/analytics' },
+      {
+        title: 'History',
+        description: 'Past algorithm runs and their results.',
+        icon: <HistoryIcon />,
+        href: '/history',
+      },
+      { title: 'Benchmarks', description: 'Benchmark scores and known results.', icon: <Gavel />, href: '/benchmarks' },
+      {
+        title: 'Architectures',
+        description: 'Chip architecture catalog.',
+        icon: <Architecture />,
+        href: '/architectures',
+      },
     ],
   },
   {
     title: 'Resources',
     cards: [
-      { title: 'Chip Design Academy', description: 'Open your graded curriculum, evidence labs, progress, diagnostic and capstone workspace.', icon: <School />, href: '/academy', badge: '21 labs' },
-      { title: 'Learning Library', description: 'Browse the complete chip-design curriculum, glossary and engineering references.', icon: <MenuBook />, href: '/learn' },
-      { title: 'Products',   description: 'Product lineup.',                      icon: <Memory />,   href: '/products' },
-      { title: 'AI Features',description: 'AI-assisted workflows and copilots.', icon: <FlashOn />,  href: '/ai-features', badge: 'new' },
-      { title: 'Admin',      description: 'Administrative settings.',             icon: <Settings />, href: '/admin' },
+      {
+        title: 'Chip Design Academy',
+        description: 'Open your graded curriculum, evidence labs, progress, diagnostic and capstone workspace.',
+        icon: <School />,
+        href: '/academy',
+        badge: '21 labs',
+      },
+      {
+        title: 'Learning Library',
+        description: 'Browse the complete chip-design curriculum, glossary and engineering references.',
+        icon: <MenuBook />,
+        href: '/learn',
+      },
+      { title: 'Products', description: 'Product lineup.', icon: <Memory />, href: '/products' },
+      {
+        title: 'AI Features',
+        description: 'AI-assisted workflows and copilots.',
+        icon: <FlashOn />,
+        href: '/ai-features',
+        badge: 'new',
+      },
+      { title: 'Admin', description: 'Administrative settings.', icon: <Settings />, href: '/admin' },
     ],
   },
 ];
@@ -184,13 +303,15 @@ export default function DashboardPage() {
         setRuns([]);
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [authLoading, isAuthenticated]);
 
   const fmtTime = (iso: string) => {
     const d = new Date(iso);
     const diff = Date.now() - d.getTime();
-    if (diff < 60_000)   return 'just now';
+    if (diff < 60_000) return 'just now';
     if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
     if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
     return d.toLocaleDateString();
@@ -213,14 +334,16 @@ export default function DashboardPage() {
           </Typography>
           <Paper variant="outlined" sx={{ p: 2 }}>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-              {favorites.map(id => {
+              {favorites.map((id) => {
                 const [cat, alg] = id.split(':');
                 return (
                   <Chip
                     key={id}
                     label={`${alg.replace(/_/g, ' ')} · ${cat.replace(/_/g, ' ')}`}
                     onClick={() => router.push(`/algorithms?category=${cat}&algorithm=${alg}`)}
-                    onDelete={() => { toggleFavorite(id); }}
+                    onDelete={() => {
+                      toggleFavorite(id);
+                    }}
                     icon={<Star fontSize="small" />}
                     color="primary"
                     variant="outlined"
@@ -239,18 +362,12 @@ export default function DashboardPage() {
           <Typography variant="h5" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
             <HistoryIcon /> Recent Runs
           </Typography>
-          <Chip
-            label="View all →"
-            clickable
-            size="small"
-            onClick={() => router.push('/history')}
-            variant="outlined"
-          />
+          <Chip label="View all →" clickable size="small" onClick={() => router.push('/history')} variant="outlined" />
         </Box>
 
         {runs === null && (
           <Grid container spacing={2}>
-            {[0, 1, 2, 3, 4].map(i => (
+            {[0, 1, 2, 3, 4].map((i) => (
               <Grid item xs={12} sm={6} md={4} lg={3} key={i}>
                 <Skeleton variant="rounded" height={96} />
               </Grid>
@@ -268,7 +385,7 @@ export default function DashboardPage() {
 
         {runs !== null && runs.length > 0 && (
           <Grid container spacing={2}>
-            {runs.map(run => {
+            {runs.map((run) => {
               const favId = `${run.category}:${run.algorithm}` as FavoriteId;
               const starred = favorites.includes(favId);
               return (
@@ -294,7 +411,14 @@ export default function DashboardPage() {
                       />
                       <Typography
                         variant="body2"
-                        sx={{ fontFamily: 'monospace', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        sx={{
+                          fontFamily: 'monospace',
+                          fontWeight: 600,
+                          flex: 1,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
                       >
                         {run.algorithm.replace(/_/g, ' ')}
                       </Typography>
@@ -334,13 +458,13 @@ export default function DashboardPage() {
         )}
       </Box>
 
-      {SECTIONS.map(section => (
+      {SECTIONS.map((section) => (
         <Box key={section.title} sx={{ mb: 5 }}>
           <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>
             {section.title}
           </Typography>
           <Grid container spacing={2}>
-            {section.cards.map(card => (
+            {section.cards.map((card) => (
               <Grid item xs={12} sm={6} md={4} lg={3} key={card.title}>
                 <Card
                   sx={{

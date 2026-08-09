@@ -19,6 +19,10 @@ measured implementation evidence.
 - Approvals: target, independent reviewer, rationale, state, and timestamp.
 - Feature records and audit events: source-specific operational evidence and
   append-only accountability.
+- Operation records: signoff checks, waivers, collaboration actions,
+  notifications, SCM/CI connections, SPICE matrices, tool adapters, member
+  ownership, identity metadata, entitlements, and customer-managed key
+  references.
 
 ## Storage
 
@@ -36,7 +40,8 @@ review gates. Raw provider JSON is never the primary user experience.
 
 ## Execution
 
-Use **Run governed EDA** to submit the included Yosys or full SKY130 reference
-case. The execution ledger shows queue status, progress, tool provenance,
-errors, and downloadable checksummed artifacts. Customer designs use the same
-contract after their PDK and license references are approved.
+Use **Run governed EDA** for the included reference cases, or **New custom run**
+to upload RTL/SDC and generate bounded Yosys or ORFS inputs. The execution
+ledger links to live bounded logs, stage progress, provenance, normalized
+metrics, inline text-report preview, and checksummed artifacts. Run comparison
+keeps missing or non-comparable metrics explicit.

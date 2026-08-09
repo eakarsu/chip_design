@@ -24,9 +24,10 @@ function pool(): Pool {
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
       allowExitOnIdle: true,
-      ssl: process.env.CHIP_COMMERCIAL_DB_SSL === 'require'
-        ? { rejectUnauthorized: process.env.CHIP_COMMERCIAL_DB_SSL_VERIFY !== 'false' }
-        : undefined,
+      ssl:
+        process.env.CHIP_COMMERCIAL_DB_SSL === 'require'
+          ? { rejectUnauthorized: process.env.CHIP_COMMERCIAL_DB_SSL_VERIFY !== 'false' }
+          : undefined,
     });
   }
   return global.__chipCommercialPool;
@@ -37,15 +38,23 @@ function postgresSql(sql: string): string {
   return sql.replace(/\?/g, () => `$${++index}`);
 }
 
-export async function all<T extends QueryResultRow = QueryResultRow>(sql: string, values: unknown[] = []): Promise<T[]> {
+export async function all<T extends QueryResultRow = QueryResultRow>(
+  sql: string,
+  values: unknown[] = []
+): Promise<T[]> {
   await ensureCommercialSchema();
   if (commercialDatabaseBackend === 'postgres') {
     return (await pool().query<T>(postgresSql(sql), values)).rows;
   }
-  return getRawDb().prepare(sql).all(...values) as T[];
+  return getRawDb()
+    .prepare(sql)
+    .all(...values) as T[];
 }
 
-export async function one<T extends QueryResultRow = QueryResultRow>(sql: string, values: unknown[] = []): Promise<T | undefined> {
+export async function one<T extends QueryResultRow = QueryResultRow>(
+  sql: string,
+  values: unknown[] = []
+): Promise<T | undefined> {
   const rows = await all<T>(sql, values);
   return rows[0];
 }
@@ -55,7 +64,9 @@ export async function run(sql: string, values: unknown[] = []): Promise<number> 
   if (commercialDatabaseBackend === 'postgres') {
     return (await pool().query(postgresSql(sql), values)).rowCount ?? 0;
   }
-  return getRawDb().prepare(sql).run(...values).changes;
+  return getRawDb()
+    .prepare(sql)
+    .run(...values).changes;
 }
 
 const schemaSql = `
@@ -151,6 +162,18 @@ const schemaSql = `
   );
   CREATE INDEX IF NOT EXISTS commercial_audit_tenant_idx ON commercial_audit_events(tenant_id, created_at);
 
+  CREATE TABLE IF NOT EXISTS commercial_operation_records (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, project_id TEXT,
+    category TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL,
+    status TEXT NOT NULL, owner_id TEXT NOT NULL, parent_id TEXT,
+    payload_json TEXT NOT NULL, evidence_json TEXT NOT NULL, due_at TEXT,
+    created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS commercial_operations_tenant_category_idx
+    ON commercial_operation_records(tenant_id, category, updated_at);
+  CREATE INDEX IF NOT EXISTS commercial_operations_tenant_project_idx
+    ON commercial_operation_records(tenant_id, project_id, updated_at);
+
   CREATE TABLE IF NOT EXISTS academy_enrollments (
     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, user_id TEXT NOT NULL,
     path_slug TEXT NOT NULL, status TEXT NOT NULL, diagnostic_score INTEGER,
@@ -209,27 +232,41 @@ async function ensurePostgresSchema(client: PoolClient): Promise<void> {
 }
 
 const requiredCommercialTables = [
-  'commercial_projects', 'commercial_constraint_sets', 'commercial_corners',
-  'commercial_ppa_snapshots', 'commercial_rtl_impacts', 'commercial_artifacts',
-  'commercial_approvals', 'commercial_ecos', 'commercial_feature_records',
-  'commercial_ai_reviews', 'commercial_audit_events',
-  'academy_enrollments', 'academy_progress', 'academy_submissions',
-  'academy_assessments', 'academy_capstones', 'academy_tutor_messages',
+  'commercial_projects',
+  'commercial_constraint_sets',
+  'commercial_corners',
+  'commercial_ppa_snapshots',
+  'commercial_rtl_impacts',
+  'commercial_artifacts',
+  'commercial_approvals',
+  'commercial_ecos',
+  'commercial_feature_records',
+  'commercial_ai_reviews',
+  'commercial_audit_events',
+  'commercial_operation_records',
+  'academy_enrollments',
+  'academy_progress',
+  'academy_submissions',
+  'academy_assessments',
+  'academy_capstones',
+  'academy_tutor_messages',
 ];
 
 function validateSqliteSchema(db: SqliteDatabase): void {
   // Academy tables deliberately share this governed database but do not use
   // the commercial_ prefix. Validate the complete required table set.
   const rows = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>;
-  const present = new Set(rows.map(row => row.name));
-  const missing = requiredCommercialTables.filter(table => !present.has(table));
+  const present = new Set(rows.map((row) => row.name));
+  const missing = requiredCommercialTables.filter((table) => !present.has(table));
   if (missing.length) throw new Error(`commercial database migration required; missing: ${missing.join(', ')}`);
 }
 
 async function validatePostgresSchema(client: PoolClient): Promise<void> {
-  const result = await client.query<{ table_name: string }>("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'");
-  const present = new Set(result.rows.map(row => row.table_name));
-  const missing = requiredCommercialTables.filter(table => !present.has(table));
+  const result = await client.query<{ table_name: string }>(
+    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+  );
+  const present = new Set(result.rows.map((row) => row.table_name));
+  const missing = requiredCommercialTables.filter((table) => !present.has(table));
   if (missing.length) throw new Error(`commercial database migration required; missing: ${missing.join(', ')}`);
 }
 
@@ -239,14 +276,18 @@ export async function ensureCommercialSchema(): Promise<void> {
       if (commercialDatabaseBackend === 'postgres') {
         const client = await pool().connect();
         try {
-          if (process.env.NODE_ENV === 'production' && process.env.CHIP_ALLOW_SCHEMA_MIGRATION !== 'true') await validatePostgresSchema(client);
+          if (process.env.NODE_ENV === 'production' && process.env.CHIP_ALLOW_SCHEMA_MIGRATION !== 'true')
+            await validatePostgresSchema(client);
           else await ensurePostgresSchema(client);
-        } finally { client.release(); }
+        } finally {
+          client.release();
+        }
       } else {
-        if (process.env.NODE_ENV === 'production' && process.env.CHIP_ALLOW_SCHEMA_MIGRATION !== 'true') validateSqliteSchema(getRawDb());
+        if (process.env.NODE_ENV === 'production' && process.env.CHIP_ALLOW_SCHEMA_MIGRATION !== 'true')
+          validateSqliteSchema(getRawDb());
         else ensureSqliteSchema(getRawDb());
       }
-    })().catch(error => {
+    })().catch((error) => {
       global.__chipCommercialSchemaReady = undefined;
       throw error;
     });

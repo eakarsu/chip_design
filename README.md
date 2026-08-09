@@ -27,6 +27,11 @@ evidence.
   ZDR policy enforcement, bounded timeouts, and professional rendering.
 - Academy diagnostics, labs, submissions, grading, capstone evidence, and
   instructor review.
+- Custom RTL/SDC ingestion, governed run detail, live bounded logs, artifact
+  preview, and normalized baseline-versus-candidate metric comparison.
+- A tenant-scoped engineering-operations cockpit for MCMM signoff readiness,
+  expiring waivers, accountable review items, CI evidence, notification rules,
+  SPICE matrices, commercial-tool adapters, and enterprise control records.
 
 ## Start locally
 
@@ -63,4 +68,5 @@ foundry rule versions, and accountable signoff owners. The platform records and
 enforces those references but never fabricates them.
 
 See [DEPLOYMENT.md](DEPLOYMENT.md), [EDA_OPERATIONS.md](EDA_OPERATIONS.md),
+[ENGINEERING_OPERATIONS.md](ENGINEERING_OPERATIONS.md),
 [SECURITY.md](SECURITY.md), and [COMMERCIAL_WORKSPACE.md](COMMERCIAL_WORKSPACE.md).

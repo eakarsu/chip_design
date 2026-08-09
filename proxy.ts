@@ -16,6 +16,7 @@ const protectedRoutes = [
   '/admin',
   '/profile',
   '/workspace',
+  '/operations',
   '/academy',
   '/governed-ai/chat',
   '/governed-ai/lifecycle',
@@ -37,7 +38,7 @@ export function proxy(request: NextRequest) {
   const token = request.cookies.get('auth-token')?.value;
   const demoRouteAllowed = commercialDemoPageAllowed(pathname);
 
-  if (protectedRoutes.some(route => pathname.startsWith(route)) && !token && !demoRouteAllowed) {
+  if (protectedRoutes.some((route) => pathname.startsWith(route)) && !token && !demoRouteAllowed) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(loginUrl);
