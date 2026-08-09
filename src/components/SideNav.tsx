@@ -54,7 +54,6 @@ import {
   FactCheck,
   BugReport,
   PrecisionManufacturing,
-  ArrowBack,
   Hub,
   School,
   SmartToy,
@@ -343,17 +342,6 @@ export default function SideNav({ open, onClose, variant = 'permanent' }: SideNa
         </Box>
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-        <Tooltip title="Go back to the previous page">
-          <Button
-            size="small"
-            startIcon={<ArrowBack />}
-            onClick={() => router.back()}
-            aria-label="Go back"
-            sx={{ minWidth: 0, px: 1 }}
-          >
-            Back
-          </Button>
-        </Tooltip>
         <Tooltip title="Search">
           <IconButton size="small" onClick={() => setSearchOpen(true)} aria-label="search">
             <SearchIcon fontSize="small" />

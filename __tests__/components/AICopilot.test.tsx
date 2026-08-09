@@ -30,6 +30,29 @@ describe('AICopilot', () => {
     expect(screen.getByRole('button', { name: 'Run AI Review' })).toBeEnabled();
   });
 
+  it('keeps the AI sidebar heading and design environment when using Back', () => {
+    render(
+      <ThemeProvider theme={lightTheme}>
+        <AICopilot title="AI chip-design session" />
+      </ThemeProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'AI Copilot' }));
+    expect(screen.getByRole('heading', { name: 'AI chip-design session' })).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: '16nm AI accelerator' }));
+    const input = screen.getByPlaceholderText<HTMLInputElement>('Ask me anything about chip design...');
+    expect(input.value).toContain('2,048 MACs');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to design workspace' }));
+    expect(screen.queryByRole('heading', { name: 'AI chip-design session' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'AI Copilot' }));
+    expect(screen.getByRole('heading', { name: 'AI chip-design session' })).toBeVisible();
+    expect(screen.getByPlaceholderText<HTMLInputElement>('Ask me anything about chip design...').value)
+      .toContain('2,048 MACs');
+  });
+
   it('shows the executable chip-completion path after a user sends a request', () => {
     const originalFetch = global.fetch;
     global.fetch = jest.fn(() => new Promise<Response>(() => {})) as unknown as jest.MockedFunction<typeof fetch>;

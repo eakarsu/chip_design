@@ -22,7 +22,7 @@ import {
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
-import CloseIcon from '@mui/icons-material/Close';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import DeleteIcon from '@mui/icons-material/Delete';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import ShuffleIcon from '@mui/icons-material/Shuffle';
@@ -338,6 +338,11 @@ export default function AICopilot({ designContext, embedded = false, title = 'AI
     navigator.clipboard.writeText(content);
   };
 
+  // Closing the drawer keeps this mounted, so the selected quick prompt,
+  // active lifecycle phase, draft, and conversation remain available when
+  // the engineer returns to the AI design session.
+  const handleBackToDesign = () => setOpen(false);
+
   const composer = (
     <Box sx={{ p: 2, bgcolor: 'background.paper' }}>
       <Typography variant="caption" color="text.secondary" fontWeight={800}>
@@ -410,13 +415,23 @@ export default function AICopilot({ designContext, embedded = false, title = 'AI
           <AppBar position="static" elevation={0}>
             <Toolbar>
               <SmartToyIcon sx={{ mr: 2 }} />
-              <Typography variant="h6" sx={{ flexGrow: 1 }}>
+              <Typography component="h2" variant="h6" sx={{ flexGrow: 1 }}>
                 {title}
               </Typography>
-              <IconButton color="inherit" onClick={handleClear}>
+              <IconButton color="inherit" onClick={handleClear} aria-label="Clear AI conversation">
                 <DeleteIcon />
               </IconButton>
-              {!embedded && <IconButton color="inherit" onClick={() => setOpen(false)} aria-label="Close AI chat"><CloseIcon /></IconButton>}
+              {!embedded && (
+                <Button
+                  color="inherit"
+                  startIcon={<ArrowBackIcon />}
+                  onClick={handleBackToDesign}
+                  aria-label="Back to design workspace"
+                  sx={{ ml: 0.5, whiteSpace: 'nowrap' }}
+                >
+                  Back
+                </Button>
+              )}
             </Toolbar>
           </AppBar>
 
@@ -531,7 +546,14 @@ export default function AICopilot({ designContext, embedded = false, title = 'AI
             return <Box sx={{ mx: 2, mb: 1.5, p: 2, border: 1, borderColor: 'primary.main', borderRadius: 2, bgcolor: 'action.hover' }}>
               <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={1}>
                 <Box><Typography variant="overline" color="primary" fontWeight={900}>PATH TO COMPLETE THE CHIP</Typography><Typography variant="h6" fontWeight={850}>You are at phase {currentPhase.order}: {currentPhase.title}</Typography><Typography variant="body2" color="text.secondary">The AI answer is advisory for this phase. Complete its measured deliverables and gate before advancing.</Typography></Box>
-                <Stack direction="row" gap={1}><Button onClick={() => window.history.back()} variant="outlined" size="small">Back</Button><Button component={Link} href={lifecyclePhaseHref} variant="contained" size="small">Open this phase</Button></Stack>
+                <Stack direction="row" gap={1}>
+                  {embedded ? (
+                    <Button component={Link} href={lifecycleHref} variant="outlined" size="small">Back to lifecycle</Button>
+                  ) : (
+                    <Button onClick={handleBackToDesign} variant="outlined" size="small">Back to design</Button>
+                  )}
+                  <Button component={Link} href={lifecyclePhaseHref} variant="contained" size="small">Open this phase</Button>
+                </Stack>
               </Stack>
               <Stack direction="row" gap={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
                 {upcoming.map((phase, index) => <Chip key={phase.id} color={index === 0 ? 'primary' : 'default'} variant={index === 0 ? 'filled' : 'outlined'} label={`${phase.order}. ${phase.title}${'progress' in phase && phase.progress ? ` · ${phase.progress}%` : ''}`} />)}
