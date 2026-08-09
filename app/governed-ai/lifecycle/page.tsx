@@ -523,7 +523,9 @@ export default function DesignLifecyclePage() {
                         <Button
                           key={`${phase.id}-${tool.route}`}
                           component={Link}
-                          href={tool.route}
+                          href={tool.label === 'AI accelerator co-design'
+                            ? `/architectures?projectId=${encodeURIComponent(profile.project.id)}#ai-accelerator-lab`
+                            : tool.route}
                           variant="outlined"
                           title={tool.purpose}
                         >

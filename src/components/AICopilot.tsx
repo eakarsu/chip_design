@@ -75,7 +75,7 @@ Produce a professional end-to-end engineering plan covering architecture, block 
 - Signoff corners: ss_0p72v_125c setup, ff_0p88v_m40c hold, tt_0p80v_25c power
 - Quality: DRC/LVS/antenna = 0; IR drop ≤7%; EM current density within foundry limits
 
-Build the complete architecture and implementation plan. Include bandwidth arithmetic, MAC utilization, SRAM banking, NoC topology, dataflow, clock gating, power domains, CDC, SDC/UPF examples, verification and performance models, physical hierarchy, floorplan dimensions, PDN assumptions, MCMM scenarios, DFT/MBIST, thermal and IR/EM validation, PPA tradeoffs, experiments, stop conditions and human signoff gates.`,
+Begin with the website's AI Accelerator Co-Design Lab at /architectures#ai-accelerator-lab. Compare coarse TPU-style, fine GPU-style and splittable arrays; weight-stationary versus output-stationary dataflow; scratchpad versus cache; pipelineable logic versus recurrence-limited timing; and ASIC versus FPGA economics. Then build the complete architecture and implementation plan. Include bandwidth arithmetic, MAC utilization, SRAM banking, NoC topology, clock gating, power domains, CDC, SDC/UPF examples, verification and performance models, physical hierarchy, floorplan dimensions, PDN assumptions, MCMM scenarios, DFT/MBIST, thermal and IR/EM validation, PPA tradeoffs, experiments, stop conditions and human signoff gates.`,
   },
   {
     label: '40nm medical MCU',

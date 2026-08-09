@@ -95,9 +95,9 @@ export const CHIP_DESIGN_LIFECYCLE: LifecyclePhaseDefinition[] = [
     route: '/architectures',
     tools: [
       {
-        label: 'Architecture designer',
+        label: 'AI accelerator co-design',
         route: '/architectures',
-        purpose: 'Evaluate and select a concrete chip architecture.',
+        purpose: 'Co-design systolic compute, memory, communication, timing and implementation economics.',
       },
       { label: 'SRAM planner', route: '/sram-planner', purpose: 'Size and organize on-chip memory.' },
       { label: 'NoC / flow analysis', route: '/flow', purpose: 'Run the end-to-end design-flow model.' },

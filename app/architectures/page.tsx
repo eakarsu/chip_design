@@ -2,11 +2,12 @@ import { Container, Box, Typography, Grid, Card, CardContent, Divider } from '@m
 import Hero from '@/components/Hero';
 import FeatureGrid from '@/components/FeatureGrid';
 import CodeTabs from '@/components/CodeTabs';
+import AcceleratorArchitectureLab from '@/components/AcceleratorArchitectureLab';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Architectures',
-  description: 'Deep dive into NeuralChip architecture: tensor cores, memory hierarchy, and custom silicon innovations.',
+  title: 'AI Accelerator Architecture Co-Design',
+  description: 'Co-design systolic compute, memory, communication, pipelines, power and implementation choices with bounded analysis and AI review.',
 };
 
 const architectureFeatures = [
@@ -108,12 +109,14 @@ export default function ArchitecturesPage() {
   return (
     <>
       <Hero
-        title="Architecture Deep Dive"
-        subtitle="Explore the cutting-edge silicon innovations powering next-generation AI workloads"
+        title="AI Accelerator Architecture Co-Design"
+        subtitle="Turn workload intent into measurable compute, memory, communication and timing decisions"
         backgroundGradient={false}
       />
 
       <Container maxWidth="lg" sx={{ py: { xs: 6, md: 10 } }}>
+        <AcceleratorArchitectureLab />
+
         {/* Core Architecture */}
         <Box sx={{ mb: 10 }}>
           <Typography variant="h4" sx={{ fontWeight: 600, mb: 4 }}>

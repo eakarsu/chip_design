@@ -43,6 +43,10 @@ evidence.
   connect human intent, versioned evidence, governed tools, independent AI
   challenges, controlled experiments, human decisions, and retained phase
   advancement.
+- An AI Accelerator Co-Design Lab that turns workload shapes into explicit
+  systolic-array, SRAM, bandwidth, pipeline, cache/scratchpad, ASIC/FPGA and
+  GPU/TPU/splittable tradeoffs, then sends the bounded calculations to an
+  evidence-aware phase-2 AI architecture review.
 
 ## Start locally
 
