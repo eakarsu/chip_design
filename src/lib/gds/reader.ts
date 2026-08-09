@@ -22,8 +22,6 @@
  * Unknown record types are skipped (with a warning) so contemporary tools'
  * extensions don't break the parse.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import type {
   GdsARef, GdsBoundary, GdsElement, GdsLibrary, GdsPath, GdsPoint,
   GdsSRef, GdsStructure, GdsText, GdsTransform,

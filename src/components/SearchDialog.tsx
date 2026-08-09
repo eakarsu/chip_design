@@ -24,6 +24,8 @@ import {
   Code as AlgorithmIcon,
   Public as PageIcon,
   TrendingUp as TrendingIcon,
+  School as KnowledgeIcon,
+  MenuBook as GlossaryIcon,
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import { useRouter } from 'next/navigation';
@@ -72,6 +74,10 @@ export default function SearchDialog({ open, onClose }: SearchDialogProps) {
         return <DocIcon fontSize="small" />;
       case 'page':
         return <PageIcon fontSize="small" />;
+      case 'knowledge':
+        return <KnowledgeIcon fontSize="small" />;
+      case 'glossary':
+        return <GlossaryIcon fontSize="small" />;
       default:
         return <SearchIcon fontSize="small" />;
     }
@@ -120,7 +126,7 @@ export default function SearchDialog({ open, onClose }: SearchDialogProps) {
           <InputBase
             autoFocus
             fullWidth
-            placeholder="Search algorithms, docs, and pages..."
+            placeholder="Search chip concepts, glossary, tools, docs and algorithms…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             sx={{ flex: 1, fontSize: '1.1rem' }}

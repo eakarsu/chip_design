@@ -590,7 +590,7 @@ export function dummyFillInsertion(params: {
   };
 }
 
-export default {
+const comprehensiveAlgorithms = {
   // Legalization
   tetrisLegalization,
   abacusLegalization,
@@ -617,3 +617,5 @@ export default {
   // CMP
   dummyFillInsertion,
 };
+
+export default comprehensiveAlgorithms;

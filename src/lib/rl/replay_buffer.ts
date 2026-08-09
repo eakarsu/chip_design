@@ -18,8 +18,6 @@
  * The Python trainer polls `GET /api/rl/sample?batch=64` when available
  * (UI wires that up in a follow-up), or reads directly from the DB.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { algorithmRuns } from '@/lib/db';
 
 export interface Transition {

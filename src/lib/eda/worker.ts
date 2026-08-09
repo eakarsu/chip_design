@@ -19,6 +19,27 @@ export interface DockerInvocation {
   timeoutMs: number;
 }
 
+function configuredToolBinary(kind: EdaJob['kind']): string {
+  const variable = kind === 'yosys' ? 'CHIP_YOSYS_BINARY' : 'CHIP_OPENROAD_BINARY';
+  const configured = process.env[variable]?.trim() || kind;
+  if (!/^(?:\/[A-Za-z0-9._-]+)+$|^[A-Za-z0-9._-]+$/.test(configured)) {
+    throw new Error(`${variable} contains an unsafe executable path`);
+  }
+  return configured;
+}
+
+function orfsCommand(): string {
+  return [
+    'set -euo pipefail',
+    'flow_root=/OpenROAD-flow-scripts/flow',
+    'test -f "$flow_root/Makefile"',
+    'make -C "$flow_root" DESIGN_CONFIG=/input/config.mk FLOW_VARIANT=governed RESULTS_DIR=/output/results REPORTS_DIR=/output/reports LOG_DIR=/output/logs OBJECTS_DIR=/output/objects all',
+    // ORFS objects are restart intermediates and can be hundreds of MB. The
+    // governed record retains final layouts, reports, logs and checksums.
+    'rm -rf /output/objects',
+  ].join(' && ');
+}
+
 function containerUser(): string {
   const configured = process.env.CHIP_EDA_CONTAINER_USER;
   if (configured) {
@@ -44,21 +65,27 @@ export function buildDockerInvocation(job: EdaJob): DockerInvocation {
   }
   const memory = process.env.CHIP_EDA_MEMORY_LIMIT ?? '4g';
   const cpus = process.env.CHIP_EDA_CPU_LIMIT ?? '2';
-  if (!/^\d+(?:\.\d+)?[kmg]?$/i.test(memory) || !/^\d+(?:\.\d+)?$/.test(cpus)) {
+  const pids = process.env.CHIP_EDA_PIDS_LIMIT ?? '512';
+  if (!/^\d+(?:\.\d+)?[kmg]?$/i.test(memory) || !/^\d+(?:\.\d+)?$/.test(cpus)
+    || !/^\d{1,5}$/.test(pids) || Number(pids) < 64 || Number(pids) > 4096) {
     throw new Error('invalid worker resource configuration');
   }
+  const useOrfs = job.kind === 'openroad' && fs.existsSync(path.join(inputDirectory, 'config.mk'));
+  const command = useOrfs
+    ? ['/bin/bash', '-lc', orfsCommand()]
+    : job.kind === 'yosys'
+      ? [configuredToolBinary(job.kind), '-q', '-s', `/input/${script}`]
+      : [configuredToolBinary(job.kind), '-no_init', `/input/${script}`];
   const args = [
     'run', '--rm', '--network=none', '--read-only',
     '--cap-drop=ALL', '--security-opt=no-new-privileges:true',
-    '--pids-limit=128', `--memory=${memory}`, `--cpus=${cpus}`,
+    `--pids-limit=${pids}`, `--memory=${memory}`, `--cpus=${cpus}`,
     `--user=${containerUser()}`,
     '--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=256m',
     '--mount', `type=bind,src=${inputDirectory},dst=/input,readonly`,
     '--mount', `type=bind,src=${outputDirectory},dst=/output`,
-    '--workdir=/output', job.toolImage,
-    ...(job.kind === 'yosys'
-      ? ['yosys', '-q', '-s', '/input/flow.ys']
-      : ['openroad', '-no_init', '/input/flow.tcl']),
+    '--env=HOME=/tmp', '--workdir=/output', job.toolImage,
+    ...command,
   ];
   return { command: 'docker', args, timeoutMs: Math.min(86_400, job.expectedCpuSeconds + 60) * 1000 };
 }

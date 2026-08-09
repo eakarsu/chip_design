@@ -15,8 +15,6 @@
  * `services/ml-service/design_state.py` and is generated from this file's
  * JSON schema via a small codegen step (`npm run gen:design-schema`).
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { createHash } from 'crypto';
 import type { Cell, Net, Wire } from '@/types/algorithms';
 

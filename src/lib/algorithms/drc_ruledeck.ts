@@ -18,8 +18,6 @@
  * A rule deck runs over a flat list of `Geometry` records (layer, rect)
  * that the DEF/LEF layer produces.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 export interface Rect { xl: number; yl: number; xh: number; yh: number; }
 
 export interface Geometry {

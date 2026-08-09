@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rateLimit';
+import { openRouterProviderPreferences } from '@/lib/openrouter';
 
 // Apply pass 5: rate-limit added (mechanical, matches /api/ai pattern)
 function getClientId(request: NextRequest): string {
@@ -62,6 +63,7 @@ Respond with JSON:
       },
       body: JSON.stringify({
         model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3-haiku',
+        provider: openRouterProviderPreferences(),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt },

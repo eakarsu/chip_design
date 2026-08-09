@@ -46,6 +46,7 @@ out/
 .vite/
 .turbo/
 *.log
+*.tsbuildinfo
 
 # OS / IDE
 .DS_Store

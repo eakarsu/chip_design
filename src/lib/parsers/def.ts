@@ -22,8 +22,6 @@
  * make up one micron. We store both the raw DBU integers and resolved
  * micron floats, so callers don't need to know the scale.
  */
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 export interface DefUnits { dbuPerMicron: number; }
 
 export interface DefDieArea {

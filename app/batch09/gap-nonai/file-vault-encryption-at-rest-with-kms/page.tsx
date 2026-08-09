@@ -1,11 +1,12 @@
 // // === Batch 09 Gaps & Frontend Mounts ===
 'use client';
 import { useState } from 'react';
+import ProfessionalAIResult from '@/components/ai/ProfessionalAIResult';
 
 export default function FileVaultEncryptionAtRestWithKmsPage() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState('');
 
   const run = async () => {
@@ -42,11 +43,7 @@ export default function FileVaultEncryptionAtRestWithKmsPage() {
         {loading ? 'Running...' : 'Run AI'}
       </button>
       {error && <div style={{ color: 'red', marginTop: 12 }}>{error}</div>}
-      {result && (
-        <pre style={{ marginTop: 16, padding: 12, background: '#f4f4f4', borderRadius: 6, overflow: 'auto', maxHeight: 500 }}>
-{JSON.stringify(result, null, 2)}
-        </pre>
-      )}
+      {result != null && <ProfessionalAIResult title="Encryption control assessment" result={result} />}
     </div>
   );
 }

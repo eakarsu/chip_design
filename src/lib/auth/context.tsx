@@ -26,10 +26,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const checkSession = async () => {
     try {
-      const res = await fetch('/api/auth/me');
+      const res = await fetch('/api/auth/me', {
+        cache: 'no-store',
+        credentials: 'same-origin',
+      });
       if (res.ok) {
         const data = await res.json();
-        setState({ user: data.user, isAuthenticated: true, isLoading: false });
+        setState({
+          user: data.user ?? null,
+          isAuthenticated: Boolean(data.authenticated && data.user),
+          isLoading: false,
+        });
       } else {
         setState({ user: null, isAuthenticated: false, isLoading: false });
       }
@@ -42,6 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
@@ -81,7 +89,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
     } finally {
       setState({ user: null, isAuthenticated: false, isLoading: false });
     }

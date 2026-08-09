@@ -319,7 +319,6 @@ function StepRow({
 /** Per-kind small arg form. Keep it minimal — we only expose the fields
  *  defined in `OpenROADStep`. Anything more advanced uses raw_tcl. */
 function StepArgs({ step, onPatch }: { step: OpenROADStep; onPatch: (p: Partial<OpenROADStep>) => void }) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const p = (k: string, v: any) => onPatch({ [k]: v } as any);
 
   switch (step.kind) {

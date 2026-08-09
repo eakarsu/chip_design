@@ -3,6 +3,9 @@ import path from 'path';
 import { getRawDb } from '../src/lib/db/connection';
 import { validateCoreSchema } from '../src/lib/db/connection';
 import { validateEdaSchema } from '../src/lib/eda/store';
+import { ensureCommercialSchema } from '../src/lib/commercial/database';
+
+async function main(): Promise<void> {
 
 function requireValue(name: string): string {
   const value = process.env[name]?.trim();
@@ -32,14 +35,32 @@ if (process.env.NODE_ENV === 'production') {
   requireValue('CHIP_OIDC_AUDIENCE');
   const keyRing = JSON.parse(requireValue('CHIP_OIDC_PUBLIC_KEYS_JSON')) as Record<string, string>;
   if (!Object.keys(keyRing).length) throw new Error('OIDC public key ring cannot be empty');
+  const internalKeyId = requireValue('CHIP_OIDC_INTERNAL_KEY_ID');
+  requireValue('CHIP_OIDC_INTERNAL_PRIVATE_KEY_BASE64');
+  if (!keyRing[internalKeyId]) throw new Error('internal OIDC signing key is missing from the public key ring');
   requirePinnedImage('CHIP_YOSYS_IMAGE');
   requirePinnedImage('CHIP_OPENROAD_IMAGE');
+  if (!/^postgres(?:ql)?:\/\//i.test(requireValue('CHIP_COMMERCIAL_DATABASE_URL'))) {
+    throw new Error('CHIP_COMMERCIAL_DATABASE_URL must use PostgreSQL in production');
+  }
+  requireValue('CHIP_OBJECT_STORAGE_BUCKET');
+  requireValue('CHIP_OBJECT_STORAGE_ENDPOINT');
+  requireValue('CHIP_OBJECT_STORAGE_KMS_KEY');
+  requireValue('CHIP_OBJECT_STORAGE_ACCESS_KEY');
+  requireValue('CHIP_OBJECT_STORAGE_SECRET_KEY');
   if (process.env.CHIP_ALLOW_DEMO_SEED === 'true') throw new Error('demo seed is forbidden in production');
 }
 
 const database = getRawDb();
 validateCoreSchema(database);
 validateEdaSchema(database);
+await ensureCommercialSchema();
 const integrity = database.pragma('integrity_check') as Array<{ integrity_check: string }>;
 if (integrity[0]?.integrity_check !== 'ok') throw new Error('database integrity check failed');
-console.log('Configuration and database checks passed');
+console.log('Configuration, tenant workspace, and database checks passed');
+}
+
+main().catch(error => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});

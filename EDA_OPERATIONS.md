@@ -1,84 +1,54 @@
 # Governed EDA operations
 
-## Supported boundary
+## Reference flow
 
-The local TypeScript algorithms, parsers, visualizers, and fallback reports are
-educational analysis. The governed service accepts UTF-8 input bundles for
-Yosys (`flow.ys`) or OpenROAD (`flow.tcl`) jobs up to the configured 25 MiB/64
-file intake ceiling. The default output ceiling is 250 MiB, job CPU expectation
-is capped at 24 hours, and retention is 1–365 days. Increase these only after a
-capacity and abuse review.
+`fixtures/eda/sky130_gcd` contains synthesizable RTL, SDC, Yosys commands, and
+an ORFS configuration. It is also available from **Workspace → Governed EDA
+Runs**.
 
-The service records every input checksum, immutable tool image digest, approved
-PDK digest/license reference, actor/tenant/project, attempts, artifacts,
-metrics, and audit-chain hash. Idempotency prevents an application retry from
-creating a different run under the same key. Jobs over 600 expected CPU seconds
-wait for an administrator other than the submitting editor to approve them.
+The production reference uses:
 
-## Worker containment
-
-Run the worker against a dedicated rootless container engine. The worker's data
-path must be the same absolute host path visible to that engine. Never mount the
-machine's general-purpose/rootful Docker socket. The child command enforces:
-
-- digest-pinned images, non-root UID/GID, no network, no capabilities, and
-  `no-new-privileges`;
-- read-only root filesystem/toolchain and input mount, a distinct output mount,
-  bounded tmpfs, CPU, memory, PID, output, log, and wall-clock limits;
-- persisted lease renewal, cancellation, bounded retries, stale-worker recovery,
-  artifact checksums, and retention sweeping.
-
-Production direct calls to the legacy host OpenROAD/Yosys wrappers fail closed.
-Fallback algorithms remain available locally and are labeled `ranReal=false`.
-
-## Identity and permissions
-
-Production accepts RS256 OIDC bearer tokens only. Issuer, audience, expiration,
-not-before, key id, subject, tenant, and role are validated against a rotating
-public-key ring. `viewer` can read tenant projects/jobs/audit, `editor` can also
-submit ordinary work, and `admin` can create/submit and approve expensive work.
-Provisioning, group-to-role mapping, MFA, key rotation, and deprovisioning are
-owned by the organization's IdP.
-
-## Migrate, check, backup, restore
-
-Run migration as a one-off deployment task; normal web/worker startup validates
-schema without changing it.
-
-```bash
-NODE_ENV=production CHIP_ALLOW_SCHEMA_MIGRATION=true npm run migrate
-NODE_ENV=production npm run check:production
-npm run backup:eda -- /absolute/new/backup-2026-07-19
-npm run restore:verify -- /absolute/backup-2026-07-19
+```text
+openroad/orfs@sha256:eae643bb3ae0c6facc88fabee0e08760932504bedc3a719326536025183c5bd2
 ```
 
-Backup uses SQLite's online backup API, copies artifact objects, and writes file
-checksums. Verification checks every file, SQLite integrity, and every tenant's
-audit hash chain. A real restore drill must restore into an isolated service,
-start a worker, download a checksum-matched artifact, and record RTO/RPO and
-operator approval. Copy backup bundles to encrypted, access-controlled,
-versioned storage with monitored retention.
+The deployed proof completed Yosys, floorplan, PDN, placement, CTS, global and
+detailed routing, extraction, IR analysis, antenna checks, final reporting, and
+GDS merge. Detailed routing and antenna checks finished with zero violations.
 
-## Golden and signoff boundary
+Independent proof artifacts:
 
-The checked-in tiny reference proves the comparator: tool/PDK provenance,
-runtime ceiling, exact artifact signature, and tolerances for timing, DRC,
-IR-drop, congestion, and HPWL. It deliberately uses non-runnable placeholder
-image/PDK digests. An organization must supply licensed/approved artifacts on a
-self-hosted runner and store the witnessed observation.
+- Final GDS: `c98566b1db51f6da11d15e01c075b2f5d09ece8f4a5ca08fc385250464533fff`
+- Final DEF: `2bfb7d1bc50052d4b9d30b86ebe2c31f1cd2b631915d596bec0f7dfc6304276e`
+- Final ODB: `cfce08390c1d137562ce9f3984a3dd792e0abf7fef0d2a48bb31114f4295e7b2`
 
-Results are sensitive to parser precision, units, random seeds, platform,
-threading, extraction corners, Liberty/LEF semantics, and simplified models.
-No local test establishes LVS/DRC/STA/IR/EM equivalence to a foundry-qualified
-deck or a commercial golden tool. Tape-out decisions require PDK-owner license
-approval, reproducible container attestation, representative large-design
-performance baselines, foundry-qualified rule decks/corners, tolerance review,
-and signoff by qualified physical-design and security engineers.
+The deployed queued run reproduced the DEF and ODB hashes and retained 104
+checksummed artifacts. GDS stream metadata may vary byte-for-byte; compare the
+OpenDB database, reports, and normalized layout signatures for reproducibility.
 
-## Incident response
+## Job lifecycle
 
-On suspected cross-tenant access, container escape, PDK leakage, checksum drift,
-or audit-chain failure: stop claims, revoke the worker engine credential, retain
-database/object snapshots and engine logs, rotate affected IdP/tool registry
-credentials, notify data/PDK owners, and do not resume until scope and integrity
-are independently established.
+1. Create a tenant-bound project with PDK digest and license reference.
+2. Submit inputs with an idempotency key.
+3. Jobs over the configured cost threshold require independent admin approval.
+4. A worker atomically claims the job and renews its lease.
+5. The tool runs without network access in a read-only, non-root container with
+   CPU, memory, process, wall-clock, input, and output limits.
+6. Completion records artifact paths, sizes, SHA-256 hashes, tool digest, PDK
+   digest, and audit-chain events.
+7. Retention sweeps remove expired bytes while retaining the audit record.
+
+## Commercial signoff integration
+
+Mount licensed PDK and deck material read-only, identify it by approved digest,
+and keep license enforcement outside the web process. Commercial tool adapters
+must submit through the same durable job contract and return normalized metrics
+plus original signed reports. Do not copy proprietary files into Git or Docker
+images.
+
+## Operational alerts
+
+Alert on expired worker leases, repeated retries, audit-chain failure, object
+upload failure, KMS health, storage capacity, PostgreSQL backup age, digest
+changes, route-audit regression, and jobs whose result lacks required signoff
+artifacts.

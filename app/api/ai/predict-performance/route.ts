@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getEvents } from '@/lib/analytics';
 import { rateLimit } from '@/lib/rateLimit';
+import { openRouterProviderPreferences } from '@/lib/openrouter';
 
 // Apply pass 5: rate-limit added (mechanical, matches /api/ai pattern)
 function getClientId(request: NextRequest): string {
@@ -64,6 +65,7 @@ Predict:
       },
       body: JSON.stringify({
         model: process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet',
+        provider: openRouterProviderPreferences(),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt },

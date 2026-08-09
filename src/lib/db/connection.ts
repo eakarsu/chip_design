@@ -16,9 +16,7 @@ import { getSeedData } from './seed';
 type DrizzleDb = ReturnType<typeof drizzle<typeof schema>>;
 
 declare global {
-  // eslint-disable-next-line no-var
   var __chipDb: DrizzleDb | undefined;
-  // eslint-disable-next-line no-var
   var __chipDbRaw: Database.Database | undefined;
 }
 
