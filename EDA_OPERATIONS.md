@@ -26,6 +26,34 @@ The deployed queued run reproduced the DEF and ODB hashes and retained 104
 checksummed artifacts. GDS stream metadata may vary byte-for-byte; compare the
 OpenDB database, reports, and normalized layout signatures for reproducibility.
 
+## Local verified toolchain
+
+The local reference runner uses native Yosys plus the official ORFS image. On
+Apple silicon the image runs as `linux/amd64`; this is slower than native Linux
+but uses the supported OpenROAD distribution rather than an unsupported macOS
+build. The runner resolves Colima's host-mount boundary automatically and syncs
+evidence back into `build/eda/sky130-gcd/`.
+
+The x86-64 post-CTS repair subprocess is not executable under the current ARM
+Colima emulator. For this bounded GCD reference, the local runner therefore
+requires the preceding CTS check to show no setup/hold violations, skips that
+redundant repair subprocess, and checks routed timing again. Native x86-64 Linux
+continues to execute the complete repair sequence.
+
+```bash
+npm run eda:doctor
+npm run eda:best-flow
+```
+
+The local runner currently pins:
+
+```text
+openroad/orfs@sha256:d62222129f808c92b6cc7f5db59d1e867581cf6e7fff0370ece133e395be222a
+```
+
+This local digest is intentionally recorded separately from the deployed proof
+digest above. A new local run does not retroactively change deployed evidence.
+
 ## Job lifecycle
 
 1. Create a tenant-bound project with PDK digest and license reference.

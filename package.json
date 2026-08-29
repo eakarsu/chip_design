@@ -18,6 +18,8 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,mdx}\"",
     "cli": "tsx bin/chip-design.ts",
     "eda:worker": "tsx scripts/eda-worker.ts",
+    "eda:doctor": "./scripts/run-best-chip-flow.sh doctor",
+    "eda:best-flow": "./scripts/run-best-chip-flow.sh all",
     "integrations:adapter": "tsx scripts/enterprise-adapter.ts",
     "eda:golden": "tsx scripts/verify-golden.ts",
     "check:production": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=react-server\" tsx scripts/check-production.ts",

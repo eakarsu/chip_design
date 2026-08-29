@@ -69,6 +69,18 @@ npm run check:production
 npm run audit:production
 ```
 
+## Run the recommended open-source flow
+
+```bash
+npm run eda:doctor
+npm run eda:best-flow
+```
+
+This executes the included SKY130HD reference through real Yosys synthesis,
+OpenROAD floorplanning, RePlAce-based placement, CTS, routing, reporting, and
+final layout generation. See [BEST_CHIP_FLOW.md](BEST_CHIP_FLOW.md) for the
+stage-by-stage algorithm, evidence, and tuning method.
+
 The live production route audit uses the compiled manifest, an authenticated
 session, safe `GET` requests for pages, and `OPTIONS` for APIs. The Chromium
 audit visits every page pattern and fails on HTTP 5xx, rendered application
@@ -82,7 +94,7 @@ licensed PDK/Liberty/LEF assets, qualified DRC/LVS decks, approved EDA licenses,
 foundry rule versions, and accountable signoff owners. The platform records and
 enforces those references but never fabricates them.
 
-See [DEPLOYMENT.md](DEPLOYMENT.md), [EDA_OPERATIONS.md](EDA_OPERATIONS.md),
+See [BEST_CHIP_FLOW.md](BEST_CHIP_FLOW.md), [DEPLOYMENT.md](DEPLOYMENT.md), [EDA_OPERATIONS.md](EDA_OPERATIONS.md),
 [ENGINEERING_OPERATIONS.md](ENGINEERING_OPERATIONS.md),
 [CAPABILITY_CENTER.md](CAPABILITY_CENTER.md),
 [SECURITY.md](SECURITY.md), and [COMMERCIAL_WORKSPACE.md](COMMERCIAL_WORKSPACE.md).

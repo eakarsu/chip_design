@@ -19,11 +19,7 @@ import {
   Chip,
   LinearProgress,
 } from '@mui/material';
-import {
-  PlayArrow as PlayIcon,
-  CheckCircle as OkIcon,
-  Cancel as FailIcon,
-} from '@mui/icons-material';
+import { PlayArrow as PlayIcon, CheckCircle as OkIcon, Cancel as FailIcon } from '@mui/icons-material';
 
 interface StageReport {
   stage: string;
@@ -58,6 +54,20 @@ const STAGE_LABELS: Record<string, string> = {
   dft_scan_chain: 'DFT (Scan Chain)',
   thermal_rc: 'Thermal RC Solve',
 };
+
+const REAL_FLOW_STAGES = [
+  ['1', 'Synthesis', 'Yosys + ABC', 'Map RTL into SKY130HD standard cells'],
+  ['2', 'Floorplan', 'OpenROAD', 'Create core, I/O, tap cells, and PDN'],
+  [
+    '3',
+    'Placement',
+    'RePlAce-derived gpl + detailed placement',
+    'Optimize density, timing, congestion, and wirelength',
+  ],
+  ['4', 'Clock tree', 'TritonCTS', 'Build the clock network and repair timing'],
+  ['5', 'Routing', 'Global route + TritonRoute', 'Produce design-rule-aware detailed wiring'],
+  ['6', 'Finish', 'Extraction, reports, and stream-out', 'Write final ODB, DEF, netlist, SDC, and GDS evidence'],
+] as const;
 
 export default function FlowPage() {
   const [cellCount, setCellCount] = useState(30);
@@ -96,40 +106,78 @@ export default function FlowPage() {
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
       <Typography variant="h3" component="h1" gutterBottom>
-        RTL → GDS Flow
+        Chip Implementation, Step by Step
       </Typography>
       <Typography variant="subtitle1" color="text.secondary" paragraph>
-        End-to-end pipeline: Synthesis → Floorplanning → Placement → Legalization →
-        Clock Tree → Routing → MMMC STA → DRC → DFT → Thermal. Each stage&apos;s
-        output feeds the next; runtime and key metrics are reported per stage.
+        The recommended real baseline is Yosys → OpenROAD with RePlAce-derived, timing- and routability-driven
+        placement. The six production-path stages below generate inspectable implementation evidence.
       </Typography>
+
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Recommended real flow
+        </Typography>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Step</TableCell>
+              <TableCell>Stage</TableCell>
+              <TableCell>Tool / algorithm</TableCell>
+              <TableCell>Purpose</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {REAL_FLOW_STAGES.map(([step, stage, tool, purpose]) => (
+              <TableRow key={step}>
+                <TableCell>{step}</TableCell>
+                <TableCell>{stage}</TableCell>
+                <TableCell>{tool}</TableCell>
+                <TableCell>{purpose}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        <Alert severity="info" sx={{ mt: 2 }}>
+          Run the digest-pinned implementation from <strong>Workspace → Governed EDA Runs</strong>, or locally with{' '}
+          <code>npm run eda:best-flow</code>. A lower placement score alone is not closure; compare routed DRC, timing,
+          area, power, wirelength, vias, and runtime.
+        </Alert>
+      </Paper>
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={4}>
           <Paper sx={{ p: 3 }}>
             <Typography variant="h6" gutterBottom>
-              Design Parameters
+              Educational Simulator Parameters
             </Typography>
             <TextField
-              fullWidth type="number" label="Number of Cells"
+              fullWidth
+              type="number"
+              label="Number of Cells"
               value={cellCount}
               onChange={(e) => setCellCount(Number(e.target.value))}
               sx={{ mb: 2 }}
             />
             <TextField
-              fullWidth type="number" label="Number of Nets"
+              fullWidth
+              type="number"
+              label="Number of Nets"
               value={netCount}
               onChange={(e) => setNetCount(Number(e.target.value))}
               sx={{ mb: 2 }}
             />
             <TextField
-              fullWidth type="number" label="Chip Width"
+              fullWidth
+              type="number"
+              label="Chip Width"
               value={chipWidth}
               onChange={(e) => setChipWidth(Number(e.target.value))}
               sx={{ mb: 2 }}
             />
             <TextField
-              fullWidth type="number" label="Chip Height"
+              fullWidth
+              type="number"
+              label="Chip Height"
               value={chipHeight}
               onChange={(e) => setChipHeight(Number(e.target.value))}
               sx={{ mb: 2 }}
@@ -161,8 +209,8 @@ export default function FlowPage() {
 
             {!result && !running && (
               <Alert severity="info">
-                Click <strong>Run Full Flow</strong> to execute all 10 stages on
-                a synthetic netlist of the configured size.
+                This interactive lab executes ten educational algorithms on a synthetic netlist. Its output is useful
+                for learning, but it is not Yosys/OpenROAD implementation or tapeout evidence.
               </Alert>
             )}
 
@@ -177,8 +225,7 @@ export default function FlowPage() {
                     icon={result.success ? <OkIcon /> : <FailIcon />}
                   />
                   <Typography variant="body2">
-                    Total runtime: {result.totalRuntimeMs.toFixed(1)} ms across{' '}
-                    {result.summary.stagesRun} stages
+                    Total runtime: {result.totalRuntimeMs.toFixed(1)} ms across {result.summary.stagesRun} stages
                   </Typography>
                 </Box>
 
@@ -204,11 +251,7 @@ export default function FlowPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Chip
-                            size="small"
-                            label={s.ok ? 'OK' : 'FAIL'}
-                            color={s.ok ? 'success' : 'error'}
-                          />
+                          <Chip size="small" label={s.ok ? 'OK' : 'FAIL'} color={s.ok ? 'success' : 'error'} />
                         </TableCell>
                         <TableCell align="right">{s.runtimeMs.toFixed(1)}</TableCell>
                         <TableCell align="right">
