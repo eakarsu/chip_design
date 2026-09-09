@@ -134,4 +134,14 @@ describe('durable governed EDA jobs', () => {
       "UPDATE eda_audit_events SET action='tampered' WHERE tenant_id=?",
     ).run(tenantA.tenantId)).toThrow(/append-only/);
   });
+
+  it('retains terminal failure diagnostics without marking a failed tool successful', () => {
+    const job = yosysJob(listProjects(tenantA)[0].id, 'terminal-failure-report');
+    const claimed = claimNextJob('failure-worker')!;
+    expect(claimed.id).toBe(job.id);
+    fs.writeFileSync(path.join(jobWorkspace(claimed), 'output', 'worker.log'), 'syntax error at design.v:4');
+    const failed = failJob(job.id, 'failure-worker', 'compiler rejected source', false);
+    expect(failed.status).toBe('failed');
+    expect(failed.resultManifest?.artifacts).toEqual([expect.objectContaining({ relativePath: 'worker.log' })]);
+  });
 });

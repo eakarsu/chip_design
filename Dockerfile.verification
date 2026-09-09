@@ -1,0 +1,12 @@
+# Includes the same immutable Yosys/OpenROAD/SBY toolchain as the reference flow.
+FROM openroad/orfs@sha256:d62222129f808c92b6cc7f5db59d1e867581cf6e7fff0370ece133e395be222a
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends iverilog z3 python3-pip \
+    && python3 -m pip install --no-cache-dir cocotb==2.0.1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY scripts/verification/run.py /opt/chip-verification/run.py
+ENV PYTHONDONTWRITEBYTECODE=1
+WORKDIR /output
+USER 1001:1001
+ENTRYPOINT []
+CMD ["python3", "/opt/chip-verification/run.py", "simulation"]

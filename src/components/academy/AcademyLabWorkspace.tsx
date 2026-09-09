@@ -13,6 +13,8 @@ import {
   PlayArrow, Refresh, Science, WarningAmber,
 } from '@mui/icons-material';
 import ProfessionalAIResult from '@/components/ai/ProfessionalAIResult';
+import AcademyExecutionEvidence from '@/components/journey/AcademyExecutionEvidence';
+import { hasExecutableLab } from '@/lib/academy/execution';
 import type { AcademyLabDefinition, AcademySubmission, AcademyTutorBrief } from '@/lib/academy/types';
 
 async function api<T>(url: string, init: RequestInit): Promise<T> {
@@ -31,6 +33,7 @@ export default function AcademyLabWorkspace({ lab }: { lab: AcademyLabDefinition
   const [tutor, setTutor] = useState<(AcademyTutorBrief & { provider: string; model: string }) | null>(null);
   const [busy, setBusy] = useState<'grade' | 'tutor' | ''>('');
   const [error, setError] = useState('');
+  const [execution, setExecution] = useState<{ projectId: string; runId: string } | undefined>();
 
   const evidence = evidenceText.split('\n').map(item => item.trim()).filter(Boolean);
 
@@ -46,7 +49,7 @@ export default function AcademyLabWorkspace({ lab }: { lab: AcademyLabDefinition
     setBusy('grade'); setError('');
     try {
       const result = await api<{ submission: AcademySubmission }>('/api/academy/submissions', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ labSlug: lab.slug, response, evidence }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ labSlug: lab.slug, response, evidence, ...(execution ? { execution } : {}) }),
       });
       setSubmission(result.submission);
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Lab grading failed'); }
@@ -73,6 +76,7 @@ export default function AcademyLabWorkspace({ lab }: { lab: AcademyLabDefinition
       {error && <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>}
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, xl: 8 }}><Stack gap={3}>
+          {hasExecutableLab(lab) && <AcademyExecutionEvidence useRtl={lab.topicSlug === 'rtl-design'} onSelect={(selection, rtl) => { setExecution(selection); if (rtl) setResponse(rtl); }} />}
           <Paper variant="outlined" sx={{ p: 3, borderRadius: 3 }}><Typography variant="h5" fontWeight={850}>Lab procedure</Typography><List>{lab.instructions.map((item, index) => <ListItem key={item} disableGutters><ListItemIcon sx={{ minWidth: 42 }}><Chip size="small" label={index + 1} color="primary" /></ListItemIcon><ListItemText primary={item} /></ListItem>)}</List><Divider sx={{ my: 2 }} /><Typography variant="subtitle1" fontWeight={850}>Required evidence</Typography><List dense>{lab.evidenceRequirements.map(item => <ListItem key={item} disableGutters><ListItemIcon sx={{ minWidth: 30 }}><FactCheck color="primary" fontSize="small" /></ListItemIcon><ListItemText primary={item} /></ListItem>)}</List></Paper>
 
           <Paper variant="outlined" sx={{ p: 3, borderRadius: 3 }}><Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={1}><Box><Typography variant="overline" color="primary" fontWeight={800}>{lab.editorLanguage.toUpperCase()} LAB ARTIFACT</Typography><Typography variant="h5" fontWeight={850}>Build the reviewable submission</Typography></Box><Button startIcon={<Refresh />} onClick={() => setResponse(lab.starterContent)}>Restore starter</Button></Stack><TextField fullWidth multiline minRows={lab.editorLanguage === 'markdown' ? 20 : 24} value={response} onChange={event => setResponse(event.target.value)} sx={{ mt: 2, '& textarea': { fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 13.5, lineHeight: 1.55 } }} inputProps={{ 'aria-label': 'Lab artifact editor', spellCheck: false }} /><TextField fullWidth multiline minRows={5} label="Evidence references · one per line" value={evidenceText} onChange={event => setEvidenceText(event.target.value)} helperText="Reference source files, reports, run IDs, commits, measurements and review records. Do not paste credentials or proprietary PDK content." sx={{ mt: 2 }} /><Stack direction={{ xs: 'column', sm: 'row' }} gap={1} sx={{ mt: 2 }}><Button variant="outlined" startIcon={<Science />} onClick={loadEvidenceTemplate}>Fill evidence structure</Button><Button variant="contained" startIcon={busy === 'grade' ? <CircularProgress size={18} color="inherit" /> : <PlayArrow />} disabled={Boolean(busy) || response.trim().length < 20} onClick={() => void submit()}>Grade & save evidence</Button></Stack></Paper>

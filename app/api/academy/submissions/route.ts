@@ -6,6 +6,7 @@ const schema = z.object({
   labSlug: z.string().trim().min(3).max(140),
   response: z.string().min(20).max(80_000),
   evidence: z.array(z.string().trim().min(2).max(700)).max(20),
+  execution: z.object({ projectId: z.string().uuid(), runId: z.string().uuid() }).strict().optional(),
 }).strict();
 
 export async function POST(request: Request) {

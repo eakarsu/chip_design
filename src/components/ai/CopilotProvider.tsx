@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import AuthContext from '@/lib/auth/context';
 import type { CopilotSource } from '@/lib/ai/copilotKnowledge';
+import type { ProjectAttachmentSelection } from '@/lib/journey/types';
 
 export const CHAT_REQUEST_TIMEOUT_MS = 285_000;
 export type ChatMode = 'chat' | 'review';
@@ -44,6 +45,8 @@ function useChatSession() {
   const [activePhaseId, setActivePhaseId] = useState('requirements');
   const [reviewContext, setReviewContext] = useState<DesignContext | undefined>();
   const [pageDesignContext, setPageDesignContext] = useState<DesignContext | undefined>();
+  const [projectAttachment, setProjectAttachment] = useState<ProjectAttachmentSelection | undefined>();
+  const [openRequest, setOpenRequest] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const active = useRef<AbortController | null>(null);
@@ -86,6 +89,7 @@ function useChatSession() {
     setActivePhaseId('requirements');
     setReviewContext(undefined);
     setPageDesignContext(undefined);
+    setProjectAttachment(undefined);
   }, [identity]);
 
   const send = async (context: { pathname: string; designContext?: DesignContext; mode: ChatMode }) => {
@@ -114,6 +118,7 @@ function useChatSession() {
           mode: context.mode,
           pageContext: { pathname: context.pathname },
           designContext: boundedDesignContext(context.designContext),
+          projectAttachment,
           stream: false,
         }),
       });
@@ -169,6 +174,10 @@ function useChatSession() {
     reviewContext,
     pageDesignContext,
     setPageDesignContext,
+    projectAttachment,
+    setProjectAttachment,
+    openRequest,
+    openChat: () => setOpenRequest(value => value + 1),
     loading,
     error,
     send,
@@ -196,5 +205,15 @@ export function CopilotPageContext({ value }: { value: DesignContext }) {
     setPageDesignContext(value);
     return () => setPageDesignContext(undefined);
   }, [value, setPageDesignContext]);
+  return null;
+}
+
+/** Only explicitly selected project evidence is attached to provider requests. */
+export function CopilotProjectContext({ selection }: { selection: ProjectAttachmentSelection | undefined }) {
+  const { setProjectAttachment } = useCopilot();
+  useEffect(() => {
+    setProjectAttachment(selection);
+    return () => setProjectAttachment(undefined);
+  }, [selection, setProjectAttachment]);
   return null;
 }

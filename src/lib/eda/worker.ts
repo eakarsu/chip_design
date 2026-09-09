@@ -10,6 +10,7 @@ import {
   jobWorkspace,
   purgeExpired,
   renewLease,
+  verifyJobInputs,
   type EdaJob,
 } from './store';
 
@@ -17,6 +18,20 @@ export interface DockerInvocation {
   command: 'docker';
   args: string[];
   timeoutMs: number;
+}
+
+function containerName(job: EdaJob, attempt = job.attempts): string {
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(job.id) || !Number.isInteger(attempt) || attempt < 0) throw new Error('Unsafe job container identity');
+  return `chip-eda-${job.id}-${attempt}`;
+}
+
+async function removeContainer(name: string): Promise<void> {
+  await new Promise<void>(resolve => {
+    const cleanup = spawn('docker', ['rm', '-f', name], { stdio: 'ignore', shell: false });
+    const timer = setTimeout(() => { cleanup.kill('SIGKILL'); resolve(); }, 10000);
+    const done = () => { clearTimeout(timer); resolve(); };
+    cleanup.once('error', done); cleanup.once('close', done);
+  });
 }
 
 function configuredToolBinary(kind: EdaJob['kind']): string {
@@ -59,7 +74,8 @@ export function buildDockerInvocation(job: EdaJob): DockerInvocation {
   const workspace = jobWorkspace(job);
   const inputDirectory = path.join(workspace, 'input');
   const outputDirectory = path.join(workspace, 'output');
-  const script = job.kind === 'yosys' ? 'flow.ys' : 'flow.tcl';
+  const verification = job.kind === 'simulation' || job.kind === 'formal';
+  const script = job.kind === 'yosys' ? 'flow.ys' : verification ? 'verification.json' : 'flow.tcl';
   if (!fs.statSync(path.join(inputDirectory, script)).isFile()) {
     throw new Error(`${script} is required for ${job.kind}`);
   }
@@ -71,13 +87,15 @@ export function buildDockerInvocation(job: EdaJob): DockerInvocation {
     throw new Error('invalid worker resource configuration');
   }
   const useOrfs = job.kind === 'openroad' && fs.existsSync(path.join(inputDirectory, 'config.mk'));
-  const command = useOrfs
+  const command = verification
+    ? ['python3', '/opt/chip-verification/run.py', job.kind]
+    : useOrfs
     ? ['/bin/bash', '-lc', orfsCommand()]
     : job.kind === 'yosys'
       ? [configuredToolBinary(job.kind), '-q', '-s', `/input/${script}`]
       : [configuredToolBinary(job.kind), '-no_init', `/input/${script}`];
   const args = [
-    'run', '--rm', '--network=none', '--read-only',
+    'run', '--rm', `--name=${containerName(job)}`, '--network=none', '--read-only',
     '--cap-drop=ALL', '--security-opt=no-new-privileges:true',
     `--pids-limit=${pids}`, `--memory=${memory}`, `--cpus=${cpus}`,
     `--user=${containerUser()}`,
@@ -108,13 +126,18 @@ function terminate(processId: number | undefined): void {
 }
 
 export async function executeJob(job: EdaJob, workerId: string): Promise<EdaJob> {
+  // A recovered lease must stop its previous container before reusing output.
+  if (job.attempts > 1) await removeContainer(containerName(job, job.attempts - 1));
   let invocation: DockerInvocation;
   try {
+    verifyJobInputs(job);
     invocation = buildDockerInvocation(job);
   } catch (error) {
     return failJob(job.id, workerId, error instanceof Error ? error.message : String(error), false);
   }
   const outputDirectory = path.join(jobWorkspace(job), 'output');
+  fs.rmSync(outputDirectory, { recursive: true, force: true });
+  fs.mkdirSync(outputDirectory, { recursive: true, mode: 0o700 });
   const logPath = path.join(outputDirectory, 'worker.log');
   const log = fs.createWriteStream(logPath, { flags: 'a', mode: 0o600 });
   const child = spawn(invocation.command, invocation.args, {
@@ -137,18 +160,20 @@ export async function executeJob(job: EdaJob, workerId: string): Promise<EdaJob>
   const exitCode = await new Promise<number>((resolve) => {
     const monitor = setInterval(() => {
       const current = getJob({ tenantId: job.tenantId }, job.id);
-      if (!current || current.cancelRequested || Date.now() - started > invocation.timeoutMs) {
+      if (!current || current.leaseOwner !== workerId || current.cancelRequested || Date.now() - started > invocation.timeoutMs) {
         terminate(child.pid);
       } else {
         const progress = Math.min(95, 5 + Math.floor(((Date.now() - started) / invocation.timeoutMs) * 90));
-        renewLease(job.id, workerId, progress);
+        if (!renewLease(job.id, workerId, progress)) terminate(child.pid);
       }
     }, 1000);
     child.once('error', () => { clearInterval(monitor); resolve(-1); });
     child.once('close', (code: number | null) => { clearInterval(monitor); resolve(code ?? -1); });
   });
+  await removeContainer(containerName(job));
   await new Promise<void>(resolve => log.end(resolve));
   const current = getJob({ tenantId: job.tenantId }, job.id);
+  if (current && (current.status !== 'running' || current.leaseOwner !== workerId)) return current;
   if (current?.cancelRequested) return failJob(job.id, workerId, 'cancelled by user', false);
   if (Date.now() - started > invocation.timeoutMs) return failJob(job.id, workerId, 'wall-clock limit exceeded');
   if (exitCode !== 0) return failJob(job.id, workerId, `isolated tool exited with code ${exitCode}`);

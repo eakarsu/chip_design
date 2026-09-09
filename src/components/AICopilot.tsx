@@ -334,6 +334,7 @@ function CopilotContent({
         aria-live="polite"
         sx={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', p: 2 }}
       >
+        {chat.projectAttachment && <Alert severity="info" sx={{ mb: 2 }}>Selected project evidence attached · {chat.projectAttachment.view === 'learn' ? `Learn hint level ${chat.projectAttachment.hintLevel}` : 'Engineer review'}. Attachments are excerpts from the saved revision.</Alert>}
         {!chat.messages.length && (
           <Stack gap={2} sx={{ py: 2 }}>
             <Box>
@@ -538,7 +539,7 @@ function CopilotContent({
       {content}
     </Paper>
   ) : (
-    <FloatingChatWindow hidden={hidden || pathname === '/governed-ai/chat'} title={title}>
+    <FloatingChatWindow hidden={hidden || pathname === '/governed-ai/chat'} title={title} openRequest={chat.openRequest}>
       {content}
     </FloatingChatWindow>
   );

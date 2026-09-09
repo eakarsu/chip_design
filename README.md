@@ -8,6 +8,9 @@ evidence.
 
 ## Production capabilities
 
+- [Connected Learn and Engineer projects](DESIGN_PROJECTS.md): immutable source
+  revisions, cocotb/SBY execution, artifact-backed lab grading, waveform debugging,
+  adaptive challenges, selected AI evidence and hardware validation packages.
 - Tenant-bound projects, constraints, MCMM corners, PPA snapshots, RTL impact,
   immutable artifacts, ECOs, independent approvals, and append-only audit data.
 - PostgreSQL persistence for the commercial workspace.
@@ -16,7 +19,7 @@ evidence.
 - Validated first-party browser sessions and short-lived RS256 EDA bearer
   tokens; external OIDC tokens must match the configured issuer, audience,
   key ring, role, and tenant boundary.
-- A durable Yosys/OpenROAD job queue with idempotency, approval gates, leases,
+- A durable Yosys/OpenROAD/simulation/formal job queue with idempotency, approval gates, leases,
   retry/cancellation states, quotas, retention, and artifact manifests.
 - Network-disabled, read-only, capability-dropped tool containers pinned by
   immutable image digest.

@@ -113,6 +113,7 @@ export default function AcademyDashboardPage() {
     <Box sx={{ color: 'white', background: 'linear-gradient(135deg,#071426,#312e81 120%)', py: { xs: 5, md: 7 } }}>
       <Container maxWidth="xl">
         <Stack direction="row" gap={1} flexWrap="wrap"><Chip label="MASTERY WORKSPACE" sx={{ bgcolor: 'rgba(255,255,255,.14)', color: 'white' }} /><Chip label={dashboard.enrollment.status} variant="outlined" sx={{ color: 'white', borderColor: 'rgba(255,255,255,.4)' }} /></Stack>
+        <Button component={Link} href="/workspace/projects" variant="contained" sx={{ mt: 2 }}>Build an executable design project</Button>
         <Typography component="h1" sx={{ fontSize: { xs: '2.5rem', md: '4rem' }, fontWeight: 900, letterSpacing: '-.04em', mt: 2 }}>Chip Design Academy</Typography>
         <Typography sx={{ mt: 1.5, maxWidth: 850, color: 'rgba(255,255,255,.75)', fontSize: '1.15rem' }}>Learn, execute, submit evidence, receive deterministic grading and advance through accountable engineering review.</Typography>
         <LinearProgress variant="determinate" value={dashboard.summary.completionPct} sx={{ mt: 3, maxWidth: 800, height: 10, borderRadius: 8, bgcolor: 'rgba(255,255,255,.15)' }} />

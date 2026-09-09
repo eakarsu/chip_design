@@ -83,6 +83,7 @@ const GROUPS: Group[] = [
     title: 'Overview',
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: <Dashboard /> },
+      { label: 'Learn & Engineer', href: '/workspace/projects', icon: <School /> },
       { label: 'Design Workspace', href: '/workspace', icon: <Hub /> },
       { label: 'Governed EDA Runs', href: '/workspace/execution', icon: <PrecisionManufacturing /> },
       { label: 'Engineering Operations', href: '/operations', icon: <FactCheck /> },

@@ -488,7 +488,7 @@ export async function executeCapabilityAction(args: {
       }
       const job = createJob(identity, {
         projectId: edaProjectId,
-        kind: z.enum(['yosys', 'openroad']).parse(input.kind),
+        kind: z.enum(['yosys', 'openroad', 'simulation', 'formal']).parse(input.kind),
         idempotencyKey: stringValue(input.idempotencyKey, 'idempotencyKey', 128),
         inputs: z.record(z.string()).parse(input.inputs),
         expectedCpuSeconds: numberValue(input.expectedCpuSeconds ?? 300, 'expectedCpuSeconds'),

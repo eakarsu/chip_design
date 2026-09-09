@@ -22,6 +22,7 @@
     "eda:best-flow": "./scripts/run-best-chip-flow.sh all",
     "integrations:adapter": "tsx scripts/enterprise-adapter.ts",
     "eda:golden": "tsx scripts/verify-golden.ts",
+    "eda:verify-journey": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=react-server\" ./scripts/run-compatible-node.sh node_modules/tsx/dist/cli.mjs scripts/verify-journey.ts",
     "check:production": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=react-server\" tsx scripts/check-production.ts",
     "migrate": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=react-server\" ./scripts/run-compatible-node.sh node_modules/tsx/dist/cli.mjs scripts/migrate.ts",
     "create-admin": "./scripts/run-compatible-node.sh node_modules/tsx/dist/cli.mjs scripts/create-admin.ts",

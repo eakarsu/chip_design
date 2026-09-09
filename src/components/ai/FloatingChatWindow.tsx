@@ -31,12 +31,15 @@ export default function FloatingChatWindow({
   children,
   hidden = false,
   title = 'Ask NeuralChip',
+  openRequest = 0,
 }: {
   children: ReactNode;
   hidden?: boolean;
   title?: string;
+  openRequest?: number;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { if (openRequest > 0) setOpen(true); }, [openRequest]);
   const [maximized, setMaximized] = useState(false);
   const [bounds, setBounds] = useState<ChatBounds>({ x: 24, y: 24, width: 460, height: 640 });
   const [ready, setReady] = useState(false);

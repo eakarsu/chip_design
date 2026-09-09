@@ -121,6 +121,29 @@ export async function run(sql: string, values: unknown[] = []): Promise<number> 
 }
 
 const schemaSql = `
+  CREATE TABLE IF NOT EXISTS design_journey_revisions (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, project_id TEXT NOT NULL,
+    revision_number INTEGER NOT NULL, source_hash TEXT NOT NULL,
+    document_json TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+    UNIQUE(tenant_id, project_id, revision_number)
+  );
+  CREATE TABLE IF NOT EXISTS design_journey_runs (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, project_id TEXT NOT NULL,
+    revision_id TEXT NOT NULL, job_id TEXT NOT NULL UNIQUE, kind TEXT NOT NULL,
+    purpose TEXT NOT NULL, source_hash TEXT NOT NULL, suite_hash TEXT NOT NULL,
+    challenge_id TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS journey_runs_project ON design_journey_runs(tenant_id,project_id,created_at);
+  CREATE TABLE IF NOT EXISTS design_journey_assessments (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, project_id TEXT NOT NULL,
+    run_id TEXT NOT NULL, user_id TEXT NOT NULL, document_json TEXT NOT NULL,
+    created_at TEXT NOT NULL, UNIQUE(tenant_id,run_id,user_id)
+  );
+  CREATE TABLE IF NOT EXISTS design_journey_hardware (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, project_id TEXT NOT NULL,
+    revision_id TEXT NOT NULL, kind TEXT NOT NULL, document_json TEXT NOT NULL,
+    created_by TEXT NOT NULL, created_at TEXT NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS commercial_projects (
     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL,
     description TEXT NOT NULL, repository_url TEXT NOT NULL, default_branch TEXT NOT NULL,
@@ -291,6 +314,10 @@ async function ensurePostgresSchema(client: PoolClient): Promise<void> {
 const requiredCommercialIndexes = ['commercial_constraints_version_unique', 'commercial_constraints_active_unique'];
 
 const requiredCommercialTables = [
+  'design_journey_revisions',
+  'design_journey_runs',
+  'design_journey_assessments',
+  'design_journey_hardware',
   'commercial_projects',
   'commercial_constraint_sets',
   'commercial_corners',

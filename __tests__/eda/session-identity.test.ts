@@ -80,6 +80,23 @@ it('loads the actual production workspace bootstrap through its cookie-authentic
   expect((await response.json()).workspace.projects).toEqual([]);
 });
 
+it('accepts the public Host behind an internal Next listener and rejects forged forwarded hosts', async () => {
+  const headers = { Cookie: 'auth-token=valid', Host: 'chip.example.test', Origin: 'https://chip.example.test', 'X-Forwarded-Proto': 'https' };
+  expect(await requireEdaIdentity(new Request('http://localhost:3000/api/journey/projects', { method: 'POST', headers }))).toMatchObject({ userId: 'session-user' });
+  const forged = await requireEdaIdentity(new Request('http://localhost:3000/api/journey/projects', { method: 'POST', headers: { ...headers, Origin: 'https://attacker.example.test', 'X-Forwarded-Host': 'attacker.example.test' } }));
+  expect((forged as NextResponse).status).toBe(403);
+  const crossSite = await requireEdaIdentity(new Request('http://localhost:3000/api/journey/projects', { method: 'POST', headers: { ...headers, 'Sec-Fetch-Site': 'cross-site' } }));
+  expect((crossSite as NextResponse).status).toBe(403);
+});
+
+it('does not grant public demo access to project sources or execution evidence', async () => {
+  environment.ALLOW_DEMO_SEED = 'true'; environment.CHIP_ALLOW_COMMERCIAL_DEMO_SEED = 'true';
+  try {
+    const response = await requireEdaIdentity(new Request('https://chip.example.test/api/journey/projects'));
+    expect((response as NextResponse).status).toBe(401);
+  } finally { environment.ALLOW_DEMO_SEED = 'false'; environment.CHIP_ALLOW_COMMERCIAL_DEMO_SEED = 'false'; }
+});
+
 it.each(['absent', 'expired', 'revoked'])('rejects %s sessions', async (token) => {
   const response = await requireEdaIdentity(request('/api/workspace/bootstrap', token));
   expect(response).toBeInstanceOf(NextResponse);

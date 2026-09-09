@@ -13,7 +13,7 @@ describe('complete ORFS reference job', () => {
     const job = {
       id: 'job-reference', tenantId: 'tenant-reference', projectId: 'project-reference',
       kind: 'openroad', toolImage: `openroad/orfs@sha256:${'a'.repeat(64)}`,
-      expectedCpuSeconds: 600,
+      expectedCpuSeconds: 600, attempts: 1,
     } as EdaJob;
     const input = path.join(root, job.tenantId, job.projectId, job.id, 'input');
     const output = path.join(root, job.tenantId, job.projectId, job.id, 'output');

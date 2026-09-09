@@ -5,7 +5,7 @@ import type Database from 'better-sqlite3';
 import { getRawDb } from '@/lib/db/connection';
 import type { EdaIdentity } from './identity';
 
-export type EdaJobKind = 'yosys' | 'openroad';
+export type EdaJobKind = 'yosys' | 'openroad' | 'simulation' | 'formal';
 export type EdaJobStatus =
   | 'awaiting_approval' | 'queued' | 'running' | 'retry'
   | 'succeeded' | 'failed' | 'cancelled';
@@ -73,6 +73,27 @@ function database(): Database.Database {
 }
 
 export function ensureEdaSchema(db: Database.Database = getRawDb()): void {
+  // SQLite cannot extend a CHECK constraint in place. Preserve the queue and
+  // artifact foreign keys during the explicit, transactional table rebuild.
+  const existing = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='eda_jobs'").get() as { sql: string } | undefined;
+  if (existing && !existing.sql.includes("'simulation'")) {
+    if (db.inTransaction) throw new Error('Run the EDA kind migration outside an existing transaction');
+    const foreignKeys = db.pragma('foreign_keys', { simple: true });
+    db.pragma('foreign_keys = OFF');
+    try {
+      db.transaction(() => {
+        const expanded = existing.sql
+          .replace(/CREATE TABLE\s+(?:IF NOT EXISTS\s+)?["`]?eda_jobs["`]?/i, 'CREATE TABLE eda_jobs_expanded')
+          .replace(/CHECK\s*\(kind\s+IN\s*\('yosys','openroad'\)\)/i, "CHECK(kind IN ('yosys','openroad','simulation','formal'))");
+        if (!expanded.includes("'simulation'")) throw new Error('Unrecognized EDA queue schema; migration refused');
+        db.exec(expanded);
+        db.exec('INSERT INTO eda_jobs_expanded SELECT * FROM eda_jobs; DROP TABLE eda_jobs; ALTER TABLE eda_jobs_expanded RENAME TO eda_jobs;');
+        if ((db.pragma('foreign_key_check') as unknown[]).length) throw new Error('EDA migration failed its foreign-key check');
+      })();
+    } finally {
+      db.pragma(`foreign_keys = ${foreignKeys ? 'ON' : 'OFF'}`);
+    }
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS eda_projects (
       id TEXT PRIMARY KEY,
@@ -92,7 +113,7 @@ export function ensureEdaSchema(db: Database.Database = getRawDb()): void {
       tenant_id TEXT NOT NULL,
       project_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
-      kind TEXT NOT NULL CHECK(kind IN ('yosys','openroad')),
+      kind TEXT NOT NULL CHECK(kind IN ('yosys','openroad','simulation','formal')),
       status TEXT NOT NULL,
       idempotency_key TEXT NOT NULL,
       request_hash TEXT NOT NULL,
@@ -165,6 +186,8 @@ export function validateEdaSchema(db: Database.Database = getRawDb()): void {
   ).all() as Array<{ name: string }>).map(row => row.name));
   const missing = required.filter(table => !existing.has(table));
   if (missing.length) throw new Error(`EDA migration required; missing: ${missing.join(', ')}`);
+  const jobs = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='eda_jobs'").get() as { sql: string };
+  if (!jobs.sql.includes("'simulation'") || !jobs.sql.includes("'formal'")) throw new Error('EDA migration required for verification job kinds');
 }
 
 function sha256(value: string | Buffer): string {
@@ -238,8 +261,8 @@ function requireDigest(value: string, label: string): string {
   return value;
 }
 
-function pinnedImage(kind: EdaJobKind): string {
-  const image = process.env[kind === 'yosys' ? 'CHIP_YOSYS_IMAGE' : 'CHIP_OPENROAD_IMAGE'] ?? '';
+export function pinnedImage(kind: EdaJobKind): string {
+  const image = process.env[{ yosys: 'CHIP_YOSYS_IMAGE', openroad: 'CHIP_OPENROAD_IMAGE', simulation: 'CHIP_SIMULATION_IMAGE', formal: 'CHIP_FORMAL_IMAGE' }[kind]] ?? '';
   if (!/^[a-zA-Z0-9./:_-]+@sha256:[0-9a-f]{64}$/.test(image)) {
     throw new Error(`${kind} image must be pinned by sha256 digest`);
   }
@@ -248,13 +271,14 @@ function pinnedImage(kind: EdaJobKind): string {
 
 export function createProject(
   identity: EdaIdentity,
-  input: { name: string; pdkRef: string; pdkDigest: string; licenseRef: string },
+  input: { id?: string; name: string; pdkRef: string; pdkDigest: string; licenseRef: string },
 ): EdaProject {
   if (!input.name.trim() || input.name.length > 120) throw new Error('invalid project name');
   if (!input.pdkRef.trim() || !input.licenseRef.trim()) throw new Error('PDK and license references are required');
+  if (input.id && !/^[0-9a-f-]{36}$/.test(input.id)) throw new Error('Invalid linked project identifier');
   const db = database();
   const project: EdaProject = {
-    id: randomUUID(), tenantId: identity.tenantId, name: input.name.trim(),
+    id: input.id ?? randomUUID(), tenantId: identity.tenantId, name: input.name.trim(),
     pdkRef: input.pdkRef.trim(), pdkDigest: requireDigest(input.pdkDigest, 'PDK'),
     licenseRef: input.licenseRef.trim(), createdBy: identity.userId,
     createdAt: new Date().toISOString(),
@@ -289,6 +313,21 @@ export function jobWorkspace(job: Pick<EdaJob, 'id' | 'tenantId' | 'projectId'>)
   return path.join(storageRoot(), job.tenantId, job.projectId, job.id);
 }
 
+export function verifyJobInputs(job: EdaJob): void {
+  const root = fs.realpathSync(path.join(jobWorkspace(job), 'input')) + path.sep;
+  const files = job.inputManifest.files as Array<{ name: string; size: number; sha256: string }>;
+  if (!Array.isArray(files) || files.length > 64 || !files.length || sha256(canonical(job.inputManifest)) !== job.requestHash) throw new Error('Input manifest integrity check failed');
+  let total = 0;
+  for (const file of files) {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,119}$/.test(file.name) || file.name.includes('..')) throw new Error('Unsafe input filename');
+    const filename = path.join(root, file.name);
+    const stat = fs.lstatSync(filename);
+    total += stat.size;
+    if (!stat.isFile() || stat.isSymbolicLink() || !fs.realpathSync(filename).startsWith(root) || stat.size !== file.size || total > MAX_INPUT_BYTES || sha256(fs.readFileSync(filename)) !== file.sha256) throw new Error('Retained input checksum mismatch');
+  }
+  if (fs.readdirSync(root).length !== files.length) throw new Error('Unexpected files in immutable input directory');
+}
+
 function validateInputs(inputs: Record<string, string>): Array<{ name: string; sha256: string; size: number }> {
   const entries = Object.entries(inputs);
   if (entries.length < 1 || entries.length > 64) throw new Error('between 1 and 64 inputs are required');
@@ -321,7 +360,7 @@ export function createJob(
   if (!projectRow) throw new Error('project not found');
   const project = projectFromRow(projectRow);
   const fileManifest = validateInputs(input.inputs);
-  const requiredScript = input.kind === 'yosys' ? 'flow.ys' : 'flow.tcl';
+  const requiredScript = input.kind === 'yosys' ? 'flow.ys' : input.kind === 'openroad' ? 'flow.tcl' : 'verification.json';
   if (!(requiredScript in input.inputs)) throw new Error(`${requiredScript} is required`);
   const toolImage = pinnedImage(input.kind);
   const requestDocument = {
@@ -514,6 +553,8 @@ function collectArtifacts(outputDir: string): Array<{ id: string; relativePath: 
       if (entry.isSymbolicLink()) throw new Error('symbolic-link artifacts are forbidden');
       if (entry.isDirectory()) walk(absolute);
       else if (entry.isFile()) {
+        const stat = fs.statSync(absolute);
+        if (total + stat.size > MAX_OUTPUT_BYTES || artifacts.length >= 5000) throw new Error('job output exceeds configured limit');
         const content = fs.readFileSync(absolute);
         total += content.length;
         if (total > MAX_OUTPUT_BYTES) throw new Error('job output exceeds configured limit');
@@ -567,12 +608,20 @@ export function failJob(jobId: string, workerId: string, message: string, retrya
   const status: EdaJobStatus = row.cancel_requested ? 'cancelled' : retry ? 'retry' : 'failed';
   const now = new Date();
   const delaySeconds = retry ? Math.min(300, 2 ** row.attempts) : 0;
+  let artifacts: ReturnType<typeof collectArtifacts> = [];
+  if (!retry) {
+    try { artifacts = collectArtifacts(path.join(jobWorkspace(jobFromRow(row)), 'output')); }
+    catch { message += '; output could not be retained safely'; }
+  }
+  const resultManifest = { requestHash: row.request_hash, toolImage: row.tool_image, pdkDigest: row.pdk_digest, metrics: {}, artifacts };
   db.transaction(() => {
     db.prepare(`
       UPDATE eda_jobs SET status=?, lease_owner=NULL, lease_until=NULL,
-        next_attempt_at=?, error=?, updated_at=? WHERE id=?
+        next_attempt_at=?, error=?, updated_at=?, result_manifest_json=? WHERE id=?
     `).run(status, new Date(now.getTime() + delaySeconds * 1000).toISOString(),
-      message.slice(-2000), now.toISOString(), jobId);
+      message.slice(-2000), now.toISOString(), retry ? null : canonical(resultManifest), jobId);
+    for (const artifact of artifacts) db.prepare('INSERT INTO eda_artifacts (id,job_id,tenant_id,relative_path,kind,sha256,size_bytes,created_at) VALUES (?,?,?,?,?,?,?,?)')
+      .run(artifact.id, jobId, row.tenant_id, artifact.relativePath, path.extname(artifact.relativePath).slice(1) || 'file', artifact.sha256, artifact.size, now.toISOString());
     appendAudit(db, { tenantId: row.tenant_id, userId: workerId }, `job.${status}`, jobId, {
       attempt: row.attempts, retryable: retry,
     });

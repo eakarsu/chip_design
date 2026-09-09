@@ -12,6 +12,11 @@ export interface CopilotSource {
 
 const corePages: CopilotSource[] = [
   {
+    title: 'Connected Learn and Engineer projects',
+    href: '/workspace/projects',
+    description: 'Versioned GCD, FIFO and MAC projects connect specification, RTL, SDC, fixed executable labs, custom cocotb regressions, bounded SBY formal checks, waveforms, adaptive debugging challenges and hardware exports. Users can explicitly attach saved project/run evidence to chat. Correctness, artifact reproducibility and independent explanation review are scored separately. Hardware imports retain device, instrument, units and source-revision provenance.',
+  },
+  {
     title: 'Design Workspace',
     href: '/workspace',
     description:
@@ -27,7 +32,7 @@ const corePages: CopilotSource[] = [
     title: 'Governed EDA Runs',
     href: '/workspace/execution',
     description:
-      'Submit and inspect Yosys/OpenROAD jobs, logs, artifact manifests, cost approvals, retries and cancellations. Queued is not completed. Runs require configured tools and pinned worker images.',
+      'Submit and inspect Yosys, OpenROAD, cocotb simulation and SBY formal jobs, logs, artifact manifests, cost approvals, retries and cancellations. Queued is not completed. Tool completion and design-check outcomes are separate. Runs require configured tools and pinned worker images.',
   },
   {
     title: 'New custom run',

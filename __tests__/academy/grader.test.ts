@@ -8,7 +8,7 @@ describe('Academy curriculum and deterministic grading', () => {
     expect(academyLabs.every(lab => lab.rubric.reduce((sum, item) => sum + item.points, 0) === 100)).toBe(true);
   });
 
-  it('passes review-ready FIFO RTL and reports deterministic measurements', () => {
+  it('refuses to pass plausible FIFO text that never stores data or executes tests', () => {
     const lab = getAcademyLab('rtl-design-lab')!;
     const response = `
 module rv_fifo #(parameter int WIDTH=32, DEPTH=4) (
@@ -41,10 +41,10 @@ endmodule
       response,
       evidence: ['git/abc123/rv_fifo.sv commit SHA', 'runs/lint-01/report.rpt tool version 1', 'reviews/review-01 accountable RTL owner'],
     });
-    expect(grade.passed).toBe(true);
-    expect(grade.score).toBeGreaterThanOrEqual(90);
-    expect(grade.measurements.hasReadyValidContract).toBe(true);
-    expect(grade.measurements.lintErrors).toBe(0);
+    expect(grade.passed).toBe(false);
+    expect(grade.score).toBe(0);
+    expect(grade.measurements.executedChecksPassed).toBe(false);
+    expect(grade.summary).toMatch(/executed.*verified/i);
   });
 
   it('requires revision for a placeholder artifact without evidence', () => {

@@ -42,7 +42,7 @@ type Artifact = { id: string; relativePath: string; sha256: string; size: number
 type Job = {
   id: string;
   projectId: string;
-  kind: 'yosys' | 'openroad';
+  kind: 'yosys' | 'openroad' | 'simulation' | 'formal';
   status: string;
   progress: number;
   error?: string;
@@ -306,7 +306,7 @@ export default function GovernedExecutionPage() {
                         {new Date(job.createdAt).toLocaleString()}
                       </Typography>
                     </TableCell>
-                    <TableCell>{job.kind === 'openroad' ? 'ORFS RTL-to-GDS' : 'Yosys synthesis'}</TableCell>
+                    <TableCell>{{ openroad: 'ORFS RTL-to-GDS', yosys: 'Yosys synthesis', simulation: 'Cocotb simulation', formal: 'Formal safety' }[job.kind]}</TableCell>
                     <TableCell sx={{ minWidth: 180 }}>
                       <Chip
                         size="small"

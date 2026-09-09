@@ -62,7 +62,7 @@ export default function CommercialWorkspacePage() {
         return;
       }
       if (!response.ok) throw new Error(data.message ?? data.error ?? 'Workspace load failed');
-      setWorkspace(data.workspace); setProjectId(current => current || data.workspace.projects[0]?.id || '');
+      setWorkspace(data.workspace); const requested = new URLSearchParams(window.location.search).get('projectId'); setProjectId(current => current || (data.workspace.projects.some((item: { id: string }) => item.id === requested) ? requested : '') || data.workspace.projects[0]?.id || '');
     } catch (loadError) { setError(loadError instanceof Error ? loadError.message : 'Workspace load failed'); }
     finally { setLoading(false); }
   }, [pathname, router]);
@@ -108,7 +108,8 @@ export default function CommercialWorkspacePage() {
         <Box><Typography variant="overline" color="primary">Governed commercial control plane</Typography><Typography variant="h3" fontWeight={800}>Chip Design Workspace</Typography><Typography color="text.secondary">One evidence chain from RTL and constraints through PPA, artifacts, ECO review and accountable approval.</Typography></Box>
         <Stack direction="row" gap={1} alignItems="center" flexWrap="wrap" useFlexGap><Button component={Link} href="/workspace/execution" startIcon={<PrecisionManufacturing />} variant="contained">Run governed EDA</Button><Button component={Link} href={`/governed-ai/lifecycle?projectId=${encodeURIComponent(projectId)}`} startIcon={<Timeline />} variant="outlined">Full design lifecycle</Button><Button component={Link} href="/capabilities#ai-design-studio" startIcon={<Hub />} variant="outlined">AI design studio</Button><Chip icon={<Storage />} label={`DB · ${workspace.databaseBackend}`} /><Chip icon={<Cloud />} label={`Objects · ${workspace.storageBackend}`} /></Stack>
       </Stack>
-      <FormControl sx={{ minWidth: 320, mt: 3 }}><InputLabel>Active project</InputLabel><Select value={projectId} label="Active project" onChange={event => setProjectId(event.target.value)}>{workspace.projects.map(item => <MenuItem key={item.id} value={item.id}>{item.name} · {item.status}</MenuItem>)}</Select></FormControl>
+      <Stack direction="row" gap={1} flexWrap="wrap" sx={{ mt: 2 }}><Button component={Link} href={projectId ? `/workspace/projects/${projectId}` : "/workspace/projects"} variant="contained">Learn & engineer this project</Button><Button component={Link} href="/workspace/projects">Create a reference design</Button></Stack>
+      <FormControl sx={{ minWidth: { xs: 0, sm: 320 }, width: { xs: '100%', sm: 'auto' }, mt: 3 }}><InputLabel>Active project</InputLabel><Select value={projectId} label="Active project" onChange={event => setProjectId(event.target.value)}>{workspace.projects.map(item => <MenuItem key={item.id} value={item.id}>{item.name} · {item.status}</MenuItem>)}</Select></FormControl>
       {notice && <Alert severity="success" sx={{ mt: 2 }}>{notice}</Alert>}{error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
       <Grid container spacing={2} sx={{ my: 2 }}>{kpis.map(([label, value, icon]) => <Grid key={label} size={{ xs: 12, sm: 6, md: 3 }}><Card variant="outlined"><CardContent><Stack direction="row" justifyContent="space-between">{icon}<Typography variant="h4" fontWeight={800}>{value}</Typography></Stack><Typography color="text.secondary">{label}</Typography></CardContent></Card></Grid>)}</Grid>
       <Paper variant="outlined"><Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto"><Tab label="Overview" /><Tab label="PPA" /><Tab label="RTL impact" /><Tab label="Constraints & corners" /><Tab label="Artifacts" /><Tab label="ECOs & approvals" /><Tab label="Extensions" /></Tabs></Paper>

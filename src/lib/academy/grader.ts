@@ -3,6 +3,7 @@ import { parseSdc } from '@/lib/parsers/sdc';
 import { summariseSdc } from '@/lib/tools/sdc_writer';
 import { getKnowledgeTopic } from '@/lib/knowledge/catalog';
 import type { AcademyGrade, AcademyLabDefinition } from './types';
+import { hasExecutableLab, type VerifiedAcademyExecution } from './execution';
 
 export interface LabSubmissionInput {
   response: string;
@@ -22,7 +23,23 @@ function keywordCoverage(lab: AcademyLabDefinition, response: string): number {
   return target.size ? found / target.size : 0;
 }
 
-export function gradeAcademyLab(lab: AcademyLabDefinition, input: LabSubmissionInput): AcademyGrade {
+export function gradeAcademyLab(lab: AcademyLabDefinition, input: LabSubmissionInput, executed?: VerifiedAcademyExecution): AcademyGrade {
+  if (hasExecutableLab(lab)) {
+    const explanationReviewed = executed?.explanationScore !== null && executed?.explanationScore !== undefined;
+    const passed = Boolean(executed?.technicalPassed && explanationReviewed && executed!.explanationScore! >= 7);
+    const score = (executed?.correctness ?? 0) + (executed?.reproducibility ?? 0) + (executed?.explanationScore ?? 0);
+    const criteria = [
+      { id: 'correctness', label: 'Executed correctness', description: 'Required reference tests against retained RTL.', points: 60, earned: executed?.correctness ?? 0, passed: Boolean(executed?.technicalPassed), feedback: executed ? 'Score comes from required checks in the verified execution report.' : 'Execute the fixed FIFO simulation suite in a design project.' },
+      { id: 'reproducibility', label: 'Verified artifacts', description: 'Input, suite, image and output provenance.', points: 25, earned: executed?.reproducibility ?? 0, passed: executed?.reproducibility === 25, feedback: executed ? 'Artifact hashes were checked against the retained run.' : 'Typed evidence references do not establish an executed result.' },
+      { id: 'explanation', label: 'Independent explanation review', description: 'Observed behavior, reasoning and limitations.', points: 15, earned: executed?.explanationScore ?? 0, passed: explanationReviewed && (executed?.explanationScore ?? 0) >= 7, feedback: explanationReviewed ? 'An independent instructor reviewed this run explanation.' : 'Grade the run in the project, then request instructor explanation review.' },
+    ];
+    return { score, passed, status: passed ? 'passed' : 'needs-review', criteria,
+      summary: passed ? `Passed with ${score}/100 from executed tests, verified artifacts and independent explanation review.` : executed?.technicalPassed ? `Technical checks passed (${score}/100 so far). Independent explanation review is required to complete this Academy lab.` : 'An executed, verified reference run is required. Text length, keywords and evidence counts cannot certify this lab.',
+      strengths: executed?.technicalPassed ? ['The fixed reference suite passed on the retained source revision.'] : [],
+      improvements: criteria.filter(item => !item.passed).map(item => item.feedback),
+      measurements: executed ? { gradingBasis: 'executed-v1', runId: executed.runId, revisionId: executed.revisionId, sourceHash: executed.sourceHash, executedChecksPassed: executed.technicalPassed, explanationReviewed } : { gradingBasis: 'executed-v1', executedChecksPassed: false },
+    };
+  }
   const response = input.response.trim();
   const evidence = input.evidence.map(item => item.trim()).filter(Boolean);
   const lower = response.toLowerCase();

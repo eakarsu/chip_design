@@ -5,7 +5,7 @@ import { createJob, listJobs } from '@/lib/eda/store';
 
 const jobSchema = z.object({
   projectId: z.string().uuid(),
-  kind: z.enum(['yosys', 'openroad']),
+  kind: z.enum(['yosys', 'openroad', 'simulation', 'formal']),
   inputs: z.record(z.string().max(25 * 1024 * 1024)),
   expectedCpuSeconds: z.number().int().positive().max(86_400).optional(),
   retentionDays: z.number().int().positive().max(365).optional(),

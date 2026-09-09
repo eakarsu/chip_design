@@ -111,9 +111,18 @@ export async function requireEdaIdentity(request: Request): Promise<EdaIdentity 
   // HTTP-only session cookie. An explicit bearer token must never fall back
   // to that cookie when token verification fails.
   const origin = request.headers.get('origin');
+  const requestUrl = new URL(request.url);
+  // Next may construct request.url with its internal listener hostname. The
+  // browser-facing Host is preserved by our reverse proxy; do not accept a
+  // client-supplied X-Forwarded-Host as a substitute for that authority.
+  const browserHost = request.headers.get('host') || requestUrl.host;
+  const forwardedProtocol = request.headers.get('x-forwarded-proto');
+  const protocol = forwardedProtocol === 'https' || forwardedProtocol === 'http'
+    ? `${forwardedProtocol}:` : requestUrl.protocol;
+  const browserOrigin = `${protocol}//${browserHost}`;
   if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) &&
       (request.headers.get('sec-fetch-site') === 'cross-site' ||
-       (origin && origin !== new URL(request.url).origin))) {
+       (origin && origin !== browserOrigin))) {
     return unauthorized('Cross-origin session mutation is not permitted', 403);
   }
   const local = await requireAuth(request);

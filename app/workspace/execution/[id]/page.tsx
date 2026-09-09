@@ -32,7 +32,7 @@ import { ArrowBack, Cancel, CheckCircle, CloudDownload, FactCheck, Refresh, Visi
 type Artifact = { id: string; relativePath: string; sha256: string; size: number };
 type Job = {
   id: string;
-  kind: 'yosys' | 'openroad';
+  kind: 'yosys' | 'openroad' | 'simulation' | 'formal';
   status: string;
   progress: number;
   attempts: number;
@@ -120,7 +120,7 @@ export default function GovernedRunDetailPage() {
     return () => window.clearInterval(interval);
   }, [job, load]);
 
-  const stages = job?.kind === 'openroad' ? ORFS_STAGES : YOSYS_STAGES;
+  const stages = job?.kind === 'openroad' ? ORFS_STAGES : job?.kind === 'simulation' || job?.kind === 'formal' ? ['Validate inputs', 'Compile design', 'Execute checks', 'Retain report and traces'] : YOSYS_STAGES;
   const activeStage =
     job?.status === 'succeeded'
       ? stages.length
@@ -205,7 +205,7 @@ export default function GovernedRunDetailPage() {
                 Governed run · {job.id}
               </Typography>
               <Typography variant="h3" fontWeight={850}>
-                {job.kind === 'openroad' ? 'RTL-to-GDS implementation' : 'Yosys synthesis'}
+                {{ openroad: 'RTL-to-GDS implementation', yosys: 'Yosys synthesis', simulation: 'Cocotb simulation', formal: 'Formal safety verification' }[job.kind]}
               </Typography>
               <Typography color="text.secondary">
                 Submitted {new Date(job.createdAt).toLocaleString()} · evidence retained until{' '}
@@ -244,6 +244,12 @@ export default function GovernedRunDetailPage() {
           {job.error && (
             <Alert severity="error" sx={{ mt: 2 }}>
               {job.error}
+            </Alert>
+          )}
+          {(job.kind === 'simulation' || job.kind === 'formal') && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              The run status tracks tool execution. Open verification-report.json below for individual check results,
+              or use the project’s Run &amp; debug view to inspect failures and traces.
             </Alert>
           )}
           <Card variant="outlined" sx={{ mt: 3 }}>

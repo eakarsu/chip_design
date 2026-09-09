@@ -5,6 +5,10 @@ import type { EdaIdentity } from '@/lib/eda/identity';
 import { all, one, run } from '@/lib/commercial/database';
 import { academyLabs, academyPaths, capstoneDefinition, diagnosticQuestions, getAcademyLab } from './catalog';
 import { gradeAcademyLab, gradeDiagnostic } from './grader';
+import { hasExecutableLab, type VerifiedAcademyExecution } from './execution';
+import { getJourneyRun, getRevision, journeyRunInputs } from '@/lib/journey/store';
+import { expectedChecks, reportPassed } from '@/lib/journey/verification';
+import type { JourneyAssessment } from '@/lib/journey/types';
 import type {
   AcademyCapstone,
   AcademyDashboard,
@@ -41,7 +45,7 @@ async function ensureEnrollment(identity: EdaIdentity): Promise<Row> {
 }
 
 function submission(row: Row): AcademySubmission {
-  return {
+  const result: AcademySubmission = {
     id: String(row.id),
     labSlug: String(row.lab_slug),
     topicSlug: String(row.topic_slug),
@@ -53,6 +57,15 @@ function submission(row: Row): AcademySubmission {
     attempt: numeric(row.attempt),
     createdAt: String(row.created_at),
   };
+  if (hasExecutableLab({ topicSlug: result.topicSlug }) && result.grade.measurements.gradingBasis !== 'executed-v1') {
+    result.grade = { ...result.grade, passed: false, status: 'needs-review', summary: `Historical writing rubric: ${result.grade.score}/100. An executed assessment is required for this lab.`, measurements: { ...result.grade.measurements, legacyWrittenRubric: true } };
+  }
+  return result;
+}
+
+async function executableProgress(identity: EdaIdentity) {
+  const rows = await all("SELECT topic_slug,MAX(score) AS best_score,MAX(passed) AS passed,MIN(CASE WHEN passed=1 THEN created_at ELSE NULL END) AS completed_at FROM academy_submissions WHERE tenant_id=? AND user_id=? AND topic_slug IN ('rtl-design','functional-verification') AND grade_json LIKE ? GROUP BY topic_slug", [identity.tenantId, identity.userId, '%"gradingBasis":"executed-v1"%']);
+  return new Map(rows.map(row => [String(row.topic_slug), { bestScore: numeric(row.best_score), passed: numeric(row.passed) === 1, completedAt: row.completed_at ? String(row.completed_at) : undefined }]));
 }
 
 function progress(row: Row): AcademyProgress {
@@ -80,7 +93,12 @@ export async function academyDashboard(identity: EdaIdentity): Promise<AcademyDa
   const progressRows = await all('SELECT * FROM academy_progress WHERE tenant_id = ? AND user_id = ? ORDER BY updated_at DESC', [identity.tenantId, identity.userId]);
   const submissionRows = await all('SELECT * FROM academy_submissions WHERE tenant_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 50', [identity.tenantId, identity.userId]);
   const capstoneRow = await one('SELECT * FROM academy_capstones WHERE tenant_id = ? AND user_id = ?', [identity.tenantId, identity.userId]);
-  const progressItems = progressRows.map(progress);
+  const verifiedProgress = await executableProgress(identity);
+  const progressItems = progressRows.map(progress).map(item => {
+    if (!hasExecutableLab({ topicSlug: item.topicSlug })) return item;
+    const verified = verifiedProgress.get(item.topicSlug);
+    return { ...item, status: verified?.passed ? 'passed' as const : 'needs-review' as const, bestScore: verified?.bestScore ?? 0, completedAt: verified?.completedAt };
+  });
   const completed = progressItems.filter(item => item.status === 'passed').length;
   const inProgress = progressItems.filter(item => item.status !== 'passed').length;
   const scored = progressItems.filter(item => item.bestScore > 0);
@@ -110,13 +128,31 @@ export async function selectAcademyPath(identity: EdaIdentity, pathSlug: string,
   await audit(identity, 'academy.path.selected', pathSlug, { pathSlug }, requestId);
 }
 
-export async function submitAcademyLab(identity: EdaIdentity, input: { labSlug: string; response: string; evidence: string[] }, requestId: string): Promise<AcademySubmission> {
+export async function submitAcademyLab(identity: EdaIdentity, input: { labSlug: string; response: string; evidence: string[]; execution?: { projectId: string; runId: string } }, requestId: string): Promise<AcademySubmission> {
   const lab = getAcademyLab(input.labSlug);
   if (!lab) throw new Error('Academy lab not found');
   await ensureEnrollment(identity);
   const count = await one<{ n: string | number }>('SELECT COUNT(*) AS n FROM academy_submissions WHERE tenant_id = ? AND user_id = ? AND lab_slug = ?', [identity.tenantId, identity.userId, lab.slug]);
   const attempt = numeric(count?.n) + 1;
-  const grade = gradeAcademyLab(lab, { response: input.response, evidence: input.evidence });
+  let executed: VerifiedAcademyExecution | undefined;
+  if (input.execution && hasExecutableLab(lab)) {
+    const execution = await getJourneyRun(identity, input.execution.projectId, input.execution.runId);
+    const revision = await getRevision(identity, input.execution.projectId, execution.revisionId);
+    if (!revision || revision.templateId !== 'fifo' || execution.kind !== 'simulation' || execution.purpose !== 'lab' || execution.createdBy !== identity.userId) throw new Error('Select your own fixed FIFO simulation run for this lab');
+    if (lab.topicSlug === 'rtl-design' && input.response.trim() !== revision.rtl.trim()) throw new Error('Submitted RTL must match the executed source revision exactly');
+    await journeyRunInputs(identity, input.execution.projectId, execution.id);
+    const assessmentRow = await one('SELECT document_json FROM design_journey_assessments WHERE tenant_id=? AND project_id=? AND run_id=? AND user_id=?', [identity.tenantId, input.execution.projectId, execution.id, identity.userId]);
+    if (!assessmentRow) throw new Error('Grade this execution in the project before attaching it to Academy');
+    const assessment = JSON.parse(String(assessmentRow.document_json)) as JourneyAssessment;
+    const expected = expectedChecks('fifo', 'simulation');
+    const report = execution.report;
+    executed = { runId: execution.id, revisionId: revision.id, sourceHash: revision.sourceHash,
+      correctness: report ? Math.round(60 * expected.filter(id => report.checks.some(check => check.id === id && check.status === 'passed')).length / expected.length) : 0,
+      reproducibility: report && !execution.reportError ? 25 : 0, explanationScore: assessment.explanationScore,
+      technicalPassed: Boolean(report && !execution.reportError && reportPassed(report, expected)),
+    };
+  }
+  const grade = gradeAcademyLab(lab, { response: input.response, evidence: input.evidence }, executed);
   const id = randomUUID();
   const timestamp = now();
   await run('INSERT INTO academy_submissions (id, tenant_id, user_id, lab_slug, topic_slug, response_text, evidence_json, grade_json, score, passed, attempt, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
@@ -124,11 +160,13 @@ export async function submitAcademyLab(identity: EdaIdentity, input: { labSlug: 
   ]);
   const existing = await one('SELECT * FROM academy_progress WHERE tenant_id = ? AND user_id = ? AND topic_slug = ?', [identity.tenantId, identity.userId, lab.topicSlug]);
   if (existing) {
-    const bestScore = Math.max(numeric(existing.best_score), grade.score);
-    const passed = String(existing.status) === 'passed' || grade.passed;
+    const verified = hasExecutableLab(lab) ? (await executableProgress(identity)).get(lab.topicSlug) : undefined;
+    const bestScore = hasExecutableLab(lab) ? verified?.bestScore ?? grade.score : Math.max(numeric(existing.best_score), grade.score);
+    const passed = hasExecutableLab(lab) ? verified?.passed ?? false : String(existing.status) === 'passed' || grade.passed;
+    const completedAt = hasExecutableLab(lab) ? verified?.completedAt ?? null : String(existing.completed_at ?? timestamp);
     await run('UPDATE academy_progress SET status = ?, best_score = ?, attempts = ?, completed_at = ?, updated_at = ? WHERE id = ?', [
       passed ? 'passed' : 'needs-review', bestScore, numeric(existing.attempts) + 1,
-      passed ? String(existing.completed_at ?? timestamp) : null, timestamp, String(existing.id),
+      passed ? completedAt : null, timestamp, String(existing.id),
     ]);
   } else {
     await run('INSERT INTO academy_progress (id, tenant_id, user_id, topic_slug, status, best_score, attempts, completed_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [
@@ -206,12 +244,13 @@ export async function saveTutorMessage(identity: EdaIdentity, topicSlug: string,
 
 export async function instructorDashboard(identity: EdaIdentity) {
   const learners = await all(`SELECT e.user_id, e.path_slug, e.status, e.diagnostic_score, e.started_at,
-    COUNT(DISTINCT CASE WHEN p.status = 'passed' THEN p.topic_slug END) AS completed_modules,
-    COALESCE(AVG(CASE WHEN p.best_score > 0 THEN p.best_score END), 0) AS average_score
+    COUNT(DISTINCT CASE WHEN p.topic_slug IN ('rtl-design','functional-verification') THEN CASE WHEN v.has_pass=1 THEN p.topic_slug END ELSE CASE WHEN p.status='passed' THEN p.topic_slug END END) AS completed_modules,
+    COALESCE(AVG(CASE WHEN p.topic_slug IN ('rtl-design','functional-verification') THEN NULLIF(v.best_score,0) ELSE NULLIF(p.best_score,0) END), 0) AS average_score
     FROM academy_enrollments e
     LEFT JOIN academy_progress p ON p.tenant_id = e.tenant_id AND p.user_id = e.user_id
+    LEFT JOIN (SELECT tenant_id,user_id,topic_slug,MAX(score) AS best_score,MAX(passed) AS has_pass FROM academy_submissions WHERE grade_json LIKE ? GROUP BY tenant_id,user_id,topic_slug) v ON v.tenant_id=p.tenant_id AND v.user_id=p.user_id AND v.topic_slug=p.topic_slug
     WHERE e.tenant_id = ? GROUP BY e.user_id, e.path_slug, e.status, e.diagnostic_score, e.started_at
-    ORDER BY e.started_at DESC`, [identity.tenantId]);
+    ORDER BY e.started_at DESC`, ['%"gradingBasis":"executed-v1"%', identity.tenantId]);
   const capstones = await all('SELECT id, user_id, title, status, score, feedback, updated_at FROM academy_capstones WHERE tenant_id = ? ORDER BY updated_at DESC', [identity.tenantId]);
   const atRisk = await all(`SELECT topic_slug, COUNT(*) AS attempts, AVG(score) AS average_score
     FROM academy_submissions WHERE tenant_id = ? AND passed = 0 GROUP BY topic_slug ORDER BY attempts DESC LIMIT 8`, [identity.tenantId]);

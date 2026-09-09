@@ -41,6 +41,9 @@ if (process.env.NODE_ENV === 'production') {
   if (!keyRing[internalKeyId]) throw new Error('internal OIDC signing key is missing from the public key ring');
   requirePinnedImage('CHIP_YOSYS_IMAGE');
   requirePinnedImage('CHIP_OPENROAD_IMAGE');
+  for (const name of ['CHIP_SIMULATION_IMAGE', 'CHIP_FORMAL_IMAGE']) {
+    if (process.env[name]) requirePinnedImage(name);
+  }
   if (!/^postgres(?:ql)?:\/\//i.test(requireValue('CHIP_COMMERCIAL_DATABASE_URL'))) {
     throw new Error('CHIP_COMMERCIAL_DATABASE_URL must use PostgreSQL in production');
   }

@@ -15,6 +15,8 @@ function requireValue(name: string): string {
 function sample(route: string): string {
   return route
     .replaceAll('[artifactId]', '00000000-0000-4000-8000-000000000002')
+    .replaceAll('[runId]', '00000000-0000-4000-8000-000000000003')
+    .replaceAll('[revisionId]', '00000000-0000-4000-8000-000000000004')
     .replaceAll('[id]', '00000000-0000-4000-8000-000000000001')
     .replaceAll('[feature]', 'continuous-ppa-tracking-across-commits')
     .replace('/academy/labs/[slug]', '/academy/labs/semiconductor-fundamentals-lab')

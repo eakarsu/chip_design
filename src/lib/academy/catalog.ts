@@ -55,7 +55,7 @@ function domainRequirements(slug: string, checklist: string[]): string[] {
     'Provide measured outputs or primary artifacts rather than unsupported conclusions.',
     'Explain one tradeoff, one remaining risk and the accountable review gate.',
   ];
-  if (slug === 'rtl-design') return ['Synthesizable parameterized FIFO RTL.', 'Ready/valid behavior and stable output under backpressure.', 'Assertions or explicit checks for overflow, underflow and ordering.', ...common];
+  if (slug === 'rtl-design') return ['The retained four-entry, 8-bit FIFO RTL used by the reference simulation.', 'Executed ready/valid behavior, ordering and backpressure checks.', 'A graded run and independently reviewed explanation. Parameter generalization is an additional exercise.', ...common];
   if (slug === 'static-timing-analysis') return ['Primary and related clock definitions.', 'IO timing and uncertainty constraints.', 'A justified asynchronous clock relationship or timing exception.', ...common];
   return [...checklist.slice(0, 3), ...common];
 }
@@ -78,7 +78,7 @@ export const academyLabs: AcademyLabDefinition[] = knowledgeTopics.map(topic => 
     ],
     evidenceRequirements: domainRequirements(topic.slug, topic.signoffChecklist),
     ...starter,
-    toolLinks: topic.tools.map(tool => ({ label: tool.label, href: tool.href })),
+    toolLinks: [...(['rtl-design', 'functional-verification'].includes(topic.slug) ? [{ label: 'Executable FIFO project', href: '/workspace/projects?template=fifo' }] : []), ...topic.tools.map(tool => ({ label: tool.label, href: tool.href }))],
     rubric: [
       { id: 'technical', label: 'Technical completeness', description: `Addresses the lab objective and the core ${topic.shortTitle} concepts.`, points: 35 },
       { id: 'evidence', label: 'Evidence and reproducibility', description: 'Provides traceable inputs, measurements, artifacts and method details.', points: 30 },
