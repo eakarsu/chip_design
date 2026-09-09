@@ -65,6 +65,7 @@ describe('/api/ai/copilot', () => {
   const originalMaxTokens = process.env.OPENROUTER_CHAT_MAX_TOKENS;
 
   afterEach(() => {
+    jest.restoreAllMocks();
     global.fetch = originalFetch;
     if (originalBaseUrl === undefined) delete process.env.OPENROUTER_BASE_URL;
     else process.env.OPENROUTER_BASE_URL = originalBaseUrl;
@@ -245,5 +246,155 @@ describe('/api/ai/copilot', () => {
     const result = await response.json();
     expect(result.model).toBe('google/gemini-2.5-flash-lite');
     expect(JSON.parse(result.choices[0].message.content)).toEqual(completeBrief);
+  });
+
+  it.each(['chat', 'review'])(
+    'falls back when a %s response times out after its HTTP 200 headers arrive',
+    async (mode) => {
+      const primary = new Response(' ', { status: 200, headers: { 'content-type': 'application/json' } });
+      jest.spyOn(primary, 'json').mockRejectedValueOnce(new DOMException('body deadline exceeded', 'TimeoutError'));
+      const content = mode === 'review' ? JSON.stringify(completeBrief) : 'Use Run comparison to compare EDA runs.';
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValueOnce(primary)
+        .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content } }] })));
+      global.fetch = fetchMock as typeof fetch;
+
+      const response = await POST(
+        request({ mode, messages: [{ role: 'user', content: 'Help compare my runs' }] }) as never
+      );
+
+      expect(response.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const fallback = JSON.parse(fetchMock.mock.calls[1][1].body);
+      expect(fallback.model).toBe('google/gemini-2.5-flash-lite');
+      expect(fallback.provider).toMatchObject({ zdr: true, data_collection: 'deny' });
+      expect(fetchMock.mock.calls[1][1].signal).not.toBe(fetchMock.mock.calls[0][1].signal);
+      expect((await response.json()).choices[0].message.content).toBe(content);
+    }
+  );
+
+  it('returns a retryable 504 when both providers time out while reading their response bodies', async () => {
+    const stalled = () => {
+      const response = new Response(' ', { status: 200 });
+      jest.spyOn(response, 'json').mockRejectedValueOnce(new DOMException('body deadline exceeded', 'TimeoutError'));
+      return response;
+    };
+    const fetchMock = jest.fn().mockResolvedValueOnce(stalled()).mockResolvedValueOnce(stalled());
+    global.fetch = fetchMock as typeof fetch;
+    const response = await POST(request({ messages: [{ role: 'user', content: 'Explain the app' }] }) as never);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(504);
+    expect(await response.json()).toMatchObject({ code: 'AI_PROVIDER_TIMEOUT', retryable: true });
+  });
+
+  it('recognizes a deadline even when the fallback body reader throws AbortError', async () => {
+    const primaryDeadline = new AbortController();
+    const fallbackDeadline = new AbortController();
+    jest
+      .spyOn(AbortSignal, 'timeout')
+      .mockReturnValueOnce(primaryDeadline.signal)
+      .mockReturnValueOnce(fallbackDeadline.signal);
+    const fallback = new Response(' ');
+    jest.spyOn(fallback, 'json').mockImplementation(async () => {
+      fallbackDeadline.abort(new DOMException('deadline', 'TimeoutError'));
+      throw new DOMException('body read aborted', 'AbortError');
+    });
+    global.fetch = jest
+      .fn()
+      .mockRejectedValueOnce(new DOMException('deadline', 'TimeoutError'))
+      .mockResolvedValueOnce(fallback);
+
+    const response = await POST(request() as never);
+    expect(response.status).toBe(504);
+    expect(await response.json()).toMatchObject({ code: 'AI_PROVIDER_TIMEOUT', retryable: true });
+  });
+
+  it('does not start a fallback after the user cancels while reading the primary body', async () => {
+    const controller = new AbortController();
+    const primary = new Response(' ');
+    jest.spyOn(primary, 'json').mockImplementation(async () => {
+      controller.abort();
+      throw controller.signal.reason;
+    });
+    const fetchMock = jest.fn().mockResolvedValueOnce(primary);
+    global.fetch = fetchMock;
+    const cancelledRequest = new Request(request(), { signal: controller.signal });
+
+    const response = await POST(cancelledRequest as never);
+    expect(response.status).toBe(499);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(await response.json()).toMatchObject({ code: 'CHAT_CANCELLED', retryable: false });
+  });
+
+  it('reports a timeout during structured-brief recovery as retryable', async () => {
+    const recovery = new Response(' ');
+    jest.spyOn(recovery, 'json').mockRejectedValueOnce(new DOMException('deadline', 'TimeoutError'));
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ choices: [{ message: { content: '{"headline":"incomplete"' } }] }))
+      )
+      .mockResolvedValueOnce(recovery);
+
+    const response = await POST(request() as never);
+    expect(response.status).toBe(504);
+    expect(await response.json()).toMatchObject({ code: 'AI_PROVIDER_TIMEOUT', retryable: true });
+  });
+
+  it.each([
+    'not valid JSON',
+    JSON.stringify({ error: { code: 503 } }),
+    JSON.stringify({
+      choices: [{ finish_reason: 'error', message: { content: 'Incomplete answer' }, error: { code: 503 } }],
+    }),
+  ])('recovers from a failed provider body without treating it as invalid user JSON: %s', async (body) => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(new Response(body))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ choices: [{ message: { content: 'Recovered answer' } }] })));
+    global.fetch = fetchMock;
+
+    const response = await POST(request({ messages: [{ role: 'user', content: 'Explain the app' }] }) as never);
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((await response.json()).choices[0].message.content).toBe('Recovered answer');
+  });
+
+  it('reports exhausted malformed provider responses as 502 instead of invalid user JSON', async () => {
+    global.fetch = jest.fn().mockImplementation(async () => new Response('not valid JSON'));
+    const response = await POST(request() as never);
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ code: 'AI_PROVIDER_UNAVAILABLE', retryable: true });
+  });
+
+  it.each([401, 403])(
+    'does not read a stalled HTTP %i error body or retry an authentication/policy failure',
+    async (status) => {
+      const cancel = jest.fn();
+      const responseBody = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(' '));
+        },
+        cancel,
+      });
+      const fetchMock = jest.fn().mockResolvedValueOnce(new Response(responseBody, { status }));
+      global.fetch = fetchMock;
+
+      const response = await POST(request() as never);
+      expect(response.status).toBe(502);
+      expect(await response.json()).toMatchObject({ code: 'AI_PROVIDER_CONFIGURATION', retryable: false });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(cancel).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('still passes through a successful requested stream', async () => {
+    const content = 'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\ndata: [DONE]\n\n';
+    global.fetch = jest.fn().mockResolvedValueOnce(new Response(content));
+    const response = await POST(request({ messages: [{ role: 'user', content: 'Hello' }], stream: true }) as never);
+    expect(response.headers.get('content-type')).toContain('text/event-stream');
+    expect(await response.text()).toBe(content);
   });
 });

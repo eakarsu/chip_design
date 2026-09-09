@@ -51,11 +51,27 @@ type OpenRouterChatResponse = {
   id?: string;
   model?: string;
   provider?: string;
+  error?: { code?: number; metadata?: { error_type?: string } };
   choices?: Array<{
     finish_reason?: string | null;
     message?: { content?: string | null };
+    error?: { code?: number; metadata?: { error_type?: string } };
   }>;
 };
+
+class CopilotProviderError extends Error {
+  constructor(readonly status: number) {
+    super(`AI provider request failed (${status})`);
+    this.name = 'CopilotProviderError';
+  }
+}
+
+function isProviderTimeout(error: unknown): boolean {
+  return (
+    (typeof error === 'object' && error !== null && 'name' in error && error.name === 'TimeoutError') ||
+    (error instanceof CopilotProviderError && [408, 504].includes(error.status))
+  );
+}
 
 const requiredBriefKeys = [
   'headline',
@@ -267,35 +283,70 @@ Answer naturally in concise prose, with short lists or fenced code when useful. 
     const primaryTimeoutMs = boundedTimeout('OPENROUTER_COPILOT_PRIMARY_TIMEOUT_MS', 45_000);
     const fallbackTimeoutMs = boundedTimeout('OPENROUTER_COPILOT_FALLBACK_TIMEOUT_MS', 75_000);
     const fallbackModel = process.env.OPENROUTER_COPILOT_FALLBACK_MODEL || 'google/gemini-2.5-flash-lite';
-    const runProviderRequest = (payload: Record<string, unknown>, timeoutMs: number) =>
-      fetch(endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-        signal: AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]),
-      });
+    const runProviderRequest = async (
+      payload: Record<string, unknown>,
+      timeoutMs: number
+    ): Promise<{ response: Response; data: OpenRouterChatResponse | null }> => {
+      const deadline = AbortSignal.timeout(timeoutMs);
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+          signal: AbortSignal.any([request.signal, deadline]),
+        });
+        if (!response.ok) {
+          // The status is sufficient; an error body can stall too.
+          void response.body?.cancel().catch(() => {});
+          throw new CopilotProviderError(response.status);
+        }
+        if (payload.stream === true) return { response, data: null };
+
+        // OpenRouter may send HTTP 200 before generating the answer. Keep
+        // body consumption inside the same deadline and fallback boundary.
+        const data = (await response.json()) as OpenRouterChatResponse;
+        if (!data || typeof data !== 'object') throw new CopilotProviderError(502);
+        const choice = data.choices?.[0];
+        const providerError = data.error ?? choice?.error;
+        if (providerError?.metadata?.error_type === 'timeout') {
+          throw new DOMException('AI provider timed out', 'TimeoutError');
+        }
+        if (providerError) {
+          const status = providerError.code;
+          throw new CopilotProviderError(typeof status === 'number' && status >= 400 && status <= 599 ? status : 502);
+        }
+        if (
+          choice?.finish_reason === 'error' ||
+          typeof choice?.message?.content !== 'string' ||
+          !choice.message.content.trim()
+        ) {
+          throw new CopilotProviderError(502);
+        }
+        return { response, data };
+      } catch (error) {
+        if (request.signal.aborted) throw request.signal.reason;
+        // Some fetch implementations report a body timeout as AbortError.
+        // Preserve the actual deadline reason so it becomes a retryable 504.
+        if (deadline.aborted) throw deadline.reason;
+        if (error instanceof CopilotProviderError || isProviderTimeout(error)) throw error;
+        // A malformed provider body is an upstream failure, not invalid user JSON.
+        throw new CopilotProviderError(502);
+      }
+    };
 
     // Preserve the configured specialist as the primary model, but never let a
     // stalled provider consume the entire browser/gateway window. The fallback
     // is subject to the exact same ZDR and data-collection policy.
-    let openrouterResponse: Response;
+    let providerResult: Awaited<ReturnType<typeof runProviderRequest>>;
     let responseIsStream = stream;
     try {
-      openrouterResponse = await runProviderRequest(basePayload, primaryTimeoutMs);
-      if (!openrouterResponse.ok) {
-        const status = openrouterResponse.status;
-        await openrouterResponse.text();
-        if (status === 401 || status === 403) {
-          console.error('OpenRouter authentication or policy request failed with status', status);
-          return NextResponse.json({ error: 'AI service authentication or policy error' }, { status: 502 });
-        }
-        throw new Error(`primary model returned HTTP ${status}`);
-      }
+      providerResult = await runProviderRequest(basePayload, primaryTimeoutMs);
     } catch (error) {
       if (request.signal.aborted) throw error;
+      if (error instanceof CopilotProviderError && [401, 403].includes(error.status)) throw error;
       console.warn('OpenRouter primary copilot model unavailable; using approved bounded fallback');
       responseIsStream = false;
-      openrouterResponse = await runProviderRequest(
+      providerResult = await runProviderRequest(
         {
           ...basePayload,
           model: fallbackModel,
@@ -306,15 +357,9 @@ Answer naturally in concise prose, with short lists or fenced code when useful. 
       );
     }
 
-    if (!openrouterResponse.ok) {
-      await openrouterResponse.text();
-      console.error('OpenRouter request failed with status', openrouterResponse.status);
-      return NextResponse.json({ error: 'AI service error' }, { status: 500 });
-    }
-
     if (responseIsStream) {
       // Return streaming response
-      return new NextResponse(openrouterResponse.body, {
+      return new NextResponse(providerResult.response.body, {
         headers: {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
@@ -323,7 +368,7 @@ Answer naturally in concise prose, with short lists or fenced code when useful. 
       });
     }
 
-    let data = (await openrouterResponse.json()) as OpenRouterChatResponse;
+    let data = providerResult.data!;
     const firstContent = data.choices?.[0]?.message?.content;
     if (mode === 'chat') {
       if (!firstContent?.trim())
@@ -336,7 +381,7 @@ Answer naturally in concise prose, with short lists or fenced code when useful. 
       // Make one automatic repair attempt without hidden reasoning. We repeat
       // the original design context rather than sending malformed provider
       // serialization back through the system.
-      const recoveryResponse = await runProviderRequest(
+      const recoveryResult = await runProviderRequest(
         {
           ...basePayload,
           model: fallbackModel,
@@ -356,16 +401,7 @@ Answer naturally in concise prose, with short lists or fenced code when useful. 
         fallbackTimeoutMs
       );
 
-      if (!recoveryResponse.ok) {
-        await recoveryResponse.text();
-        console.error('OpenRouter structured recovery failed with status', recoveryResponse.status);
-        return NextResponse.json(
-          { error: 'The AI provider did not complete the engineering brief. Automatic recovery also failed.' },
-          { status: 502 }
-        );
-      }
-
-      const recovered = (await recoveryResponse.json()) as OpenRouterChatResponse;
+      const recovered = recoveryResult.data!;
       brief = parseCompleteBrief(recovered.choices?.[0]?.message?.content);
       if (!brief) {
         return NextResponse.json(
@@ -391,6 +427,37 @@ Answer naturally in concise prose, with short lists or fenced code when useful. 
         : [],
     });
   } catch (error) {
+    if (request.signal.aborted)
+      return NextResponse.json(
+        { error: 'Chat request cancelled', code: 'CHAT_CANCELLED', retryable: false },
+        { status: 499 }
+      );
+    if (isProviderTimeout(error)) {
+      console.warn('Copilot provider deadline exceeded after automatic recovery');
+      return NextResponse.json(
+        {
+          error: 'AI provider timed out',
+          message: 'The AI service took too long to respond. Your question has been kept; please try again.',
+          code: 'AI_PROVIDER_TIMEOUT',
+          retryable: true,
+        },
+        { status: 504 }
+      );
+    }
+    if (error instanceof CopilotProviderError) {
+      console.warn('Copilot provider request failed with status', error.status);
+      const configurationError = [401, 403].includes(error.status);
+      return NextResponse.json(
+        {
+          error: configurationError
+            ? 'AI service authentication or policy error'
+            : 'AI service temporarily unavailable',
+          code: configurationError ? 'AI_PROVIDER_CONFIGURATION' : 'AI_PROVIDER_UNAVAILABLE',
+          retryable: !configurationError,
+        },
+        { status: 502 }
+      );
+    }
     if (error instanceof z.ZodError)
       return NextResponse.json({ error: 'Invalid chat request', details: error.flatten() }, { status: 400 });
     if (error instanceof SyntaxError) return NextResponse.json({ error: 'Invalid JSON request' }, { status: 400 });
