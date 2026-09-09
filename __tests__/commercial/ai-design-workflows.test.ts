@@ -89,6 +89,8 @@ describe('AI design studio workflows', () => {
     expect(verification.steps.find((step) => step.kind === 'decision')?.status).toBe('review-required');
 
     review.humanStatus = 'accepted';
+    review.requestedBy = 'engineer';
+    review.humanDecision = { decidedBy: 'independent-admin', decidedAt: '2026-08-04T00:00:00.000Z', rationale: 'Primary reports and bounded experiments were independently reviewed.' };
     verification = assessAiDesignWorkflows(bundle([start], [review]), 'project-1').find(
       (workflow) => workflow.id === 'verification-closure'
     )!;

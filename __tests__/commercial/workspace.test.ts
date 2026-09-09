@@ -267,13 +267,13 @@ describe('commercial chip-design workspace', () => {
         status: 'pending-approval',
         ownerId: 'physical-design-owner',
         dueAt: '2099-12-31T23:59:59.000Z',
-        payload: { domain: 'drc', rule: 'M1.MIN.SPACE', scope: 'one analog keep-out marker' },
+        payload: { domain: 'drc', rule: 'M1.MIN.SPACE', scope: 'one analog keep-out marker', rationale: 'Reviewed bounded exception for the analog keep-out marker.' },
         evidence: ['runs/test/drc-marker-14.rpt'],
       },
       'operation-create'
     );
     await expect(
-      updateOperationRecord(admin, { id: waiver.id, status: 'approved' }, 'operation-premature')
+      updateOperationRecord(reviewer, { id: waiver.id, status: 'approved' }, 'operation-premature')
     ).rejects.toThrow(/approved independent waiver decision/);
     const approval = await createApproval(
       admin,
@@ -302,6 +302,6 @@ describe('commercial chip-design workspace', () => {
     expect((await operationsBundle(otherTenant)).records.find((item) => item.id === waiver.id)).toBeUndefined();
     const matrix = await projectSignoffMatrix(admin, projectId);
     expect(matrix.activeCorners).toBe(3);
-    expect(matrix.checks.find((check) => check.key === 'drc')?.state).toBe('waived');
+    expect(matrix.checks.find((check) => check.key === 'drc')?.state).toBe('missing');
   });
 });

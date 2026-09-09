@@ -49,6 +49,13 @@ describe('accelerator architecture model', () => {
     expect(results[2].arrayUtilizationPct).toBeGreaterThanOrEqual(results[0].arrayUtilizationPct);
   });
 
+  it.each([[65, 65], [4, 4], [32, 71], [48, 72], [129, 257], [512, 512]])('preserves all MACs for valid %i × %i arrays', (arrayRows, arrayColumns) => {
+    const input = { ...DEFAULT_ACCELERATOR_ARCHITECTURE_INPUT, arrayRows, arrayColumns };
+    const results = compareAcceleratorOrganizations(input);
+    expect(new Set(results.map((item) => item.macUnits))).toEqual(new Set([arrayRows * arrayColumns * input.arrayCount]));
+    expect(new Set(results.map((item) => item.peakTops)).size).toBe(1);
+  });
+
   it('makes implementation and determinism assumptions explicit', () => {
     const fpga = evaluateAcceleratorArchitecture({
       ...DEFAULT_ACCELERATOR_ARCHITECTURE_INPUT,

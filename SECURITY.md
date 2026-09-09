@@ -4,8 +4,12 @@
 
 - Browser sessions use HTTP-only, same-site cookies and secure cookies behind
   HTTPS.
-- First-party sessions exchange for an RS256 EDA token valid for at most 15
-  minutes. The private key remains server-side.
+- First-party API calls and artifact downloads accept validated, active browser
+  sessions in production. Tenant and role come from the stored user membership.
+  Session-authenticated mutations reject cross-origin requests. Sessions can
+  also exchange for an RS256 EDA token valid for at most 15 minutes; the private
+  key remains server-side. An explicitly supplied invalid bearer token fails
+  authentication even when a valid session cookie is also present.
 - External OIDC tokens must match issuer, audience, signature key ID, expiry,
   subject, tenant, and the `admin`, `editor`, or `viewer` role set.
 - Database queries and object keys are tenant scoped. EDA identifiers and paths

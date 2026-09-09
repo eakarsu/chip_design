@@ -4,6 +4,7 @@ import { createJob, requestCancellation } from '@/lib/eda/store';
 import type { EdaIdentity } from '@/lib/eda/identity';
 import type { PlatformCapabilityId } from './capabilities';
 import { capabilityAction } from './capabilityActionCatalog';
+import { canonicalRelease, releaseManifestSchema, verifyReleasePrerequisites } from './release';
 
 export type CapabilityExecutionStatus = 'completed' | 'submitted' | 'blocked' | 'configuration-required';
 
@@ -198,6 +199,7 @@ async function executeAdapter(
 
 export async function executeCapabilityAction(args: {
   identity: EdaIdentity;
+  projectId?: string;
   capabilityId: PlatformCapabilityId;
   actionId: string;
   input: Record<string, unknown>;
@@ -425,7 +427,7 @@ export async function executeCapabilityAction(args: {
             : `Reduce density or adjust placement/routing resources in ${String(violation.region ?? 'the affected region')}.`
       );
       return result(capabilityId, actionId, `${recommendations.length} bounded ECO experiment(s) generated.`, {
-        status: 'submitted',
+        status: 'completed',
         metrics: { candidates: recommendations.length },
         findings: violations.map((item) => `${String(item.domain)} violation retained as measured input.`),
         recommendations,
@@ -1320,7 +1322,9 @@ export async function executeCapabilityAction(args: {
       );
     }
     case 'signed-manifest': {
-      const document = canonical(input);
+      if (!args.projectId) return result(capabilityId, actionId, 'Select a workspace project before signing a release manifest.', { status: 'blocked' });
+      const manifest = { ...releaseManifestSchema.parse(input), tenantId: identity.tenantId, projectId: args.projectId };
+      const document = canonicalRelease(manifest);
       const digest = sha256(document);
       const encodedKey = process.env.CHIP_RELEASE_SIGNING_PRIVATE_KEY_BASE64;
       let signature: string | undefined;
@@ -1351,7 +1355,7 @@ export async function executeCapabilityAction(args: {
                 'Configure a protected release signing key and rerun; do not treat the digest alone as an accountable signature.',
               ],
           data: {
-            manifest: input,
+            manifest,
             canonicalSha256: digest,
             signature,
             keyId,
@@ -1384,11 +1388,10 @@ export async function executeCapabilityAction(args: {
       );
     }
     case 'release-ceremony': {
-      const approvals = objects(input.approvals, 'approvals');
-      const blockers = approvals.filter((approval) => approval.status !== 'approved');
-      const signatureVerified = input.signatureVerified === true;
-      const ready =
-        blockers.length === 0 && signatureVerified && /^[0-9a-f]{64}$/.test(String(input.manifestDigest ?? ''));
+      const selection = z.string().uuid().safeParse(input.manifestRecordId);
+      if (!args.projectId || !selection.success) return result(capabilityId, actionId, 'Select a retained signed manifest and obtain its independent release approval.', { status: 'blocked', metrics: { signatureVerified: false, approvals: 0 } });
+      const verification = await verifyReleasePrerequisites(identity, args.projectId, selection.data);
+      const { ready, approvals, approved, signatureVerified, findings } = verification;
       return result(
         capabilityId,
         actionId,
@@ -1397,15 +1400,12 @@ export async function executeCapabilityAction(args: {
           : 'Release ceremony remains blocked.',
         {
           status: ready ? 'completed' : 'blocked',
-          metrics: { approvals: approvals.length, approved: approvals.length - blockers.length, signatureVerified },
-          findings: [
-            ...blockers.map((approval) => `${String(approval.role)} approval is ${String(approval.status)}.`),
-            ...(!signatureVerified ? ['Manifest signature is not verified.'] : []),
-          ],
+          metrics: { approvals: approvals.length, approved, signatureVerified },
+          findings,
           recommendations: ready
             ? ['Record the final accountable release decision against the immutable evidence bundle.']
             : ['Do not release until every named approval and signature verification is complete.'],
-          data: { approvals, evidenceBundleUri: input.evidenceBundleUri, manifestDigest: input.manifestDigest },
+          data: verification,
         }
       );
     }
@@ -1578,7 +1578,7 @@ export async function executeCapabilityAction(args: {
           ? `Cancellation requested for ${cancelled.id}; capacity plan recomputed.`
           : `${run.length} job(s) fit available capacity; ${defer.length} should defer.`,
         {
-          status: cancelled ? 'submitted' : 'completed',
+          status: cancelled && !['cancelled', 'succeeded', 'failed'].includes(cancelled.status) ? 'submitted' : 'completed',
           metrics: { runnableJobs: run.length, deferredJobs: defer.length, unusedWorkerHours: round(remaining / 3600) },
           findings: defer.map((id) => `${id} does not fit the supplied capacity window.`),
           recommendations: [

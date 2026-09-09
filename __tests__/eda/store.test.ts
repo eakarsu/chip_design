@@ -17,6 +17,7 @@ import {
   listJobs,
   listProjects,
   requestCancellation,
+  recoverStaleJobs,
   verifyAuditChain,
 } from '@/lib/eda/store';
 import { buildDockerInvocation } from '@/lib/eda/worker';
@@ -113,6 +114,17 @@ describe('durable governed EDA jobs', () => {
     expect(reclaimed?.attempts).toBe(2);
     requestCancellation(tenantA, retryJob.id);
     expect(failJob(retryJob.id, 'worker-three', 'cancelled', false).status).toBe('cancelled');
+  });
+
+  it('finishes cancellation when the running worker loses its lease', () => {
+    const job = yosysJob(listProjects(tenantA)[0].id, 'cancel-after-worker-crash');
+    expect(claimNextJob('crashed-worker')?.id).toBe(job.id);
+    requestCancellation(tenantA, job.id);
+    getRawDb().prepare('UPDATE eda_jobs SET lease_until = ? WHERE id = ?').run('2000-01-01T00:00:00.000Z', job.id);
+    recoverStaleJobs();
+    expect(getJob(tenantA, job.id)).toMatchObject({ status: 'cancelled', cancelRequested: true });
+    expect(claimNextJob('replacement-worker')).toBeUndefined();
+    expect(listAudit(tenantA).some((event) => event.action === 'job.cancelled' && event.job_id === job.id)).toBe(true);
   });
 
   it('maintains a verifiable append-only audit chain', () => {

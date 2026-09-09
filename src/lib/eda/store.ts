@@ -441,21 +441,27 @@ export function recoverStaleJobs(now = new Date()): number {
   const stale = db.prepare(`
     SELECT * FROM eda_jobs WHERE status='running' AND lease_until < ?
   `).all(now.toISOString()) as JobRow[];
+  let recovered = 0;
   for (const job of stale) {
-    const exhausted = job.attempts >= job.max_attempts;
     db.transaction(() => {
-      db.prepare(`
+      const current = db.prepare("SELECT * FROM eda_jobs WHERE id = ? AND status = 'running' AND lease_until < ?").get(job.id, now.toISOString()) as JobRow | undefined;
+      if (!current) return;
+      const exhausted = current.attempts >= current.max_attempts;
+      const status = current.cancel_requested ? 'cancelled' : exhausted ? 'failed' : 'retry';
+      const updated = db.prepare(`
         UPDATE eda_jobs SET status=?, lease_owner=NULL, lease_until=NULL,
-          next_attempt_at=?, error=?, updated_at=? WHERE id=? AND status='running'
+          next_attempt_at=?, error=?, updated_at=? WHERE id=? AND status='running' AND lease_until < ?
       `).run(
-        exhausted ? 'failed' : 'retry', now.toISOString(), 'worker lease expired',
-        now.toISOString(), job.id,
+        status, now.toISOString(), current.cancel_requested ? 'cancelled after worker lease expired' : 'worker lease expired',
+        now.toISOString(), job.id, now.toISOString(),
       );
+      if (!updated.changes) return;
+      recovered++;
       appendAudit(db, { tenantId: job.tenant_id, userId: 'system' },
-        exhausted ? 'job.failed' : 'job.recovered', job.id, { attempts: job.attempts });
-    })();
+        status === 'retry' ? 'job.recovered' : `job.${status}`, job.id, { attempts: current.attempts });
+    }).immediate();
   }
-  return stale.length;
+  return recovered;
 }
 
 export function claimNextJob(workerId: string, leaseSeconds = 60): EdaJob | undefined {

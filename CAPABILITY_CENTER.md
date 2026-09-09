@@ -86,6 +86,18 @@ Tapeout manifest signing activates with
 manifest even when signing is not configured, but clearly reports that the
 digest is not a signature.
 
+Signing binds the manifest to the authenticated tenant and selected project.
+After signing, use **Request independent release approval** and have an
+independent administrator review that exact manifest in Workspace → ECO &
+approvals. The release ceremony selects a retained signed-manifest record via
+`manifestRecordId`. It recomputes its digest, verifies its cryptographic
+signature against the deployment key, and loads approvals from the database.
+Caller-supplied verification flags or approval arrays cannot authorize release.
+Verification can use `CHIP_RELEASE_SIGNING_PUBLIC_KEY_BASE64`; otherwise the
+public key is derived from the configured signing key. Changing the trusted key
+or manifest requires a new signing and approval cycle. The seven-step workflow
+also requires its preceding evidence and independent human AI disposition.
+
 Production preflight requires all five enterprise adapter paths plus a valid
 release signing key and key identifier. Adapter and signing secrets remain in
 the deployment secret store; they are never generated, returned, or embedded by

@@ -23,7 +23,6 @@ import {
   AccordionSummary,
   AccordionDetails,
 } from '@mui/material';
-import AICopilot from '@/components/AICopilot';
 import DesignFlowGenerator from '@/components/DesignFlowGenerator';
 import AIFeaturesDashboard from '@/components/AIFeaturesDashboard';
 import ProfessionalAIResult from '@/components/ai/ProfessionalAIResult';
@@ -1637,13 +1636,6 @@ export default function AIFeaturesPage() {
         </Grid>
       </TabPanel>
 
-      {/* AI Copilot always available */}
-      <AICopilot
-        designContext={{
-          currentAlgorithm: undefined,
-          currentParams: undefined,
-        }}
-      />
     </Container>
   );
 }

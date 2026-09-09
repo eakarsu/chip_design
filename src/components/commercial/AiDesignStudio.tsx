@@ -97,6 +97,7 @@ export default function AiDesignStudio({
   const workflow = assessments.find((item) => item.id === workflowId) ?? assessments[0];
   const [stepId, setStepId] = useState(workflow.steps[0].id);
   const selectedStep = workflow.steps.find((item) => item.id === stepId) ?? workflow.currentStep ?? workflow.steps[0];
+  const advancementBlocked = selectedStep.kind === 'advance' && workflow.steps.some((item) => item.kind !== 'advance' && item.status !== 'complete');
   const [owner, setOwner] = useState('');
   const [summary, setSummary] = useState('');
   const [evidence, setEvidence] = useState('');
@@ -448,6 +449,7 @@ export default function AiDesignStudio({
                             variant={record ? 'outlined' : 'contained'}
                             color={record?.status === 'blocked' ? 'error' : record ? 'success' : 'primary'}
                             startIcon={<PlayArrow />}
+                            disabled={advancementBlocked}
                             onClick={() => onOpenAction(reference)}
                           >
                             {definition?.title ?? reference.actionId}
@@ -494,6 +496,7 @@ export default function AiDesignStudio({
 
                 {manualStep && (
                   <Stack gap={1.5} sx={{ mt: 2 }}>
+                    {advancementBlocked && <Alert severity="warning">Complete the evidence, tools, experiment and independent human decision before advancing.</Alert>}
                     <TextField
                       label="Accountable owner"
                       value={owner}
@@ -533,6 +536,7 @@ export default function AiDesignStudio({
                         variant="contained"
                         disabled={
                           Boolean(busy) ||
+                          (recordStatus === 'complete' && advancementBlocked) ||
                           owner.trim().length < 2 ||
                           summary.trim().length < 10 ||
                           lines(evidence).length === 0

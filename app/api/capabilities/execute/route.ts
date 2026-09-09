@@ -27,6 +27,7 @@ export async function POST(request: Request) {
 
       const execution = await executeCapabilityAction({
         identity,
+        projectId: input.projectId,
         capabilityId: input.capabilityId,
         actionId: input.actionId,
         input: input.input,
@@ -42,7 +43,8 @@ export async function POST(request: Request) {
           payload: { execution, input: input.input },
           evidence: input.evidence.length ? input.evidence : [`capability-execution:${requestId}`],
         },
-        requestId
+        requestId,
+        'execution'
       );
       return { execution, record };
     },

@@ -190,6 +190,7 @@ export default function AcceleratorArchitectureLab() {
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
+          mode: 'review',
           stream: false,
           messages: [
             {

@@ -45,6 +45,34 @@ describe('AI Design Studio', () => {
     expect(screen.getByText('1. Freeze the verification plan')).toBeVisible();
   });
 
+  it('disables advancement until the preceding evidence and human decision are complete', () => {
+    render(<AiDesignStudio workspace={workspace} projectId="project-1" onReload={jest.fn(async () => undefined)} onOpenAction={jest.fn()} onBrief={jest.fn()} />);
+    fireEvent.click(screen.getByText('7. Release the governed design baseline'));
+    expect(screen.getByRole('button', { name: 'Retain step evidence' })).toBeDisabled();
+  });
+
+  it('selects retained signed manifests instead of accepting a signature-verification checkbox', async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ workspace: { featureRecords: [{ id: 'manifest-1', projectId: 'project-1', feature: 'tapeout-release', recordType: 'signed-manifest', status: 'completed', title: 'Release candidate', createdAt: '2026-09-01T00:00:00.000Z' }] } }) }) as typeof fetch;
+    render(<CapabilityExecutionWorkbench capabilityId="tapeout-release" capabilityTitle="Tapeout" projectId="project-1" initialActionId="release-ceremony" open onClose={jest.fn()} onComplete={jest.fn(async () => undefined)} />);
+    await waitFor(() => expect(screen.getByLabelText('Retained signed manifest')).toHaveTextContent('Release candidate'));
+    fireEvent.click(screen.getByRole('tab', { name: 'Expert JSON' }));
+    expect(screen.getByLabelText('Structured JSON input')).toHaveValue(JSON.stringify({ manifestRecordId: 'manifest-1' }, null, 2));
+  });
+
+  it('requests approval for the exact signed manifest returned by execution', async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ record: { id: 'signed-record-1' }, execution: { actionId: 'signed-manifest', status: 'completed', summary: 'Manifest signed', metrics: {}, findings: [], recommendations: [] } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ approval: { status: 'pending' } }) });
+    globalThis.fetch = fetchMock as typeof fetch;
+    render(<CapabilityExecutionWorkbench capabilityId="tapeout-release" capabilityTitle="Tapeout" projectId="project-1" initialActionId="signed-manifest" open onClose={jest.fn()} onComplete={jest.fn(async () => undefined)} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Run and retain evidence' }));
+    const request = await screen.findByRole('button', { name: 'Request independent release approval' });
+    await waitFor(() => expect(request).toBeEnabled());
+    fireEvent.click(request);
+    await screen.findByText(/Release approval is pending/);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({ projectId: 'project-1', targetType: 'signoff', targetId: 'signed-record-1' });
+  });
+
   it('uses guided action fields by default and retains expert JSON as an explicit mode', () => {
     render(
       <CapabilityExecutionWorkbench

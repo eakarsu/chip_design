@@ -53,23 +53,6 @@ function LoginForm() {
     setEmail(demoCredentials.email);
     setPassword(demoCredentials.password);
     setError('');
-    setLoading(true);
-
-    // Submit credentials as a top-level browser navigation. This lets the
-    // server set the session cookie and redirect atomically, avoiding a race
-    // between a fetch response and the first protected page request.
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = loginAction;
-    for (const [name, value] of Object.entries(demoCredentials)) {
-      const input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = name;
-      input.value = value;
-      form.appendChild(input);
-    }
-    document.body.appendChild(form);
-    form.submit();
   };
 
   return (
@@ -130,9 +113,7 @@ function LoginForm() {
             >
               {demoCredentialsLoading
                 ? 'Loading Demo Credentials…'
-                : loading
-                  ? 'Signing In…'
-                  : 'Auto Fill & Sign In Demo Account'}
+                : 'Auto Fill Demo Credentials'}
             </Button>
             <Button
               type="submit"

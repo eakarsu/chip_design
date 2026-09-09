@@ -2,8 +2,12 @@ import 'server-only';
 
 import { createHash, randomUUID } from 'crypto';
 import type { EdaIdentity } from '@/lib/eda/identity';
-import { all, commercialDatabaseBackend, one, run } from './database';
+import { all, commercialDatabaseBackend, commercialTransaction, lockCommercialProject, one, run } from './database';
 import { objectStorageBackend, putWorkspaceObject } from './objectStore';
+import { AI_DESIGN_WORKFLOWS, aiDesignFeature, aiDesignStepRecordType, assessAiDesignWorkflows, workflowPrerequisiteIds } from './aiDesignWorkflows';
+import { capabilityAction } from './capabilityActionCatalog';
+import { PLATFORM_CAPABILITY_IDS } from './capabilities';
+import { getJob } from '@/lib/eda/store';
 import type {
   AnalysisCorner,
   ConstraintSet,
@@ -27,6 +31,16 @@ const parse = <T>(value: unknown, fallback: T): T => {
 };
 const bool = (value: unknown) => value === true || value === 1 || value === '1';
 const number = (value: unknown) => Number(value ?? 0);
+
+// Project writes hold a lock. Keep workflow ordering unambiguous even when
+// several records and a review are retained within the same millisecond.
+async function nextWorkflowTimestamp(identity: EdaIdentity, projectId: string): Promise<string> {
+  const lastRecord = await one('SELECT created_at FROM commercial_feature_records WHERE tenant_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 1', [identity.tenantId, projectId]);
+  const lastReview = await one('SELECT created_at, brief_json FROM commercial_ai_reviews WHERE tenant_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 1', [identity.tenantId, projectId]);
+  const decision = parse<Partial<DecisionBrief>>(lastReview?.brief_json, {}).humanDecision?.decidedAt;
+  const previous = Math.max(...[lastRecord?.created_at, lastReview?.created_at, decision].map((value) => Date.parse(String(value)) || 0));
+  return new Date(Math.max(Date.now(), previous + 1)).toISOString();
+}
 
 function seededId(tenantId: string, name: string): string {
   const digest = createHash('sha256').update(`${tenantId}:${name}`).digest('hex');
@@ -234,7 +248,16 @@ export async function workspaceBundle(identity: EdaIdentity): Promise<WorkspaceB
   return {
     projects: projects.map(project), constraints: constraints.map(constraint), corners: corners.map(corner),
     ppaSnapshots: ppaSnapshots.map(ppa), rtlImpacts: rtlImpacts.map(impact), artifacts: artifacts.map(artifact),
-    approvals: approvals.map(approval), ecos: ecos.map(eco), featureRecords: featureRecords.map(featureRecord),
+    approvals: approvals.map(approval), ecos: ecos.map(eco), featureRecords: featureRecords.map(featureRecord).map(item => {
+      if (item.status !== 'submitted' || !['sandbox-rerun', 'capacity-recommendation'].includes(item.recordType)) return item;
+      const execution = item.payload.execution as { data?: { job?: { id?: string }; cancelled?: { id?: string } } } | undefined;
+      const id = item.recordType === 'sandbox-rerun' ? execution?.data?.job?.id : execution?.data?.cancelled?.id;
+      const job = id ? getJob(identity, id) : undefined;
+      const completed = job && (item.recordType === 'sandbox-rerun' ? job.status === 'succeeded' : ['cancelled', 'succeeded', 'failed'].includes(job.status));
+      const status = completed ? 'completed'
+        : !job || ['failed', 'cancelled'].includes(job.status) ? 'blocked' : 'submitted';
+      return { ...item, status, payload: { ...item.payload, jobCompletedAt: completed ? job.updatedAt : undefined } };
+    }),
     aiReviews: aiReviews.map(review), storageBackend: objectStorageBackend, databaseBackend: commercialDatabaseBackend,
   };
 }
@@ -247,13 +270,15 @@ export async function createWorkspaceProject(identity: EdaIdentity, input: Omit<
 }
 
 export async function createConstraint(identity: EdaIdentity, input: Omit<ConstraintSet, 'id' | 'version' | 'active' | 'createdAt'> & { active?: boolean }, requestId: string): Promise<ConstraintSet> {
-  await ownsProject(identity, input.projectId);
-  const versionRow = await one<{ n: string | number }>('SELECT COUNT(*) AS n FROM commercial_constraint_sets WHERE tenant_id = ? AND project_id = ? AND name = ?', [identity.tenantId, input.projectId, input.name]);
-  const id = randomUUID();
-  if (input.active !== false) await run('UPDATE commercial_constraint_sets SET active = 0 WHERE tenant_id = ? AND project_id = ?', [identity.tenantId, input.projectId]);
-  await run('INSERT INTO commercial_constraint_sets (id, tenant_id, project_id, name, sdc, version, active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [id, identity.tenantId, input.projectId, input.name, input.sdc, number(versionRow?.n) + 1, input.active === false ? 0 : 1, now()]);
-  await audit(identity, 'create', 'constraint_set', id, { projectId: input.projectId, name: input.name }, requestId);
-  return constraint((await one('SELECT * FROM commercial_constraint_sets WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]))!);
+  return commercialTransaction(async () => {
+    await lockCommercialProject(identity.tenantId, input.projectId);
+    const versionRow = await one<{ n: string | number }>('SELECT MAX(version) AS n FROM commercial_constraint_sets WHERE tenant_id = ? AND project_id = ? AND name = ?', [identity.tenantId, input.projectId, input.name]);
+    const id = randomUUID();
+    if (input.active !== false) await run('UPDATE commercial_constraint_sets SET active = 0 WHERE tenant_id = ? AND project_id = ?', [identity.tenantId, input.projectId]);
+    await run('INSERT INTO commercial_constraint_sets (id, tenant_id, project_id, name, sdc, version, active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [id, identity.tenantId, input.projectId, input.name, input.sdc, number(versionRow?.n) + 1, input.active === false ? 0 : 1, now()]);
+    await audit(identity, 'create', 'constraint_set', id, { projectId: input.projectId, name: input.name }, requestId);
+    return constraint((await one('SELECT * FROM commercial_constraint_sets WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]))!);
+  });
 }
 
 export async function createCorner(identity: EdaIdentity, input: Omit<AnalysisCorner, 'id' | 'active'> & { active?: boolean }, requestId: string): Promise<AnalysisCorner> {
@@ -323,20 +348,59 @@ export async function createArtifact(identity: EdaIdentity, input: { projectId: 
 }
 
 export async function createApproval(identity: EdaIdentity, input: { projectId: string; targetType: string; targetId: string; rationale: string }, requestId: string): Promise<WorkspaceApproval> {
-  await ownsProject(identity, input.projectId); const id = randomUUID();
-  await run('INSERT INTO commercial_approvals (id, tenant_id, project_id, target_type, target_id, status, rationale, requested_by, requested_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, identity.tenantId, input.projectId, input.targetType, input.targetId, 'pending', input.rationale, identity.userId, now()]);
-  await audit(identity, 'request', 'approval', id, input, requestId);
-  return approval((await one('SELECT * FROM commercial_approvals WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]))!);
+  if (identity.role === 'viewer') throw new Error('Editor access is required to request approval');
+  return commercialTransaction(async () => {
+    await lockCommercialProject(identity.tenantId, input.projectId);
+    const table = { eco: 'commercial_ecos', artifact: 'commercial_artifacts', constraint: 'commercial_constraint_sets', waiver: 'commercial_operation_records', signoff: 'commercial_feature_records' }[input.targetType];
+    if (table) {
+      const target = await one(`SELECT * FROM ${table} WHERE tenant_id = ? AND project_id = ? AND id = ?`, [identity.tenantId, input.projectId, input.targetId]);
+      if (!target || (input.targetType === 'waiver' && target.category !== 'waiver') ||
+          (input.targetType === 'signoff' && (target.feature !== 'tapeout-release' || target.record_type !== 'signed-manifest' || target.status !== 'completed'))) {
+        throw new Error('Approval target not found for this project');
+      }
+    }
+    const previous = await one('SELECT * FROM commercial_approvals WHERE tenant_id = ? AND project_id = ? AND target_type = ? AND target_id = ? ORDER BY requested_at DESC LIMIT 1', [identity.tenantId, input.projectId, input.targetType, input.targetId]);
+    if (previous) return approval(previous);
+    const id = randomUUID();
+    const requestedAt = await nextWorkflowTimestamp(identity, input.projectId);
+    await run('INSERT INTO commercial_approvals (id, tenant_id, project_id, target_type, target_id, status, rationale, requested_by, requested_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, identity.tenantId, input.projectId, input.targetType, input.targetId, 'pending', input.rationale, identity.userId, requestedAt]);
+    if (input.targetType === 'eco') {
+      await run("UPDATE commercial_ecos SET approval_id = ?, status = 'review', updated_at = ? WHERE tenant_id = ? AND project_id = ? AND id = ?", [id, now(), identity.tenantId, input.projectId, input.targetId]);
+    }
+    await audit(identity, 'request', 'approval', id, input, requestId);
+    return approval((await one('SELECT * FROM commercial_approvals WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]))!);
+  });
 }
 
 export async function decideApproval(identity: EdaIdentity, id: string, decision: 'approved' | 'rejected', rationale: string, requestId: string): Promise<WorkspaceApproval> {
-  const existing = await one('SELECT * FROM commercial_approvals WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]);
-  if (!existing) throw new Error('Approval was not found for this tenant');
-  if (String(existing.requested_by) === identity.userId) throw new Error('Independent reviewer is required');
-  if (String(existing.status) !== 'pending') throw new Error('Approval was already decided');
-  await run('UPDATE commercial_approvals SET status = ?, rationale = ?, decided_by = ?, decided_at = ? WHERE tenant_id = ? AND id = ?', [decision, rationale, identity.userId, now(), identity.tenantId, id]);
-  await audit(identity, decision, 'approval', id, { rationale }, requestId);
-  return approval((await one('SELECT * FROM commercial_approvals WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]))!);
+  if (identity.role !== 'admin') throw new Error('Admin reviewer access is required');
+  return commercialTransaction(async () => {
+    const reference = await one('SELECT project_id FROM commercial_approvals WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]);
+    if (!reference) throw new Error('Approval was not found for this tenant');
+    await lockCommercialProject(identity.tenantId, String(reference.project_id));
+    const existing = (await one('SELECT * FROM commercial_approvals WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]))!;
+    if (String(existing.requested_by) === identity.userId) throw new Error('Independent reviewer is required');
+    if (String(existing.status) !== 'pending') throw new Error('Approval was already decided');
+    if (['artifact', 'signoff'].includes(String(existing.target_type))) {
+      const creator = await one("SELECT actor_id FROM commercial_audit_events WHERE tenant_id = ? AND resource = ? AND resource_id = ? AND action = 'create' ORDER BY created_at ASC LIMIT 1", [identity.tenantId, existing.target_type === 'artifact' ? 'workspace_artifact' : 'feature_record', existing.target_id]);
+      if (!creator || creator.actor_id === identity.userId) throw new Error('Independent reviewer of the original evidence is required');
+    }
+    if (existing.target_type === 'waiver') {
+      const waiver = await one("SELECT * FROM commercial_operation_records WHERE tenant_id = ? AND project_id = ? AND id = ? AND category = 'waiver'", [identity.tenantId, existing.project_id, existing.target_id]);
+      if (!waiver) throw new Error('Waiver not found for this project');
+      if (waiver.created_by === identity.userId) throw new Error('Independent reviewer is required');
+      if (decision === 'approved' && (!waiver.due_at || Date.parse(String(waiver.due_at)) <= Date.now())) throw new Error('Expired waivers cannot be approved');
+    }
+    const decidedAt = new Date(Math.max(Date.now(), Date.parse(String(existing.requested_at)) + 1)).toISOString();
+    await run('UPDATE commercial_approvals SET status = ?, rationale = ?, decided_by = ?, decided_at = ? WHERE tenant_id = ? AND id = ? AND status = ?', [decision, rationale, identity.userId, decidedAt, identity.tenantId, id, 'pending']);
+    if (existing.target_type === 'eco') {
+      const changed = await run('UPDATE commercial_ecos SET status = ?, approval_id = ?, updated_at = ? WHERE tenant_id = ? AND project_id = ? AND id = ? AND (approval_id IS NULL OR approval_id = ?)', [decision, id, decidedAt, identity.tenantId, existing.project_id, existing.target_id, id]);
+      if (!changed) throw new Error('ECO approval link conflicts with the current change');
+      await audit(identity, decision, 'eco', String(existing.target_id), { approvalId: id, rationale }, requestId);
+    }
+    await audit(identity, decision, 'approval', id, { rationale }, requestId);
+    return approval((await one('SELECT * FROM commercial_approvals WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]))!);
+  });
 }
 
 export async function createEco(identity: EdaIdentity, input: Omit<EcoChange, 'id' | 'status' | 'approvalId' | 'createdAt' | 'updatedAt'>, requestId: string): Promise<EcoChange> {
@@ -346,19 +410,49 @@ export async function createEco(identity: EdaIdentity, input: Omit<EcoChange, 'i
   return eco((await one('SELECT * FROM commercial_ecos WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]))!);
 }
 
-export async function createFeatureRecord(identity: EdaIdentity, input: Omit<FeatureRecord, 'id' | 'createdAt'>, requestId: string): Promise<FeatureRecord> {
-  await ownsProject(identity, input.projectId); const id = randomUUID();
-  await run('INSERT INTO commercial_feature_records (id, tenant_id, project_id, feature, record_type, title, status, payload_json, evidence_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, identity.tenantId, input.projectId, input.feature, input.recordType, input.title, input.status, json(input.payload), json(input.evidence), now()]);
-  await audit(identity, 'create', 'feature_record', id, { projectId: input.projectId, feature: input.feature }, requestId);
+export async function createFeatureRecord(identity: EdaIdentity, input: Omit<FeatureRecord, 'id' | 'createdAt'>, requestId: string, source: 'manual' | 'execution' = 'manual'): Promise<FeatureRecord> {
+  return commercialTransaction(async () => {
+    await lockCommercialProject(identity.tenantId, input.projectId);
+    const capabilityId = PLATFORM_CAPABILITY_IDS.find((id) => id === input.feature);
+    if (source !== 'execution' && capabilityId && capabilityAction(capabilityId, input.recordType)) throw new Error('Use the governed capability execution endpoint for tool results');
+    const payload = { ...input.payload };
+    const workflow = AI_DESIGN_WORKFLOWS.find((item) => aiDesignFeature(item.id) === input.feature ||
+      item.steps.some((step) => step.kind === 'advance' && step.actions?.some((action) => action.capabilityId === input.feature && action.actionId === input.recordType)));
+    const step = workflow?.steps.find((item) => aiDesignStepRecordType(item.id) === input.recordType ||
+      (item.kind === 'advance' && item.actions?.some((action) => action.capabilityId === input.feature && action.actionId === input.recordType)));
+    if (input.feature.startsWith('ai-design:') && (!workflow || !step || step.kind === 'ai' || step.kind === 'decision' || step.actions?.length)) throw new Error('This workflow step requires its governed action');
+    if (step?.kind === 'advance' && ['complete', 'completed'].includes(input.status)) {
+      const assessment = assessAiDesignWorkflows(await workspaceBundle(identity), input.projectId).find((item) => item.id === workflow!.id)!;
+      const incomplete = assessment.steps.filter((item) => item.kind !== 'advance' && item.status !== 'complete');
+      if (incomplete.length) throw new Error(`Advancement requires completed prerequisites: ${incomplete.map((item) => item.title).join(', ')}`);
+      const review = assessment.latestReview;
+      const latestEvidenceAt = assessment.steps.filter((item) => item.kind !== 'advance').flatMap((item) => item.records.flatMap((record) => [record.createdAt, String(record.payload.jobCompletedAt ?? '')])).sort().at(-1) ?? '';
+      if (!review?.humanDecision || review.humanDecision.decidedAt < latestEvidenceAt) throw new Error('Independent human disposition must follow the current evidence');
+      if (input.feature === 'tapeout-release' && input.recordType === 'release-ceremony') {
+        const manifest = assessment.steps.flatMap((item) => item.records).find((record) => record.recordType === 'signed-manifest');
+        const execution = payload.execution as { data?: { manifestRecordId?: string } } | undefined;
+        if (!manifest || execution?.data?.manifestRecordId !== manifest.id) throw new Error('Release ceremony must verify the signed manifest in the current workflow evidence');
+      }
+      payload.workflowStartId = assessment.steps[0].records[0]?.id;
+      payload.reviewId = review.id;
+      payload.prerequisiteIds = workflowPrerequisiteIds(assessment.steps, review);
+    }
+    const id = randomUUID();
+    const timestamp = await nextWorkflowTimestamp(identity, input.projectId);
+  await run('INSERT INTO commercial_feature_records (id, tenant_id, project_id, feature, record_type, title, status, payload_json, evidence_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, identity.tenantId, input.projectId, input.feature, input.recordType, input.title, input.status, json(payload), json(input.evidence), timestamp]);
+  await audit(identity, 'create', 'feature_record', id, { projectId: input.projectId, feature: input.feature, source }, requestId);
   return featureRecord((await one('SELECT * FROM commercial_feature_records WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]))!);
+  });
 }
 
 export async function saveDecisionBrief(identity: EdaIdentity, brief: Omit<DecisionBrief, 'id' | 'createdAt'>, requestId: string): Promise<DecisionBrief> {
-  await ownsProject(identity, brief.projectId); const id = randomUUID(); const timestamp = now();
-  const stored: Omit<DecisionBrief, 'id' | 'createdAt'> = { ...brief, requestedBy: identity.userId };
-  await run('INSERT INTO commercial_ai_reviews (id, tenant_id, project_id, feature, brief_json, provider, model, human_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, identity.tenantId, brief.projectId, brief.feature, json(stored), brief.provider, brief.model, brief.humanStatus, timestamp]);
+  return commercialTransaction(async () => {
+  await lockCommercialProject(identity.tenantId, brief.projectId); const id = randomUUID(); const timestamp = await nextWorkflowTimestamp(identity, brief.projectId);
+  const stored: Omit<DecisionBrief, 'id' | 'createdAt'> = { ...brief, requestedBy: identity.userId, humanStatus: 'pending', humanDecision: undefined };
+  await run('INSERT INTO commercial_ai_reviews (id, tenant_id, project_id, feature, brief_json, provider, model, human_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, identity.tenantId, brief.projectId, brief.feature, json(stored), brief.provider, brief.model, 'pending', timestamp]);
   await audit(identity, 'create', 'ai_review', id, { projectId: brief.projectId, feature: brief.feature, risk: brief.risk }, requestId);
   return { ...stored, id, createdAt: timestamp };
+  });
 }
 
 export async function projectReviewContext(identity: EdaIdentity, projectId: string, feature: string): Promise<Record<string, unknown>> {
@@ -389,6 +483,11 @@ export async function projectReviewContext(identity: EdaIdentity, projectId: str
 }
 
 export async function decideAiReview(identity: EdaIdentity, id: string, status: 'accepted' | 'rejected', rationale: string, requestId: string): Promise<DecisionBrief> {
+  if (identity.role !== 'admin') throw new Error('Admin reviewer access is required');
+  return commercialTransaction(async () => {
+  const reference = await one('SELECT project_id FROM commercial_ai_reviews WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]);
+  if (!reference) throw new Error('AI review was not found for this tenant');
+  await lockCommercialProject(identity.tenantId, String(reference.project_id));
   const row = await one('SELECT * FROM commercial_ai_reviews WHERE tenant_id = ? AND id = ?', [identity.tenantId, id]);
   if (!row) throw new Error('AI review was not found for this tenant');
   const current = review(row);
@@ -399,11 +498,12 @@ export async function decideAiReview(identity: EdaIdentity, id: string, status: 
   if (!requestedBy) throw new Error('AI review request provenance is unavailable; generate a new review before disposition');
   if (requestedBy === identity.userId) throw new Error('Independent reviewer is required for an AI disposition');
   if (current.humanStatus !== 'pending') throw new Error('AI review was already decided');
-  const decidedAt = now();
+  const decidedAt = await nextWorkflowTimestamp(identity, current.projectId);
   const updated: DecisionBrief = { ...current, requestedBy, humanStatus: status, humanDecision: { rationale, decidedBy: identity.userId, decidedAt } };
   await run('UPDATE commercial_ai_reviews SET brief_json = ?, human_status = ? WHERE tenant_id = ? AND id = ?', [json(updated), status, identity.tenantId, id]);
   await audit(identity, 'decide', 'ai_review', id, { projectId: current.projectId, status, rationale }, requestId);
   return updated;
+  });
 }
 
 export async function artifactForTenant(identity: EdaIdentity, id: string): Promise<WorkspaceArtifact | undefined> {

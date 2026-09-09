@@ -56,7 +56,6 @@ import {
   PrecisionManufacturing,
   Hub,
   School,
-  SmartToy,
   Close,
 } from '@mui/icons-material';
 import Link from 'next/link';
@@ -93,11 +92,6 @@ const GROUPS: Group[] = [
   {
     title: 'Governed AI',
     items: [
-      {
-        label: 'AI Chat',
-        href: '/governed-ai/chat',
-        icon: <SmartToy />,
-      },
       {
         label: 'Lifecycle Overview',
         href: '/governed-ai/lifecycle',

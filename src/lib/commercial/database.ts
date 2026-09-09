@@ -1,6 +1,7 @@
 import 'server-only';
 
 import Database from 'better-sqlite3';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { Pool, type PoolClient, type QueryResultRow } from 'pg';
 import { getRawDb } from '@/lib/db/connection';
 
@@ -38,17 +39,68 @@ function postgresSql(sql: string): string {
   return sql.replace(/\?/g, () => `$${++index}`);
 }
 
+const transactionContext = new AsyncLocalStorage<{ client?: PoolClient; sqlite?: true }>();
+let sqliteQueue: Promise<void> = Promise.resolve();
+
+// SQLite shares a connection. Keep unrelated requests out of a transaction
+// while its async callback is suspended, including read-only requests.
+async function withSqliteAccess<T>(task: () => T | Promise<T>): Promise<T> {
+  const previous = sqliteQueue;
+  let release!: () => void;
+  sqliteQueue = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try { return await task(); } finally { release(); }
+}
+
+export async function commercialTransaction<T>(task: () => Promise<T>): Promise<T> {
+  if (transactionContext.getStore()) return task();
+  await ensureCommercialSchema();
+  if (commercialDatabaseBackend === 'postgres') {
+    const client = await pool().connect();
+    try {
+      await client.query('BEGIN');
+      const value = await transactionContext.run({ client }, task);
+      await client.query('COMMIT');
+      return value;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally { client.release(); }
+  }
+  return withSqliteAccess(async () => {
+    const db = getRawDb();
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const value = await transactionContext.run({ sqlite: true }, task);
+      db.exec('COMMIT');
+      return value;
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  });
+}
+
+export async function lockCommercialProject(tenantId: string, projectId: string): Promise<void> {
+  if (!transactionContext.getStore()) throw new Error('Project locks require a transaction');
+  const row = await one(
+    'SELECT id FROM commercial_projects WHERE tenant_id = ? AND id = ?' +
+      (commercialDatabaseBackend === 'postgres' ? ' FOR UPDATE' : ''),
+    [tenantId, projectId]
+  );
+  if (!row) throw new Error('Project not found for this tenant');
+}
+
 export async function all<T extends QueryResultRow = QueryResultRow>(
   sql: string,
   values: unknown[] = []
 ): Promise<T[]> {
   await ensureCommercialSchema();
   if (commercialDatabaseBackend === 'postgres') {
-    return (await pool().query<T>(postgresSql(sql), values)).rows;
+    return (await (transactionContext.getStore()?.client ?? pool()).query<T>(postgresSql(sql), values)).rows;
   }
-  return getRawDb()
-    .prepare(sql)
-    .all(...values) as T[];
+  const query = () => getRawDb().prepare(sql).all(...values) as T[];
+  return transactionContext.getStore()?.sqlite ? query() : withSqliteAccess(query);
 }
 
 export async function one<T extends QueryResultRow = QueryResultRow>(
@@ -62,11 +114,10 @@ export async function one<T extends QueryResultRow = QueryResultRow>(
 export async function run(sql: string, values: unknown[] = []): Promise<number> {
   await ensureCommercialSchema();
   if (commercialDatabaseBackend === 'postgres') {
-    return (await pool().query(postgresSql(sql), values)).rowCount ?? 0;
+    return (await (transactionContext.getStore()?.client ?? pool()).query(postgresSql(sql), values)).rowCount ?? 0;
   }
-  return getRawDb()
-    .prepare(sql)
-    .run(...values).changes;
+  const query = () => getRawDb().prepare(sql).run(...values).changes;
+  return transactionContext.getStore()?.sqlite ? query() : withSqliteAccess(query);
 }
 
 const schemaSql = `
@@ -85,6 +136,10 @@ const schemaSql = `
     active INTEGER NOT NULL, created_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS commercial_constraints_tenant_project_idx ON commercial_constraint_sets(tenant_id, project_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS commercial_constraints_version_unique
+    ON commercial_constraint_sets(tenant_id, project_id, name, version);
+  CREATE UNIQUE INDEX IF NOT EXISTS commercial_constraints_active_unique
+    ON commercial_constraint_sets(tenant_id, project_id) WHERE active = 1;
 
   CREATE TABLE IF NOT EXISTS commercial_corners (
     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, project_id TEXT NOT NULL,
@@ -224,12 +279,16 @@ const schemaSql = `
 `;
 
 function ensureSqliteSchema(db: SqliteDatabase): void {
-  db.exec(schemaSql);
+  db.transaction(() => db.exec(schemaSql))();
 }
 
 async function ensurePostgresSchema(client: PoolClient): Promise<void> {
-  await client.query(schemaSql);
+  await client.query('BEGIN');
+  try { await client.query(schemaSql); await client.query('COMMIT'); }
+  catch (error) { await client.query('ROLLBACK'); throw error; }
 }
+
+const requiredCommercialIndexes = ['commercial_constraints_version_unique', 'commercial_constraints_active_unique'];
 
 const requiredCommercialTables = [
   'commercial_projects',
@@ -258,6 +317,8 @@ function validateSqliteSchema(db: SqliteDatabase): void {
   const rows = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>;
   const present = new Set(rows.map((row) => row.name));
   const missing = requiredCommercialTables.filter((table) => !present.has(table));
+  const indexes = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type = 'index'").all() as Array<{ name: string }>).map((row) => row.name));
+  missing.push(...requiredCommercialIndexes.filter((index) => !indexes.has(index)));
   if (missing.length) throw new Error(`commercial database migration required; missing: ${missing.join(', ')}`);
 }
 
@@ -267,6 +328,9 @@ async function validatePostgresSchema(client: PoolClient): Promise<void> {
   );
   const present = new Set(result.rows.map((row) => row.table_name));
   const missing = requiredCommercialTables.filter((table) => !present.has(table));
+  const indexes = await client.query<{ indexname: string }>("SELECT indexname FROM pg_indexes WHERE schemaname = 'public'");
+  const presentIndexes = new Set(indexes.rows.map((row) => row.indexname));
+  missing.push(...requiredCommercialIndexes.filter((index) => !presentIndexes.has(index)));
   if (missing.length) throw new Error(`commercial database migration required; missing: ${missing.join(', ')}`);
 }
 

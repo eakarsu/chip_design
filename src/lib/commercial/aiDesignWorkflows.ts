@@ -712,7 +712,12 @@ export function aiDesignWorkflow(id: string): AiDesignWorkflowDefinition | undef
 }
 
 function latestRecord(records: FeatureRecord[], feature: string, recordType: string): FeatureRecord | undefined {
-  return records.find((record) => record.feature === feature && record.recordType === recordType);
+  return records.filter((record) => record.feature === feature && record.recordType === recordType)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+}
+
+export function workflowPrerequisiteIds(steps: AiDesignStepAssessment[], review?: DecisionBrief): string[] {
+  return [...new Set([...steps.filter((step) => step.kind !== 'advance').flatMap((step) => step.records.map((record) => record.id)), ...(review?.id ? [review.id] : [])])].sort();
 }
 
 export function assessAiDesignWorkflows(workspace: WorkspaceBundle, projectId: string): AiDesignWorkflowAssessment[] {
@@ -730,7 +735,8 @@ export function assessAiDesignWorkflows(workspace: WorkspaceBundle, projectId: s
           (record) => record.feature === feature && record.recordType === aiDesignStepRecordType(firstStep.id)
         );
     const latestReview = startedAt
-      ? projectReviews.find((review) => review.feature === feature && (review.createdAt ?? '') >= startedAt)
+      ? projectReviews.filter((review) => review.feature === feature && (review.createdAt ?? '') >= startedAt)
+          .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))[0]
       : undefined;
     const steps = workflow.steps.map<AiDesignStepAssessment>((definition) => {
       const manualRecord = latestRecord(workflowRecords, feature, aiDesignStepRecordType(definition.id));
@@ -743,7 +749,8 @@ export function assessAiDesignWorkflows(workspace: WorkspaceBundle, projectId: s
         status = latestReview ? 'complete' : 'not-started';
       } else if (definition.kind === 'decision') {
         status = latestReview
-          ? latestReview.humanStatus === 'accepted'
+          ? latestReview.humanStatus === 'accepted' && Boolean(latestReview.humanDecision?.decidedBy && latestReview.requestedBy &&
+              latestReview.humanDecision.decidedBy !== latestReview.requestedBy && latestReview.humanDecision.rationale.trim())
             ? 'complete'
             : latestReview.humanStatus === 'rejected'
               ? 'blocked'
@@ -757,11 +764,11 @@ export function assessAiDesignWorkflows(workspace: WorkspaceBundle, projectId: s
             ? actionRecords.length
               ? 'in-progress'
               : 'not-started'
-            : statuses.some((value) => value === 'submitted')
+            : statuses.some((value) => value !== 'completed')
               ? 'in-progress'
               : 'complete';
       } else if (manualRecord) {
-        status = manualRecord.status === 'blocked' ? 'blocked' : 'complete';
+        status = manualRecord.status === 'complete' ? 'complete' : manualRecord.status === 'blocked' ? 'blocked' : 'in-progress';
       }
       return {
         ...definition,
@@ -769,6 +776,16 @@ export function assessAiDesignWorkflows(workspace: WorkspaceBundle, projectId: s
         records: manualRecord ? [manualRecord, ...actionRecords] : actionRecords,
       };
     });
+    const advance = steps.find((step) => step.kind === 'advance')!;
+    if (advance.status === 'complete') {
+      const retained = advance.records[0];
+      const prerequisites = workflowPrerequisiteIds(steps, latestReview);
+      if (steps.some((step) => step.kind !== 'advance' && step.status !== 'complete') ||
+          retained?.payload.workflowStartId !== startRecord?.id ||
+          retained?.payload.reviewId !== latestReview?.id ||
+          JSON.stringify(retained?.payload.prerequisiteIds) !== JSON.stringify(prerequisites) ||
+          (latestReview?.humanDecision?.decidedAt ?? '') > retained.createdAt) advance.status = 'blocked';
+    }
     const completed = steps.filter((item) => item.status === 'complete').length;
     return {
       ...workflow,

@@ -277,7 +277,7 @@ export default function EngineeringOperationsPage() {
   }, [records, tab]);
 
   const submitWaiver = async () => {
-    const data = await createRecord(
+    await createRecord(
       {
         category: 'waiver',
         kind: 'signoff-waiver',
@@ -290,18 +290,6 @@ export default function EngineeringOperationsPage() {
       },
       'Waiver recorded and routed for independent approval.'
     );
-    if (data?.record && projectId)
-      await mutate(
-        '/api/workspace/approvals',
-        {
-          projectId,
-          targetType: 'waiver',
-          targetId: data.record.id,
-          rationale:
-            waiver.rationale || 'Independent signoff-owner review is required before this waiver becomes active.',
-        },
-        'Waiver recorded and independent approval requested.'
-      );
   };
 
   const submitSpice = () => {

@@ -585,14 +585,7 @@ export const CAPABILITY_ACTIONS: Record<PlatformCapabilityId, CapabilityActionDe
       'Approval ceremony and immutable bundle',
       'Check evidence, approvals, manifest signature and release decision.',
       {
-        manifestDigest: 'e'.repeat(64),
-        signatureVerified: true,
-        approvals: [
-          { role: 'tapeout-manager', status: 'approved' },
-          { role: 'sta-lead', status: 'approved' },
-          { role: 'pv-lead', status: 'pending' },
-        ],
-        evidenceBundleUri: 's3://chip-artifacts/releases/atlas-rc1',
+        manifestRecordId: 'select-retained-signed-manifest',
       }
     ),
   ],

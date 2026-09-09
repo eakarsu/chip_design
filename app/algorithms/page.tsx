@@ -46,7 +46,7 @@ import TemplateSelector from '@/components/TemplateSelector';
 import AutoTuneDialog from '@/components/AutoTuneDialog';
 import AIAlgorithmSelector from '@/components/AIAlgorithmSelector';
 import AlgorithmCodeViewer from '@/components/AlgorithmCodeViewer';
-import AICopilot from '@/components/AICopilot';
+import { CopilotPageContext } from '@/components/ai/CopilotProvider';
 import ProfessionalAIResult from '@/components/ai/ProfessionalAIResult';
 import ScenarioDialog from '@/components/ScenarioDialog';
 import type { Scenario } from '@/lib/scenarios';
@@ -1535,9 +1535,8 @@ endmodule`,
         onLoad={handleScenarioLoad}
       />
 
-      {/* AI Copilot */}
-      <AICopilot
-        designContext={{
+      <CopilotPageContext
+        value={{
           currentAlgorithm: `${category}/${algorithm}`,
           currentParams: {
             chipWidth,

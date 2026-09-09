@@ -243,6 +243,9 @@ export default function CapabilityExecutionWorkbench({
   const [editorMode, setEditorMode] = useState<'guided' | 'advanced'>('guided');
   const [evidence, setEvidence] = useState('');
   const [execution, setExecution] = useState<CapabilityExecutionResult | null>(null);
+  const [recordId, setRecordId] = useState('');
+  const [approvalNotice, setApprovalNotice] = useState('');
+  const [manifests, setManifests] = useState<Array<{ id: string; title: string; createdAt: string }>>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [edaProjects, setEdaProjects] = useState<EdaProjectOption[]>([]);
@@ -257,8 +260,26 @@ export default function CapabilityExecutionWorkbench({
     setEvidence('');
     setEditorMode('guided');
     setExecution(null);
+    setRecordId('');
+    setApprovalNotice('');
     setError('');
   }, [capabilityId, initialActionId, open]);
+
+  useEffect(() => {
+    if (!open || actionId !== 'release-ceremony') return;
+    const controller = new AbortController();
+    setManifests([]);
+    fetch('/api/workspace/bootstrap', { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message ?? 'Signed manifests could not be loaded');
+        const available = (data.workspace?.featureRecords ?? []).filter((item: { projectId: string; feature: string; recordType: string; status: string }) => item.projectId === projectId && item.feature === 'tapeout-release' && item.recordType === 'signed-manifest' && item.status === 'completed');
+        setManifests(available);
+        setInput(JSON.stringify({ manifestRecordId: available[0]?.id ?? '' }, null, 2));
+      })
+      .catch((reason) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Signed manifests could not be loaded'); });
+    return () => controller.abort();
+  }, [actionId, open, projectId]);
 
   useEffect(() => {
     if (!open || actionId !== 'sandbox-rerun') return;
@@ -299,6 +320,8 @@ export default function CapabilityExecutionWorkbench({
     setActionId(next.id);
     setInput(JSON.stringify(next.inputTemplate, null, 2));
     setExecution(null);
+    setRecordId('');
+    setApprovalNotice('');
     setError('');
   };
 
@@ -323,12 +346,30 @@ export default function CapabilityExecutionWorkbench({
       const data = await response.json();
       if (!response.ok) throw new Error(data.message ?? data.error ?? 'Capability execution failed');
       setExecution(data.execution);
+      setRecordId(data.record?.id ?? '');
+      setApprovalNotice('');
       await onComplete();
     } catch (runError) {
       setError(runError instanceof Error ? runError.message : 'Capability execution failed');
     } finally {
       setBusy(false);
     }
+  };
+
+  const requestReleaseApproval = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const response = await fetch('/api/workspace/approvals', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, targetType: 'signoff', targetId: recordId, rationale: 'Independently review the retained signed manifest and its release evidence before authorizing release.' }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message ?? data.error ?? 'Release approval request failed');
+      setApprovalNotice(`Release approval is ${data.approval.status}. An independent administrator can review it in Workspace → ECO & approvals.`);
+      await onComplete();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Release approval request failed'); }
+    finally { setBusy(false); }
   };
 
   const parsedInput = useMemo(() => {
@@ -438,6 +479,14 @@ export default function CapabilityExecutionWorkbench({
                           ))}
                         </Select>
                       </FormControl>
+                    ) : name === 'manifestRecordId' && actionId === 'release-ceremony' ? (
+                      <FormControl fullWidth disabled={manifests.length === 0}>
+                        <InputLabel id="signed-manifest-label">Retained signed manifest</InputLabel>
+                        <Select labelId="signed-manifest-label" label="Retained signed manifest" value={manifests.some((item) => item.id === value) ? String(value) : ''} onChange={(event) => updateInputField(name, event.target.value)}>
+                          {manifests.map((item) => <MenuItem key={item.id} value={item.id}>{item.title} · {item.createdAt}</MenuItem>)}
+                        </Select>
+                        {manifests.length === 0 && <Typography variant="body2">Run Signed tapeout manifest first, then request its independent release approval.</Typography>}
+                      </FormControl>
                     ) : value && typeof value === 'object' ? (
                       <StructuredInputField
                         name={name}
@@ -516,6 +565,13 @@ export default function CapabilityExecutionWorkbench({
                 />
               </Stack>
               <Typography sx={{ mt: 1 }}>{execution.summary}</Typography>
+              {execution.actionId === 'signed-manifest' && execution.status === 'completed' && recordId && (
+                <Stack gap={1} sx={{ mt: 2 }}>
+                  <Button variant="outlined" disabled={busy} onClick={() => void requestReleaseApproval()}>Request independent release approval</Button>
+                  {approvalNotice && <Alert severity="info">{approvalNotice}</Alert>}
+                  <Button component="a" href="/workspace">Open workspace approvals</Button>
+                </Stack>
+              )}
               <Stack direction="row" flexWrap="wrap" useFlexGap gap={1} sx={{ my: 2 }}>
                 {Object.entries(execution.metrics).map(([key, value]) => (
                   <Chip key={key} variant="outlined" label={`${key}: ${String(value)}`} />

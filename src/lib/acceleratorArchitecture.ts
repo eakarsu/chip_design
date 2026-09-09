@@ -95,8 +95,11 @@ function round(value: number, digits = 3): number {
 
 function organizationGeometry(input: AcceleratorArchitectureInput, organization: AcceleratorOrganization) {
   if (organization === 'fine-gpu') {
-    const rowScale = Math.min(4, Math.max(1, Math.floor(input.arrayRows / 8)));
-    const columnScale = Math.min(4, Math.max(1, Math.floor(input.arrayColumns / 8)));
+    // Only split into whole, equally sized subarrays. Flooring a remainder
+    // silently removes MACs and makes comparisons use different hardware.
+    const split = (size: number) => [4, 3, 2, 1].find((factor) => size % factor === 0 && size / factor >= 8) ?? 1;
+    const rowScale = split(input.arrayRows);
+    const columnScale = split(input.arrayColumns);
     return {
       rows: Math.max(4, Math.floor(input.arrayRows / rowScale)),
       columns: Math.max(4, Math.floor(input.arrayColumns / columnScale)),

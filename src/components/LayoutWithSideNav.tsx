@@ -16,6 +16,8 @@ import SideNav, { SIDENAV_WIDTH } from './SideNav';
 import Breadcrumbs from './Breadcrumbs';
 import KeyboardShortcuts from './KeyboardShortcuts';
 import ToastProvider from './ToastProvider';
+import AICopilot from './AICopilot';
+import { CopilotProvider } from './ai/CopilotProvider';
 
 export default function LayoutWithSideNav({ children }: { children: React.ReactNode }) {
   const theme = useTheme();
@@ -26,87 +28,92 @@ export default function LayoutWithSideNav({ children }: { children: React.ReactN
 
   return (
     <ToastProvider>
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <KeyboardShortcuts />
-      {/* Skip link for keyboard / screen-reader users — previously owned by AppBar. */}
-      <a
-        href="#main-content"
-        className="skip-link"
-        style={{
-          position: 'absolute',
-          left: '-9999px',
-          zIndex: 999999,
-          padding: '1rem',
-          backgroundColor: theme.palette.primary.main,
-          color: theme.palette.primary.contrastText,
-          textDecoration: 'none',
-          borderRadius: 4,
-        }}
-      >
-        Skip to main content
-      </a>
+      <CopilotProvider>
+        <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+          <KeyboardShortcuts />
+          {/* Skip link for keyboard / screen-reader users — previously owned by AppBar. */}
+          <a
+            href="#main-content"
+            className="skip-link"
+            style={{
+              position: 'absolute',
+              left: '-9999px',
+              zIndex: 999999,
+              padding: '1rem',
+              backgroundColor: theme.palette.primary.main,
+              color: theme.palette.primary.contrastText,
+              textDecoration: 'none',
+              borderRadius: 4,
+            }}
+          >
+            Skip to main content
+          </a>
 
-      <Box sx={{ display: 'flex', flex: 1 }}>
-        {/* Desktop: permanent drawer. Mobile: temporary drawer behind a button. */}
-        <SideNav
-          open={mobileOpen}
-          onClose={() => setMobileOpen(false)}
-          variant={isDesktop ? 'permanent' : 'temporary'}
-        />
+          <Box sx={{ display: 'flex', flex: 1 }}>
+            {/* Desktop: permanent drawer. Mobile: temporary drawer behind a button. */}
+            <SideNav
+              open={mobileOpen}
+              onClose={() => setMobileOpen(false)}
+              variant={isDesktop ? 'permanent' : 'temporary'}
+            />
 
-        <Box
-          sx={{
-            flexGrow: 1,
-            minWidth: 0, // allow children with overflow to shrink properly
-            ml: { xs: 0, md: `${SIDENAV_WIDTH}px` },
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
-          {/* Mobile-only hamburger — the only top-of-page chrome now that the
-              AppBar is gone. Sticky so it remains reachable while scrolling. */}
-          {!isDesktop && (
             <Box
-              component="header"
               sx={{
-                position: 'sticky',
-                top: 0,
-                zIndex: theme.zIndex.appBar,
-                minHeight: 58,
-                px: 1.25,
+                flexGrow: 1,
+                minWidth: 0, // allow children with overflow to shrink properly
+                ml: { xs: 0, md: `${SIDENAV_WIDTH}px` },
                 display: 'flex',
-                alignItems: 'center',
-                gap: 1.25,
-                bgcolor: 'background.paper',
-                borderBottom: 1,
-                borderColor: 'divider',
-                boxShadow: 1,
+                flexDirection: 'column',
               }}
             >
-              <Button
-                aria-label="Open navigation menu"
-                aria-expanded={mobileOpen}
-                aria-controls="mobile-side-navigation"
-                variant="contained"
-                startIcon={<Menu />}
-                onClick={() => setMobileOpen(true)}
-                sx={{ minWidth: 104, minHeight: 44, fontWeight: 800 }}
-              >
-                Menu
-              </Button>
-              <Typography fontWeight={850} noWrap>NeuralChip</Typography>
-            </Box>
-          )}
-          <Breadcrumbs />
-          <Box component="main" id="main-content" sx={{ flexGrow: 1, minWidth: 0 }}>
-            {children}
-          </Box>
-          {/* Footer lives inside the offset column so it doesn't slide
+              {/* Mobile-only hamburger — the only top-of-page chrome now that the
+              AppBar is gone. Sticky so it remains reachable while scrolling. */}
+              {!isDesktop && (
+                <Box
+                  component="header"
+                  sx={{
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: theme.zIndex.appBar,
+                    minHeight: 58,
+                    px: 1.25,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1.25,
+                    bgcolor: 'background.paper',
+                    borderBottom: 1,
+                    borderColor: 'divider',
+                    boxShadow: 1,
+                  }}
+                >
+                  <Button
+                    aria-label="Open navigation menu"
+                    aria-expanded={mobileOpen}
+                    aria-controls="mobile-side-navigation"
+                    variant="contained"
+                    startIcon={<Menu />}
+                    onClick={() => setMobileOpen(true)}
+                    sx={{ minWidth: 104, minHeight: 44, fontWeight: 800 }}
+                  >
+                    Menu
+                  </Button>
+                  <Typography fontWeight={850} noWrap>
+                    NeuralChip
+                  </Typography>
+                </Box>
+              )}
+              <Breadcrumbs />
+              <Box component="main" id="main-content" sx={{ flexGrow: 1, minWidth: 0 }}>
+                {children}
+              </Box>
+              {/* Footer lives inside the offset column so it doesn't slide
               under the permanent side drawer and clip the brand text. */}
-          <Footer />
+              <Footer />
+            </Box>
+          </Box>
+          <AICopilot />
         </Box>
-      </Box>
-    </Box>
+      </CopilotProvider>
     </ToastProvider>
   );
 }

@@ -1,45 +1,37 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import {
+  Alert,
   Box,
-  Paper,
-  TextField,
-  IconButton,
-  Typography,
-  CircularProgress,
-  Fab,
-  Drawer,
-  AppBar,
-  Toolbar,
-  List,
-  ListItem,
-  Divider,
-  Chip,
   Button,
+  Chip,
+  CircularProgress,
+  IconButton,
+  Paper,
   Stack,
+  Tab,
+  Tabs,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material';
-import SendIcon from '@mui/icons-material/Send';
-import SmartToyIcon from '@mui/icons-material/SmartToy';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import DeleteIcon from '@mui/icons-material/Delete';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import ShuffleIcon from '@mui/icons-material/Shuffle';
+import { ContentCopy, DeleteOutline, ExpandLess, ExpandMore, Send, SmartToy, StopCircle } from '@mui/icons-material';
 import ProfessionalAIResult from '@/components/ai/ProfessionalAIResult';
+import ChatAnswer from '@/components/ai/ChatAnswer';
+import FloatingChatWindow from '@/components/ai/FloatingChatWindow';
+import {
+  CopilotContext,
+  CopilotProvider,
+  useCopilot,
+  type ChatMode,
+  type DesignContext,
+} from '@/components/ai/CopilotProvider';
 import { CHIP_DESIGN_LIFECYCLE, inferLifecyclePhaseId } from '@/lib/commercial/lifecycle';
 
-// Preset prompts the user can cycle through to seed the chat input. Covers
-// the main categories of assistance the copilot offers (algorithm choice,
-// debugging, comparison, learning).
-const PROMPT_SAMPLES: string[] = [
-  'I need to design a low-power IoT chip with 500 gates. Which algorithms should I run and in what order?',
-  'Why is my placement showing cell overlaps? How do I fix it?',
-  'Compare simulated annealing vs genetic algorithm for a 200-cell placement — which is more appropriate?',
-  'How do I reduce total wirelength without making timing worse?',
-  'Walk me through a complete design flow for a 100 MHz ASIC from netlist to GDS.',
-  'Explain what Pareto-optimal means in the context of power/performance/area tradeoffs.',
-];
+export { CHAT_REQUEST_TIMEOUT_MS } from '@/components/ai/CopilotProvider';
 
 export const GOVERNED_CHAT_PROMPTS = [
   {
@@ -143,25 +135,13 @@ Start at phase 1 by defining the product requirements, traceable acceptance crit
   },
 ] as const;
 
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-  provider?: string;
-  model?: string;
-  requestId?: string;
-}
-
-// The configured 120B review model can take more than two minutes for a
-// complete-chip case. Keep the browser deadline below the production Nginx
-// five-minute upstream window, but do not cancel a healthy provider request at
-// the old two-minute boundary.
-export const CHAT_REQUEST_TIMEOUT_MS = 285_000;
-
 interface AICopilotProps {
   embedded?: boolean;
+  hidden?: boolean;
   title?: string;
   initialPrompt?: string;
+  initialMode?: ChatMode;
+  designContext?: DesignContext;
   lifecycleContext?: {
     projectId: string;
     phases: Array<{
@@ -175,422 +155,402 @@ interface AICopilotProps {
       tools?: Array<{ label: string; route: string; purpose: string }>;
     }>;
   };
-  designContext?: {
-    currentAlgorithm?: string;
-    currentParams?: Record<string, unknown>;
-    lastResult?: unknown;
-    history?: unknown[];
-  };
 }
 
-export default function AICopilot({ designContext, embedded = false, title = 'AI Copilot', initialPrompt, lifecycleContext }: AICopilotProps) {
-  const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: 'assistant',
-      content: 'Hi! I\'m your governed AI chip-design assistant. Send a normal message or choose a quick prompt below. I can review evidence, explain concepts, diagnose problems, and plan engineering work. Keep accountable human review in the loop for signoff decisions.',
-      timestamp: new Date(),
-    },
-  ]);
-  const [input, setInput] = useState('');
-  const [sampleIdx, setSampleIdx] = useState(-1);
-  const [loading, setLoading] = useState(false);
-  const [pendingPresetPhaseId, setPendingPresetPhaseId] = useState<string | null>(null);
-  const configuredPhase = typeof designContext?.currentParams?.phaseId === 'string' ? designContext.currentParams.phaseId : '';
-  const defaultPhase = lifecycleContext?.phases.find(phase => phase.status !== 'complete')?.id ?? 'requirements';
-  const [activePhaseId, setActivePhaseId] = useState(configuredPhase || defaultPhase);
+const questions = [
+  'What can I do in this app?',
+  'How do I run my own RTL design?',
+  'Why is my signoff or approval blocked?',
+  'Where should I start learning chip design?',
+];
+
+function CopilotContent({
+  embedded = false,
+  hidden = false,
+  title = 'Ask NeuralChip',
+  initialPrompt,
+  initialMode,
+  designContext,
+  lifecycleContext,
+}: AICopilotProps) {
+  const chat = useCopilot();
+  const pathname = usePathname() ?? '/';
+  const [examples, setExamples] = useState(false);
+  const [showGate, setShowGate] = useState(false);
+  const [copied, setCopied] = useState<number | null>(null);
+  const configuredPhase =
+    typeof designContext?.currentParams?.phaseId === 'string' ? designContext.currentParams.phaseId : '';
+  const defaultPhase = lifecycleContext?.phases.find((phase) => phase.status !== 'complete')?.id ?? 'requirements';
+  const { activePhaseId, setActivePhaseId, setMode, setInput } = chat;
+  const [presetPhase, setPresetPhase] = useState<string | null>(null);
+  const end = useRef<HTMLDivElement>(null);
+  const initialPromptLoaded = useRef('');
 
   useEffect(() => {
-    if (!initialPrompt) return;
-    setInput(current => current.trim() ? current : initialPrompt);
-  }, [initialPrompt]);
-
+    if (initialMode) setMode(initialMode);
+  }, [initialMode, setMode]);
   useEffect(() => {
-    if (configuredPhase) setActivePhaseId(configuredPhase);
-  }, [configuredPhase]);
-
-  const loadSample = () => {
-    const next = (sampleIdx + 1) % PROMPT_SAMPLES.length;
-    setSampleIdx(next);
-    setPendingPresetPhaseId(null);
-    setInput(PROMPT_SAMPLES[next]);
-  };
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const scrollToBottom = () => {
-    const marker = messagesEndRef.current;
-    if (marker && typeof marker.scrollIntoView === 'function') {
-      marker.scrollIntoView({ behavior: 'smooth' });
+    if (configuredPhase) {
+      setActivePhaseId(configuredPhase);
+      setMode('review');
     }
-  };
-
+  }, [configuredPhase, setMode, setActivePhaseId]);
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
-
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
-
-    // Presets declare their entry gate explicitly. Do not re-infer from their
-    // full end-to-end scope: a requirements prompt legitimately mentions
-    // tapeout and silicon validation but must still begin at phase 1.
-    const inferredPhaseId = pendingPresetPhaseId
-      || inferLifecyclePhaseId(input, activePhaseId || defaultPhase);
-    setPendingPresetPhaseId(null);
-    setActivePhaseId(inferredPhaseId);
-    const phaseDefinition = CHIP_DESIGN_LIFECYCLE.find(phase => phase.id === inferredPhaseId);
-
-    const userMessage: Message = {
-      role: 'user',
-      content: input,
-      timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setInput('');
-    setLoading(true);
-
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), CHAT_REQUEST_TIMEOUT_MS);
-
-    try {
-      const response = await fetch('/api/ai/copilot', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: messages
-            .concat(userMessage)
-            .map((m) => ({ role: m.role, content: m.content })),
-          designContext: {
-            ...designContext,
-            currentAlgorithm: phaseDefinition ? `Lifecycle phase ${phaseDefinition.order}: ${phaseDefinition.title}` : designContext?.currentAlgorithm,
-            currentParams: {
-              ...(designContext?.currentParams ?? {}),
-              phaseId: inferredPhaseId,
-              phaseOrder: phaseDefinition?.order,
-              phaseGate: phaseDefinition?.gate,
-              requiredDeliverables: phaseDefinition?.deliverables,
-              nextLifecyclePhases: CHIP_DESIGN_LIFECYCLE.slice(phaseDefinition?.order ?? 0, (phaseDefinition?.order ?? 0) + 3).map(phase => phase.title),
-            },
-          },
-          stream: false,
-        }),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const failure = await response.json().catch(() => null) as { message?: string; error?: string } | null;
-        throw new Error(failure?.message || failure?.error || `AI request failed with HTTP ${response.status}`);
-      }
-
-      const data = await response.json() as {
-        id?: string;
-        model?: string;
-        provider?: string;
-        choices?: Array<{ message?: { content?: string | null } }>;
-      };
-      const assistantContent = data.choices?.[0]?.message?.content?.trim() ?? '';
-      if (!assistantContent) throw new Error('AI returned an empty response');
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: assistantContent,
-          timestamp: new Date(),
-          provider: data.provider,
-          model: data.model,
-          requestId: data.id,
-        },
-      ]);
-    } catch (error) {
-      console.error('Copilot error:', error);
-      const detail = error instanceof DOMException && error.name === 'AbortError'
-        ? 'The AI review exceeded the five-minute request window and was cancelled. Retry once; if it repeats, choose a shorter evidence set.'
-        : error instanceof Error ? error.message : 'Please try again.';
-      setMessages((prev) => [
-        ...(prev.at(-1)?.role === 'assistant' && !prev.at(-1)?.content ? prev.slice(0, -1) : prev),
-        {
-          role: 'assistant',
-          content: `The AI request could not be completed. ${detail}`,
-          timestamp: new Date(),
-        },
-      ]);
-    } finally {
-      window.clearTimeout(timeoutId);
-      setLoading(false);
+    if (initialPrompt && initialPromptLoaded.current !== initialPrompt) {
+      initialPromptLoaded.current = initialPrompt;
+      setInput((current) => (current.trim() ? current : initialPrompt));
     }
-  };
+  }, [initialPrompt, setInput]);
+  useEffect(() => {
+    end.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+  }, [chat.messages, chat.loading]);
 
-  const handleClear = () => {
-    setPendingPresetPhaseId(null);
-    setActivePhaseId(configuredPhase || defaultPhase);
-    setMessages([
-      {
-        role: 'assistant',
-        content: 'Conversation cleared. How can I help you with chip design?',
-        timestamp: new Date(),
+  const phase = CHIP_DESIGN_LIFECYCLE.find((item) => item.id === activePhaseId) ?? CHIP_DESIGN_LIFECYCLE[0];
+  const phaseHref = `/governed-ai/lifecycle${lifecycleContext?.projectId ? `?projectId=${encodeURIComponent(lifecycleContext.projectId)}` : ''}#phase-${phase.id}`;
+  const currentDesignContext = designContext ?? chat.pageDesignContext;
+  const handleSend = () => {
+    if (!chat.input.trim() || chat.loading) return;
+    if (chat.mode === 'chat') {
+      void chat.send({ pathname, mode: 'chat', designContext: currentDesignContext });
+      return;
+    }
+    const id = presetPhase || inferLifecyclePhaseId(chat.input, activePhaseId || defaultPhase);
+    setActivePhaseId(id);
+    setPresetPhase(null);
+    const definition = CHIP_DESIGN_LIFECYCLE.find((item) => item.id === id)!;
+    void chat.send({
+      pathname,
+      mode: 'review',
+      designContext: {
+        ...(currentDesignContext ?? chat.reviewContext),
+        currentAlgorithm: `Lifecycle phase ${definition.order}: ${definition.title}`,
+        currentParams: {
+          ...((currentDesignContext ?? chat.reviewContext)?.currentParams ?? {}),
+          phaseId: id,
+          phaseOrder: definition.order,
+          phaseGate: definition.gate,
+          requiredDeliverables: definition.deliverables,
+        },
       },
-    ]);
+    });
+  };
+  const copy = async (content: string, index: number) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(index);
+    } catch {
+      setCopied(null);
+    }
   };
 
-  const handleCopy = (content: string) => {
-    navigator.clipboard.writeText(content);
-  };
-
-  // Closing the drawer keeps this mounted, so the selected quick prompt,
-  // active lifecycle phase, draft, and conversation remain available when
-  // the engineer returns to the AI design session.
-  const handleBackToDesign = () => setOpen(false);
-
-  const composer = (
-    <Box sx={{ p: 2, bgcolor: 'background.paper' }}>
-      <Typography variant="caption" color="text.secondary" fontWeight={800}>
-        QUICK PROMPTS — SELECT, EDIT, THEN SEND
-      </Typography>
-      <Stack direction="row" gap={1} flexWrap="wrap" useFlexGap sx={{ mt: 1, mb: 1.5 }}>
-        {GOVERNED_CHAT_PROMPTS.map(action => (
-          <Button
-            key={action.label}
-            size="small"
-            variant="outlined"
-            disabled={loading}
+  const content = (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      {embedded && (
+        <Stack direction="row" gap={1} alignItems="center" sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+          <SmartToy color="primary" />
+          <Typography component="h2" variant="h6" fontWeight={800}>
+            {title}
+          </Typography>
+        </Stack>
+      )}
+      <Stack direction="row" alignItems="center" sx={{ px: 1, borderBottom: 1, borderColor: 'divider', flexShrink: 0 }}>
+        <Tabs
+          value={chat.mode}
+          onChange={(_event, mode: ChatMode) => chat.setMode(mode)}
+          variant="scrollable"
+          sx={{ flex: 1, minWidth: 0 }}
+        >
+          <Tab value="chat" label="Ask anything" />
+          <Tab value="review" label="Engineering review" />
+        </Tabs>
+        <Tooltip title="New conversation">
+          <IconButton
+            aria-label="Clear AI conversation"
             onClick={() => {
-              setInput(action.prompt);
-              setActivePhaseId(action.phaseId);
-              setPendingPresetPhaseId(action.phaseId);
+              chat.clear();
+              setPresetPhase(null);
+              setActivePhaseId(configuredPhase || defaultPhase);
             }}
           >
-            {action.label}
-          </Button>
-        ))}
+            <DeleteOutline />
+          </IconButton>
+        </Tooltip>
       </Stack>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
-        <IconButton
-          size="small"
-          onClick={loadSample}
-          disabled={loading}
-          aria-label="load next prompt sample"
-          title={`Load sample prompt (${Math.max(0, sampleIdx) + 1}/${PROMPT_SAMPLES.length})`}
-        >
-          <ShuffleIcon fontSize="small" />
-        </IconButton>
-      </Box>
-      <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} alignItems={{ sm: 'flex-end' }}>
-        <TextField
-          fullWidth
-          multiline
-          maxRows={4}
-          placeholder="Ask me anything about chip design..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
-          disabled={loading}
-        />
+      <Stack
+        direction="row"
+        alignItems="center"
+        gap={1}
+        sx={{ px: 2, py: 0.75, borderBottom: 1, borderColor: 'divider', minWidth: 0 }}
+      >
+        <Typography variant="caption" color="text.secondary" noWrap sx={{ flex: 1 }}>
+          {chat.mode === 'chat'
+            ? 'App-wide answers · follows your current page'
+            : `Phase ${phase.order}: ${phase.title}`}
+        </Typography>
         <Button
-          color="primary"
-          variant="contained"
-          startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <SendIcon />}
-          onClick={() => void handleSend()}
-          disabled={!input.trim() || loading}
-          sx={{ minWidth: 170, minHeight: 56, whiteSpace: 'nowrap' }}
+          size="small"
+          onClick={() => setExamples((value) => !value)}
+          endIcon={examples ? <ExpandLess /> : <ExpandMore />}
         >
-          {loading ? 'AI is reviewing…' : 'Run AI Review'}
+          Ideas
         </Button>
       </Stack>
-      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-        Press Enter to send, Shift+Enter for new line. The professional AI response appears below this composer.
-      </Typography>
+      {examples && (
+        <Stack
+          direction="row"
+          gap={0.75}
+          flexWrap="wrap"
+          useFlexGap
+          sx={{ px: 2, py: 1, maxHeight: 160, overflow: 'auto' }}
+        >
+          {chat.mode === 'chat'
+            ? questions.map((question) => (
+                <Chip
+                  key={question}
+                  label={question}
+                  onClick={() => chat.setInput(question)}
+                  sx={{ maxWidth: '100%' }}
+                />
+              ))
+            : GOVERNED_CHAT_PROMPTS.map((preset) => (
+                <Button
+                  key={preset.label}
+                  variant="outlined"
+                  size="small"
+                  onClick={() => {
+                    chat.setInput(preset.prompt);
+                    setPresetPhase(preset.phaseId);
+                    setActivePhaseId(preset.phaseId);
+                  }}
+                >
+                  {preset.label}
+                </Button>
+              ))}
+        </Stack>
+      )}
+      <Box
+        role="log"
+        aria-label="AI conversation"
+        aria-live="polite"
+        sx={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', p: 2 }}
+      >
+        {!chat.messages.length && (
+          <Stack gap={2} sx={{ py: 2 }}>
+            <Box>
+              <Typography variant="h6" fontWeight={850}>
+                What would you like to know?
+              </Typography>
+              <Typography color="text.secondary" variant="body2" sx={{ mt: 1 }}>
+                Ask about any tool, workflow, result, or chip-design concept. Follow up in your own words.
+              </Typography>
+            </Box>
+            <Stack gap={1}>
+              {questions.map((question) => (
+                <Button
+                  key={question}
+                  variant="outlined"
+                  onClick={() => chat.setInput(question)}
+                  sx={{ justifyContent: 'flex-start', textAlign: 'left' }}
+                >
+                  {question}
+                </Button>
+              ))}
+            </Stack>
+          </Stack>
+        )}
+        {chat.messages.map((message, index) => (
+          <Box
+            key={index}
+            sx={{ display: 'flex', justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start', mb: 2.5 }}
+          >
+            <Box
+              sx={{
+                maxWidth: message.role === 'user' ? '88%' : '100%',
+                width: message.role === 'assistant' ? '100%' : undefined,
+              }}
+            >
+              {message.role === 'user' ? (
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 1.5,
+                    bgcolor: 'primary.main',
+                    color: 'primary.contrastText',
+                    borderRadius: '16px 16px 4px 16px',
+                  }}
+                >
+                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                    {message.content}
+                  </Typography>
+                </Paper>
+              ) : (
+                <>
+                  {message.mode === 'review' ? (
+                    <ProfessionalAIResult
+                      compact
+                      showDisclaimer={false}
+                      title="Engineering review"
+                      result={message.content}
+                    />
+                  ) : (
+                    <ChatAnswer content={message.content} />
+                  )}
+                  {Boolean(message.sources?.length) && (
+                    <Box sx={{ mt: 1.5 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Related app pages
+                      </Typography>
+                      <Stack direction="row" gap={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
+                        {message.sources!.slice(0, 4).map((source) => (
+                          <Button key={source.href} component={Link} href={source.href} size="small" variant="outlined">
+                            {source.title}
+                          </Button>
+                        ))}
+                      </Stack>
+                    </Box>
+                  )}
+                  <Stack direction="row" alignItems="center" gap={1} sx={{ mt: 0.5 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+                      {[message.provider, message.model].filter(Boolean).join(' · ')}
+                    </Typography>
+                    <IconButton
+                      size="small"
+                      aria-label={copied === index ? 'Answer copied' : 'Copy AI answer'}
+                      onClick={() => void copy(message.content, index)}
+                    >
+                      <ContentCopy sx={{ fontSize: 15 }} />
+                    </IconButton>
+                  </Stack>
+                </>
+              )}
+            </Box>
+          </Box>
+        ))}
+        {chat.loading && (
+          <Stack role="status" direction="row" gap={1.5} alignItems="center">
+            <CircularProgress size={18} />
+            <Typography variant="body2">
+              {chat.mode === 'review' ? 'Reviewing the evidence…' : 'Thinking about your question…'}
+            </Typography>
+          </Stack>
+        )}
+        <div ref={end} />
+      </Box>
+      {chat.mode === 'review' && (
+        <Box sx={{ px: 2, py: 0.5, borderTop: 1, borderColor: 'divider' }}>
+          <Stack direction="row" justifyContent="space-between">
+            <Button component={Link} href={phaseHref} size="small">
+              Open this phase
+            </Button>
+            <Button
+              onClick={() => setShowGate((value) => !value)}
+              size="small"
+              endIcon={showGate ? <ExpandLess /> : <ExpandMore />}
+            >
+              Evidence gate
+            </Button>
+          </Stack>
+          {showGate && (
+            <Box sx={{ maxHeight: 160, overflow: 'auto', pb: 1 }}>
+              <Typography variant="body2">{phase.gate}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Advice does not complete the gate. Retain measured evidence and an independent human decision.
+              </Typography>
+              <Stack direction="row" gap={0.5} flexWrap="wrap" useFlexGap>
+                {phase.tools.map((tool) => (
+                  <Button key={tool.route} component={Link} href={tool.route} size="small">
+                    {tool.label}
+                  </Button>
+                ))}
+              </Stack>
+            </Box>
+          )}
+        </Box>
+      )}
+      <Box
+        component="form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          handleSend();
+        }}
+        sx={{ p: 1.5, pb: 2, borderTop: 1, borderColor: 'divider', bgcolor: 'background.paper', flexShrink: 0 }}
+      >
+        {chat.error && (
+          <Alert severity="error" sx={{ mb: 1 }}>
+            {chat.error}
+          </Alert>
+        )}
+        <Stack direction="row" gap={1} alignItems="flex-end">
+          <TextField
+            fullWidth
+            multiline
+            minRows={2}
+            maxRows={5}
+            label="Your question"
+            placeholder="Ask anything about this app or chip design…"
+            value={chat.input}
+            onChange={(event) => {
+              chat.setInput(event.target.value);
+              setPresetPhase(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                handleSend();
+              }
+            }}
+            slotProps={{ htmlInput: { maxLength: 20_000 } }}
+          />
+          {chat.loading ? (
+            <Tooltip title="Stop response">
+              <IconButton color="primary" aria-label="Stop AI response" onClick={chat.stop} sx={{ mb: 1 }}>
+                <StopCircle />
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <Tooltip title="Send question">
+              <span>
+                <IconButton
+                  color="primary"
+                  aria-label="Send question"
+                  type="submit"
+                  disabled={!chat.input.trim()}
+                  sx={{ mb: 1 }}
+                >
+                  <Send />
+                </IconButton>
+              </span>
+            </Tooltip>
+          )}
+        </Stack>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+          Enter to send · Shift+Enter for a new line
+        </Typography>
+      </Box>
     </Box>
   );
 
-  const chatWindow = (
-        <Box sx={{ height: embedded ? 'auto' : '100%', minHeight: embedded ? 620 : undefined, display: 'flex', flexDirection: 'column' }}>
-          {/* Header */}
-          <AppBar position="static" elevation={0}>
-            <Toolbar>
-              <SmartToyIcon sx={{ mr: 2 }} />
-              <Typography component="h2" variant="h6" sx={{ flexGrow: 1 }}>
-                {title}
-              </Typography>
-              <IconButton color="inherit" onClick={handleClear} aria-label="Clear AI conversation">
-                <DeleteIcon />
-              </IconButton>
-              {!embedded && (
-                <Button
-                  color="inherit"
-                  startIcon={<ArrowBackIcon />}
-                  onClick={handleBackToDesign}
-                  aria-label="Back to design workspace"
-                  sx={{ ml: 0.5, whiteSpace: 'nowrap' }}
-                >
-                  Back
-                </Button>
-              )}
-            </Toolbar>
-          </AppBar>
-
-          {/* Context Info */}
-          {designContext && (
-            <Box sx={{ p: 2, bgcolor: 'background.paper', borderBottom: 1, borderColor: 'divider' }}>
-              <Typography variant="caption" color="text.secondary" gutterBottom>
-                Current Context
-              </Typography>
-              {designContext.currentAlgorithm && (
-                <Chip
-                  label={designContext.currentAlgorithm}
-                  size="small"
-                  sx={{ mr: 1, mb: 1 }}
-                />
-              )}
-              {designContext.currentParams && (
-                <Chip
-                  label={`${Object.keys(designContext.currentParams).length} params`}
-                  size="small"
-                  variant="outlined"
-                  sx={{ mb: 1 }}
-                />
-              )}
-            </Box>
-          )}
-
-          <Divider />
-          {composer}
-          <Divider />
-
-          {/* Professional AI responses render after the quick prompts and composer. */}
-          <Box sx={{ flexGrow: embedded ? 0 : 1, minHeight: embedded ? 220 : 0, maxHeight: embedded ? 900 : undefined, overflow: 'auto', p: 2 }}>
-            {loading && (
-              <Paper role="status" aria-live="polite" variant="outlined" sx={{ p: 2, mb: 2, borderColor: 'primary.main', bgcolor: 'action.hover' }}>
-                <Stack direction="row" gap={1.5} alignItems="center">
-                  <CircularProgress size={24} />
-                  <Box>
-                    <Typography fontWeight={850}>OpenRouter request in progress</Typography>
-                    <Typography variant="body2" color="text.secondary">The selected chip case was sent to the configured AI model. A complete reviewed response will appear in this panel.</Typography>
-                  </Box>
-                </Stack>
-              </Paper>
-            )}
-            <List>
-              {messages.map((message, index) => (
-                <ListItem
-                  key={index}
-                  sx={{
-                    flexDirection: 'column',
-                    alignItems: message.role === 'user' ? 'flex-end' : 'flex-start',
-                    mb: 2,
-                  }}
-                >
-                  <Paper
-                    elevation={1}
-                    sx={{
-                      p: 2,
-                      maxWidth: '85%',
-                      bgcolor: message.role === 'user' ? 'primary.main' : 'background.paper',
-                      color: message.role === 'user' ? 'primary.contrastText' : 'text.primary',
-                    }}
-                  >
-                    {message.role === 'assistant' && (message.provider || message.model) && (
-                      <Stack direction="row" gap={0.75} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
-                        {message.provider && <Chip size="small" color="success" label={`Live provider: ${message.provider}`} />}
-                        {message.model && <Chip size="small" variant="outlined" label={`Model: ${message.model}`} />}
-                      </Stack>
-                    )}
-                    {message.role === 'assistant' ? (
-                      <ProfessionalAIResult compact showDisclaimer={false} title="Copilot guidance" result={message.content} />
-                    ) : (
-                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                        {message.content}
-                      </Typography>
-                    )}
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
-                      <Typography variant="caption" sx={{ opacity: 0.7 }}>
-                        {message.timestamp.toLocaleTimeString()}
-                      </Typography>
-                      {message.role === 'assistant' && (
-                        <IconButton
-                          size="small"
-                          onClick={() => handleCopy(message.content)}
-                          sx={{ ml: 1 }}
-                        >
-                          <ContentCopyIcon fontSize="small" />
-                        </IconButton>
-                      )}
-                    </Box>
-                  </Paper>
-                </ListItem>
-              ))}
-              {loading && (
-                <ListItem sx={{ justifyContent: 'center' }}>
-                  <CircularProgress size={24} />
-                </ListItem>
-              )}
-              <div ref={messagesEndRef} />
-            </List>
-          </Box>
-
-          {messages.some(message => message.role === 'user') && (() => {
-            const phases = lifecycleContext?.phases ?? CHIP_DESIGN_LIFECYCLE.map(phase => ({ ...phase, status: 'not-started', progress: 0 }));
-            const currentIndex = Math.max(0, phases.findIndex(phase => phase.id === activePhaseId));
-            const currentPhase = phases[currentIndex];
-            const upcoming = phases.slice(currentIndex, Math.min(phases.length, currentIndex + 4));
-            const lifecycleHref = `/governed-ai/lifecycle${lifecycleContext?.projectId ? `?projectId=${encodeURIComponent(lifecycleContext.projectId)}` : ''}`;
-            const lifecyclePhaseHref = `${lifecycleHref}#phase-${encodeURIComponent(currentPhase.id)}`;
-            const previousPhase = currentIndex > 0 ? phases[currentIndex - 1] : null;
-            const nextPhase = currentIndex < phases.length - 1 ? phases[currentIndex + 1] : null;
-            return <Box sx={{ mx: 2, mb: 1.5, p: 2, border: 1, borderColor: 'primary.main', borderRadius: 2, bgcolor: 'action.hover' }}>
-              <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={1}>
-                <Box><Typography variant="overline" color="primary" fontWeight={900}>PATH TO COMPLETE THE CHIP</Typography><Typography variant="h6" fontWeight={850}>You are at phase {currentPhase.order}: {currentPhase.title}</Typography><Typography variant="body2" color="text.secondary">The AI answer is advisory for this phase. Complete its measured deliverables and gate before advancing.</Typography></Box>
-                <Stack direction="row" gap={1}>
-                  {embedded ? (
-                    <Button component={Link} href={lifecycleHref} variant="outlined" size="small">Back to lifecycle</Button>
-                  ) : (
-                    <Button onClick={handleBackToDesign} variant="outlined" size="small">Back to design</Button>
-                  )}
-                  <Button component={Link} href={lifecyclePhaseHref} variant="contained" size="small">Open this phase</Button>
-                </Stack>
-              </Stack>
-              <Stack direction="row" gap={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
-                {upcoming.map((phase, index) => <Chip key={phase.id} color={index === 0 ? 'primary' : 'default'} variant={index === 0 ? 'filled' : 'outlined'} label={`${phase.order}. ${phase.title}${'progress' in phase && phase.progress ? ` · ${phase.progress}%` : ''}`} />)}
-              </Stack>
-              <Typography variant="subtitle2" fontWeight={800} sx={{ mt: 1.5 }}>Complete now</Typography>
-              {currentPhase.deliverables.slice(0, 4).map(deliverable => <Typography key={deliverable} variant="body2">• {deliverable}</Typography>)}
-              <Typography variant="subtitle2" fontWeight={800} sx={{ mt: 1.5 }}>Run these exact website tools</Typography>
-              <Stack direction="row" gap={1} sx={{ mt: 0.75 }} flexWrap="wrap" useFlexGap>{currentPhase.tools?.map(tool => <Button key={tool.route} component={Link} href={tool.route} title={tool.purpose} variant="outlined" size="small">{tool.label}</Button>)}</Stack>
-              <Stack direction="row" gap={1} sx={{ mt: 1.5 }} flexWrap="wrap" useFlexGap>{previousPhase && <Button component={Link} href={`${lifecycleHref}#phase-${encodeURIComponent(previousPhase.id)}`} variant="text" size="small">Previous phase</Button>}<Button component={Link} href={lifecyclePhaseHref} variant="text" size="small">Review evidence gate</Button>{nextPhase && <Button component={Link} href={`${lifecycleHref}#phase-${encodeURIComponent(nextPhase.id)}`} variant="text" size="small">Next phase</Button>}</Stack>
-            </Box>;
-          })()}
-
-        </Box>
+  return embedded ? (
+    <Paper
+      variant="outlined"
+      sx={{ height: 'min(820px, calc(100dvh - 190px))', minHeight: 480, overflow: 'hidden', borderRadius: 3 }}
+    >
+      {content}
+    </Paper>
+  ) : (
+    <FloatingChatWindow hidden={hidden || pathname === '/governed-ai/chat'} title={title}>
+      {content}
+    </FloatingChatWindow>
   );
+}
 
-  if (embedded) {
-    return <Paper variant="outlined" sx={{ overflow: 'hidden', borderRadius: 3 }}>{chatWindow}</Paper>;
-  }
-
-  return (
-    <>
-      <Fab
-        color="primary"
-        aria-label="AI Copilot"
-        sx={{ position: 'fixed', bottom: 24, right: 24, zIndex: 1000 }}
-        onClick={() => setOpen(true)}
-      >
-        <SmartToyIcon />
-      </Fab>
-      <Drawer
-        anchor="right"
-        open={open}
-        onClose={() => setOpen(false)}
-        sx={{ '& .MuiDrawer-paper': { width: { xs: '100%', sm: 520 } } }}
-      >
-        {chatWindow}
-      </Drawer>
-    </>
+export default function AICopilot(props: AICopilotProps) {
+  const shared = useContext(CopilotContext);
+  return shared ? (
+    <CopilotContent {...props} />
+  ) : (
+    <CopilotProvider>
+      <CopilotContent {...props} />
+    </CopilotProvider>
   );
 }

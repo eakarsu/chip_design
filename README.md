@@ -13,9 +13,9 @@ evidence.
 - PostgreSQL persistence for the commercial workspace.
 - S3-compatible artifact storage with SSE-KMS, SHA-256 evidence, and verified
   download round trips.
-- Short-lived RS256 EDA bearer tokens exchanged from authenticated first-party
-  sessions; external OIDC tokens use the same issuer, audience, key-ring, role,
-  and tenant boundary.
+- Validated first-party browser sessions and short-lived RS256 EDA bearer
+  tokens; external OIDC tokens must match the configured issuer, audience,
+  key ring, role, and tenant boundary.
 - A durable Yosys/OpenROAD job queue with idempotency, approval gates, leases,
   retry/cancellation states, quotas, retention, and artifact manifests.
 - Network-disabled, read-only, capability-dropped tool containers pinned by
@@ -25,6 +25,8 @@ evidence.
   final GDS generation.
 - Governed AI decision briefs with evidence, assumptions, human review gates,
   ZDR policy enforcement, bounded timeouts, and professional rendering.
+- An app-wide AI chat with open-ended questions, follow-up conversation,
+  relevant page links, and a floating window you can move, resize or expand.
 - Academy diagnostics, labs, submissions, grading, capstone evidence, and
   instructor review.
 - Custom RTL/SDC ingestion, governed run detail, live bounded logs, artifact
@@ -57,6 +59,26 @@ cp .env.example .env
 
 Local development may use SQLite and filesystem objects. Production validation
 refuses those fallbacks for the commercial workspace.
+
+## Ask AI across the app
+
+Open **Ask AI** on any page. Drag the header to move the window, drag its lower
+right corner to resize, or use the expand and minimize controls. The move and
+resize controls also accept arrow keys; Escape minimizes the chat. Window
+position and size are remembered on this browser.
+
+**Ask anything** accepts questions about tools, workflows, results, learning
+materials and chip-design concepts. Answers use the current page and the app's
+feature and learning catalogs, with links to relevant pages. The algorithm
+explorer also supplies its current inputs and result; large contexts are
+explicitly marked as partial excerpts. Conversation and
+drafts stay available during page navigation, including the full conversation
+at `/governed-ai/chat`. They reset on refresh, logout or a new conversation.
+
+Choose **Engineering review** for structured lifecycle advice and the existing
+design scenarios. Phase-specific links carry their supplied design context.
+The assistant cannot automatically inspect private project records, execute
+tools or grant approvals. Both modes use the configured OpenRouter provider.
 
 ## Verify
 

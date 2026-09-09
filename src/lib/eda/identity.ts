@@ -98,7 +98,7 @@ export async function requireEdaIdentity(request: Request): Promise<EdaIdentity 
     };
   }
 
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env.NODE_ENV === 'production' && authorization) {
     if (!authorization.startsWith('Bearer ')) return unauthorized('OIDC bearer token required');
     try {
       return verifyOidcToken(authorization.slice(7));
@@ -107,8 +107,20 @@ export async function requireEdaIdentity(request: Request): Promise<EdaIdentity 
     }
   }
 
+  // First-party browser pages and artifact downloads carry the validated
+  // HTTP-only session cookie. An explicit bearer token must never fall back
+  // to that cookie when token verification fails.
+  const origin = request.headers.get('origin');
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) &&
+      (request.headers.get('sec-fetch-site') === 'cross-site' ||
+       (origin && origin !== new URL(request.url).origin))) {
+    return unauthorized('Cross-origin session mutation is not permitted', 403);
+  }
   const local = await requireAuth(request);
   if (local instanceof NextResponse) return local;
+  if (local.user.status !== 'active' || !['admin', 'editor', 'viewer'].includes(local.user.role)) {
+    return unauthorized('Active workspace membership is required', 403);
+  }
   const tenantId = local.user.tenantId ?? 'local';
   if (!/^[a-zA-Z0-9_-]{1,128}$/.test(tenantId)) return unauthorized('invalid local tenant identity', 403);
   return {
