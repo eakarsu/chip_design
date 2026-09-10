@@ -1,6 +1,6 @@
 import type { DesignRequirement, DesignSources, TemplateId } from './types';
 
-export const SUITE_VERSION = '2026-09-journey-1';
+export const SUITE_VERSION = '2026-09-journey-2';
 
 export const gcdRtl = `module gcd (
   input wire clk, rst_n, start,

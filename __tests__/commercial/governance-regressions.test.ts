@@ -270,7 +270,7 @@ describe('signoff evidence and bounded waivers', () => {
 
   it('checks report bytes and numeric results instead of names or passed metadata', async () => {
     const { projectId, report } = await fixture();
-    await createArtifact(
+    const misleading = await createArtifact(
       editor,
       {
         projectId,
@@ -282,6 +282,11 @@ describe('signoff evidence and bounded waivers', () => {
       },
       'fake-report'
     );
+    // Make the older fixture unambiguous even when both writes share a millisecond.
+    await run('UPDATE commercial_artifacts SET created_at = ? WHERE id = ?', [
+      '2000-01-01T00:00:00.000Z',
+      misleading.id,
+    ]);
     expect((await drc(projectId)).state).toBe('attention');
     const artifact = await upload(projectId, report, false);
     expect((await drc(projectId)).state).toBe('attention');
@@ -565,6 +570,25 @@ describe('workflow advancement and retained release approval', () => {
 
   it('requires an authentic project-bound signed manifest and a persisted independent approval', async () => {
     const { id: projectId } = await project();
+    await createPpaSnapshot(
+      editor,
+      {
+        projectId,
+        commitSha: 'abcdef123',
+        branch: 'main',
+        message: 'Release candidate',
+        author: editor.userId,
+        areaUm2: 10,
+        powerMw: 10,
+        wnsNs: 0.1,
+        tnsNs: 0,
+        drcCount: 0,
+        congestionPct: 1,
+        thresholds: {},
+        evidence: ['metrics.json'],
+      },
+      'candidate'
+    );
     const keyNames = [
       'CHIP_RELEASE_SIGNING_PRIVATE_KEY_BASE64',
       'CHIP_RELEASE_SIGNING_PUBLIC_KEY_BASE64',

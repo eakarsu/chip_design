@@ -44,6 +44,7 @@ export interface EdaJob {
   resultManifest?: Record<string, unknown>;
   error?: string;
   retentionUntil: string;
+  artifactsExpiredAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -56,7 +57,7 @@ type JobRow = {
   max_attempts: number; progress: number; cancel_requested: number;
   lease_owner: string | null; lease_until: string | null;
   approved_by: string | null; result_manifest_json: string | null;
-  error: string | null; retention_until: string; created_at: string; updated_at: string;
+  error: string | null; retention_until: string; artifacts_expired_at: string | null; created_at: string; updated_at: string;
 };
 
 const MAX_INPUT_BYTES = Number(process.env.CHIP_MAX_JOB_INPUT_BYTES ?? 25 * 1024 * 1024);
@@ -132,6 +133,7 @@ export function ensureEdaSchema(db: Database.Database = getRawDb()): void {
       result_manifest_json TEXT,
       error TEXT,
       retention_until TEXT NOT NULL,
+      artifacts_expired_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY(project_id) REFERENCES eda_projects(id),
@@ -177,6 +179,19 @@ export function ensureEdaSchema(db: Database.Database = getRawDb()): void {
         SELECT RAISE(ABORT, 'eda audit is append-only');
       END;
   `);
+  const columns = db.pragma('table_info(eda_jobs)') as Array<{ name: string }>;
+  if (!columns.some((column) => column.name === 'artifacts_expired_at')) {
+    db.transaction(() => {
+      if ((db.pragma('table_info(eda_jobs)') as Array<{ name: string }>).some((column) => column.name === 'artifacts_expired_at')) return;
+      db.exec('ALTER TABLE eda_jobs ADD COLUMN artifacts_expired_at TEXT');
+      // Recover expiry already recorded by older workers without editing the audit ledger.
+      db.exec(`UPDATE eda_jobs SET artifacts_expired_at = (
+        SELECT MIN(created_at) FROM eda_audit_events
+        WHERE tenant_id = eda_jobs.tenant_id AND job_id = eda_jobs.id AND action = 'job.artifacts-expired'
+      ) WHERE result_manifest_json IS NULL AND status IN ('succeeded','failed','cancelled')`);
+    }).immediate();
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_eda_jobs_retention ON eda_jobs(retention_until) WHERE artifacts_expired_at IS NULL');
 }
 
 export function validateEdaSchema(db: Database.Database = getRawDb()): void {
@@ -188,6 +203,8 @@ export function validateEdaSchema(db: Database.Database = getRawDb()): void {
   if (missing.length) throw new Error(`EDA migration required; missing: ${missing.join(', ')}`);
   const jobs = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='eda_jobs'").get() as { sql: string };
   if (!jobs.sql.includes("'simulation'") || !jobs.sql.includes("'formal'")) throw new Error('EDA migration required for verification job kinds');
+  if (!(db.pragma('table_info(eda_jobs)') as Array<{ name: string }>).some((column) => column.name === 'artifacts_expired_at'))
+    throw new Error('EDA migration required for retained evidence expiry');
 }
 
 function sha256(value: string | Buffer): string {
@@ -252,6 +269,7 @@ function jobFromRow(row: JobRow): EdaJob {
     resultManifest: row.result_manifest_json
       ? JSON.parse(row.result_manifest_json) as Record<string, unknown> : undefined,
     error: row.error ?? undefined, retentionUntil: row.retention_until,
+    artifactsExpiredAt: row.artifacts_expired_at ?? undefined,
     createdAt: row.created_at, updatedAt: row.updated_at,
   };
 }
@@ -314,6 +332,7 @@ export function jobWorkspace(job: Pick<EdaJob, 'id' | 'tenantId' | 'projectId'>)
 }
 
 export function verifyJobInputs(job: EdaJob): void {
+  if (job.artifactsExpiredAt) throw new Error('Execution evidence expired; rerun this revision to retain new inputs and reports');
   const root = fs.realpathSync(path.join(jobWorkspace(job), 'input')) + path.sep;
   const files = job.inputManifest.files as Array<{ name: string; size: number; sha256: string }>;
   if (!Array.isArray(files) || files.length > 64 || !files.length || sha256(canonical(job.inputManifest)) !== job.requestHash) throw new Error('Input manifest integrity check failed');
@@ -677,18 +696,26 @@ export function verifyAuditChain(identity: Pick<EdaIdentity, 'tenantId'>): boole
 export function purgeExpired(now = new Date()): number {
   const db = database();
   const expired = db.prepare(`
-    SELECT * FROM eda_jobs WHERE retention_until < ? AND status IN ('succeeded','failed','cancelled')
-  `).all(now.toISOString()) as JobRow[];
+    SELECT id FROM eda_jobs WHERE retention_until < ? AND artifacts_expired_at IS NULL
+      AND status IN ('succeeded','failed','cancelled')
+  `).all(now.toISOString()) as Array<{ id: string }>;
+  let purged = 0;
   for (const row of expired) {
-    const job = jobFromRow(row);
-    fs.rmSync(jobWorkspace(job), { recursive: true, force: true });
-    db.transaction(() => {
+    purged += db.transaction(() => {
+      // Recheck under the write lock so concurrent workers emit one expiry event.
+      const current = db.prepare(`SELECT * FROM eda_jobs WHERE id=? AND retention_until < ?
+        AND artifacts_expired_at IS NULL AND status IN ('succeeded','failed','cancelled')`)
+        .get(row.id, now.toISOString()) as JobRow | undefined;
+      if (!current) return 0;
+      const job = jobFromRow(current);
+      fs.rmSync(jobWorkspace(job), { recursive: true, force: true });
       db.prepare('DELETE FROM eda_artifacts WHERE job_id=?').run(job.id);
-      db.prepare('UPDATE eda_jobs SET result_manifest_json=NULL, updated_at=? WHERE id=?')
-        .run(now.toISOString(), job.id);
+      db.prepare('UPDATE eda_jobs SET result_manifest_json=NULL, artifacts_expired_at=?, updated_at=? WHERE id=?')
+        .run(now.toISOString(), now.toISOString(), job.id);
       appendAudit(db, { tenantId: job.tenantId, userId: 'retention-sweeper' },
         'job.artifacts-expired', job.id, {});
-    })();
+      return 1;
+    }).immediate();
   }
-  return expired.length;
+  return purged;
 }

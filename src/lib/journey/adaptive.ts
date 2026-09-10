@@ -1,9 +1,30 @@
 import { challengeDescriptions, journeyTemplate } from './catalog';
+import { expectedChecks, reportPassed } from './checks';
 import type { JourneyAssessment, JourneyRun, TemplateId } from './types';
 
 export function adaptivePractice(templateId: TemplateId, runs: JourneyRun[], assessments: JourneyAssessment[]) {
   const solved = new Set(
-    assessments.filter((item) => item.technicalPassed && item.challengeId).map((item) => item.challengeId)
+    assessments
+      .filter((assessment) => {
+        if (!assessment.technicalPassed || !assessment.challengeId) return false;
+        const run = runs.find((item) => item.id === assessment.runId);
+        return (
+          run &&
+          run.kind === 'simulation' &&
+          run.purpose === 'lab' &&
+          run.jobStatus === 'succeeded' &&
+          run.revisionId === assessment.revisionId &&
+          run.challengeId === assessment.challengeId &&
+          run.createdBy === assessment.userId &&
+          !run.reportError &&
+          !run.artifactsExpiredAt &&
+          run.report?.kind === 'simulation' &&
+          run.report.sourceHash === run.sourceHash &&
+          run.report.suiteHash === run.suiteHash &&
+          reportPassed(run.report, expectedChecks(templateId, 'simulation'))
+        );
+      })
+      .map((item) => item.challengeId)
   );
   const attempts = new Map<string, number>();
   for (const item of runs)

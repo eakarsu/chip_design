@@ -35,13 +35,30 @@ export const releaseManifestSchema = z
   })
   .passthrough();
 
-export async function verifyReleasePrerequisites(identity: EdaIdentity, projectId: string, manifestRecordId: string) {
+export async function verifyReleasePrerequisites(
+  identity: EdaIdentity,
+  projectId: string,
+  manifestRecordId: string,
+  candidateCommitSha?: string | null
+) {
+  // Matrix callers supply the same candidate used for their primary reports.
+  // Other callers (including the release ceremony) resolve the current candidate.
+  const currentCommitSha =
+    candidateCommitSha === undefined
+      ? (
+          await one(
+            'SELECT commit_sha FROM commercial_ppa_snapshots WHERE tenant_id = ? AND project_id = ? ORDER BY created_at DESC LIMIT 1',
+            [identity.tenantId, projectId]
+          )
+        )?.commit_sha
+      : candidateCommitSha;
   const row = await one(
     "SELECT * FROM commercial_feature_records WHERE tenant_id = ? AND project_id = ? AND id = ? AND feature = 'tapeout-release' AND record_type = 'signed-manifest' AND status = 'completed'",
     [identity.tenantId, projectId, manifestRecordId]
   );
   const findings: string[] = [];
   let signatureVerified = false;
+  let candidateMatches = false;
   let manifestDigest: string | undefined;
   if (!row) findings.push('Select a completed signed manifest retained in this project.');
   else {
@@ -67,6 +84,13 @@ export async function verifyReleasePrerequisites(identity: EdaIdentity, projectI
         typeof data.signature === 'string' &&
         verify('sha256', Buffer.from(document), key, Buffer.from(data.signature, 'base64'));
       if (!signatureVerified) throw new Error('Manifest signature verification failed.');
+      candidateMatches =
+        typeof currentCommitSha === 'string' && manifest.commitSha.toLowerCase() === currentCommitSha.toLowerCase();
+      if (!currentCommitSha) findings.push('Retain a current PPA candidate before approving release readiness.');
+      else if (!candidateMatches)
+        findings.push(
+          'The signed manifest commit does not match the current candidate; sign and independently approve a manifest for this candidate.'
+        );
     } catch (error) {
       signatureVerified = false;
       findings.push(error instanceof Error ? error.message : 'Stored manifest is invalid.');
@@ -98,8 +122,9 @@ export async function verifyReleasePrerequisites(identity: EdaIdentity, projectI
       'An independent administrator must approve this exact signed manifest; all its approval requests must be approved.'
     );
   return {
-    ready: signatureVerified && approved.length > 0 && approved.length === approvals.length,
+    ready: signatureVerified && candidateMatches && approved.length > 0 && approved.length === approvals.length,
     signatureVerified,
+    candidateMatches,
     manifestDigest,
     manifestRecordId,
     approvals,

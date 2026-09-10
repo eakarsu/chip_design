@@ -18,6 +18,7 @@ import {
   listProjects,
   requestCancellation,
   recoverStaleJobs,
+  purgeExpired,
   verifyAuditChain,
 } from '@/lib/eda/store';
 import { buildDockerInvocation } from '@/lib/eda/worker';
@@ -143,5 +144,21 @@ describe('durable governed EDA jobs', () => {
     const failed = failJob(job.id, 'failure-worker', 'compiler rejected source', false);
     expect(failed.status).toBe('failed');
     expect(failed.resultManifest?.artifacts).toEqual([expect.objectContaining({ relativePath: 'worker.log' })]);
+  });
+
+  it('purges cancelled jobs once even without results, and preserves unfinished jobs', () => {
+    const projectId = listProjects(tenantA)[0].id;
+    const cancelled = yosysJob(projectId, 'cancelled-before-retention');
+    const queued = yosysJob(projectId, 'queued-through-retention');
+    requestCancellation(tenantA, cancelled.id);
+    for (const job of [cancelled, queued])
+      getRawDb().prepare('UPDATE eda_jobs SET retention_until=? WHERE id=?').run('2000-01-01', job.id);
+    expect(purgeExpired()).toBe(1);
+    expect(purgeExpired()).toBe(0);
+    expect(fs.existsSync(jobWorkspace(cancelled))).toBe(false);
+    expect(fs.existsSync(jobWorkspace(queued))).toBe(true);
+    expect(getJob(tenantA, queued.id)).toMatchObject({ status: 'queued', artifactsExpiredAt: undefined });
+    expect(listAudit(tenantA).filter((event) => event.job_id === cancelled.id && event.action === 'job.artifacts-expired')).toHaveLength(1);
+    expect(verifyAuditChain(tenantA)).toBe(true);
   });
 });

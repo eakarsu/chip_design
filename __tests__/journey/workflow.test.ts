@@ -5,8 +5,18 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import { gunzipSync } from 'zlib';
+import { getRawDb } from '@/lib/db/connection';
 import type { EdaIdentity } from '@/lib/eda/identity';
-import { claimNextJob, completeJob, getJob, jobWorkspace, verifyJobInputs } from '@/lib/eda/store';
+import {
+  claimNextJob,
+  completeJob,
+  getJob,
+  jobWorkspace,
+  verifyJobInputs,
+  purgeExpired,
+  listAudit,
+} from '@/lib/eda/store';
 import {
   getJourneyRun,
   getRevision,
@@ -20,10 +30,11 @@ import {
   startJourney,
 } from '@/lib/journey/store';
 import { projectAiContext } from '@/lib/journey/aiContext';
+import { adaptivePractice } from '@/lib/journey/adaptive';
 import { expectedChecks } from '@/lib/journey/verification';
 import { exportJourney, hardwareChecklist, importHardwareMeasurements, saveHardwareStep } from '@/lib/journey/hardware';
 import { submitAcademyLab } from '@/lib/academy/store';
-import type { DesignRevision, JourneyRun, VerificationReport } from '@/lib/journey/types';
+import type { DesignRevision, JourneyRun, VerificationReport, VerificationKind } from '@/lib/journey/types';
 
 const learner: EdaIdentity = { tenantId: 'journey-a', userId: 'student', role: 'editor' };
 const teacher: EdaIdentity = { ...learner, userId: 'teacher', role: 'admin' };
@@ -57,26 +68,27 @@ function sourceInput(revision: DesignRevision) {
 async function completed(
   revision: DesignRevision,
   failed?: string,
-  purpose: 'lab' | 'regression' = 'lab'
+  purpose: 'lab' | 'regression' = 'lab',
+  kind: VerificationKind = 'simulation'
 ): Promise<JourneyRun> {
   const execution = await launchJourneyRun(
     learner,
     revision.projectId,
-    { revisionId: revision.id, kind: 'simulation', purpose, idempotencyKey: randomUUID() },
+    { revisionId: revision.id, kind, purpose, idempotencyKey: randomUUID() },
     'queue'
   );
   const job = claimNextJob('journey-test-worker')!;
   expect(job.id).toBe(execution.jobId);
   const report: VerificationReport = {
     schemaVersion: 1,
-    kind: 'simulation',
+    kind,
     outcome: failed ? 'failed' : 'passed',
     tool: 'unit-test fixture',
     toolVersion: 'fixture-1',
     suiteHash: execution.suiteHash,
     sourceHash: execution.sourceHash,
     seed: 2026,
-    checks: expectedChecks(revision.templateId, 'simulation').map((id) => ({
+    checks: expectedChecks(revision.templateId, kind).map((id) => ({
       id,
       requirementId: id === 'reset_state' ? 'reset' : id,
       name: id,
@@ -272,4 +284,101 @@ it('binds hardware results to revision, units and retained evidence; exports a r
   expect(archive.subarray(0, 2)).toEqual(Buffer.from([0x1f, 0x8b]));
   const bundle = await journeyBundle(learner, revision.projectId);
   expect(bundle.measurements).toHaveLength(1);
+});
+
+it('requires fixed simulation acceptance evidence for challenge credit, including historical assessments', async () => {
+  const original = await startJourney(learner, { name: 'Clock challenge credit', templateId: 'gcd' }, 'start');
+  const broken = await startChallenge(learner, original.projectId, 'clock-budget', original.id, 'challenge');
+  const formal = await completed(broken, undefined, 'lab', 'formal');
+  await expect(gradeJourneyRun(learner, broken.projectId, formal.id, explanation, 'grade')).rejects.toThrow(
+    /fixed simulation/
+  );
+  const fixed = await saveRevision(learner, broken.projectId, { ...sourceInput(broken), sdc: original.sdc }, 'fix');
+  const simulation = await completed(fixed);
+  const assessment = await gradeJourneyRun(learner, fixed.projectId, simulation.id, explanation, 'grade');
+  const solved = (runs: JourneyRun[], grade = assessment) =>
+    adaptivePractice('gcd', runs, [grade]).challenges.find((item) => item.id === 'clock-budget')?.solved;
+  expect(solved([simulation])).toBe(true);
+  expect(solved([formal], { ...assessment, runId: formal.id, revisionId: formal.revisionId })).toBe(false);
+  expect(solved([simulation], { ...assessment, revisionId: broken.id })).toBe(false);
+  expect(solved([simulation], { ...assessment, userId: 'another-learner' })).toBe(false);
+  expect(solved([{ ...simulation, purpose: 'regression' }])).toBe(false);
+  expect(solved([{ ...simulation, reportError: 'checksum mismatch' }])).toBe(false);
+  expect(solved([{ ...simulation, report: { ...simulation.report!, sourceHash: 'f'.repeat(64) } }])).toBe(false);
+  expect(
+    solved([
+      {
+        ...simulation,
+        report: {
+          ...simulation.report!,
+          checks: simulation.report!.checks.filter((check) => check.id !== 'constraint_contract'),
+        },
+      },
+    ])
+  ).toBe(false);
+});
+
+function archiveFiles(archive: Buffer): Record<string, string> {
+  const body = gunzipSync(archive);
+  const files: Record<string, string> = {};
+  for (let offset = 0; offset < body.length && body[offset]; ) {
+    const name = body
+      .subarray(offset, offset + 100)
+      .toString()
+      .split('\0')[0];
+    const size = parseInt(body.subarray(offset + 124, offset + 136).toString(), 8);
+    files[name] = body.subarray(offset + 512, offset + 512 + size).toString();
+    offset += 512 + Math.ceil(size / 512) * 512;
+  }
+  return files;
+}
+
+it('exports sources and available runs after expiry, records expiry once and refuses unexplained missing evidence', async () => {
+  const revision = await startJourney(learner, { name: 'Retained export', templateId: 'gcd' }, 'start');
+  const expired = await completed(revision);
+  const retained = await completed(revision);
+  const job = getJob(learner, expired.jobId)!;
+  const input = path.join(jobWorkspace(job), 'input', 'design.v');
+  fs.unlinkSync(input);
+  await expect(exportJourney(learner, revision.projectId, revision.id, 'engineering')).rejects.toThrow(/ENOENT/);
+  fs.writeFileSync(input, revision.rtl);
+  getRawDb().prepare('UPDATE eda_jobs SET retention_until=? WHERE id=?').run('2000-01-01', expired.jobId);
+  expect(purgeExpired()).toBe(1);
+  expect(purgeExpired()).toBe(0);
+  expect(
+    listAudit(learner).filter((event) => event.job_id === job.id && event.action === 'job.artifacts-expired')
+  ).toHaveLength(1);
+  const after = await getJourneyRun(learner, revision.projectId, expired.id);
+  expect(after.artifactsExpiredAt).toBeTruthy();
+  expect(after.reportError).toMatch(/expired/);
+  await expect(journeyRunInputs(learner, revision.projectId, expired.id)).rejects.toThrow(/expired/);
+  for (const target of ['engineering', 'tinytapeout'] as const) {
+    const files = archiveFiles(await exportJourney(learner, revision.projectId, revision.id, target));
+    expect(files['src/design.v']).toBe(revision.rtl);
+    expect(files[`runs/${expired.id}/inputs/design.v`]).toBeUndefined();
+    expect(files[`runs/${retained.id}/inputs/design.v`]).toBe(revision.rtl);
+    expect(JSON.parse(files[`runs/${expired.id}/provenance.json`])).toMatchObject({
+      evidenceStatus: 'expired',
+      artifactsExpiredAt: after.artifactsExpiredAt,
+    });
+    expect(JSON.parse(files['manifest.json']).runs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: expired.id,
+          evidenceStatus: 'expired',
+          artifactsExpiredAt: after.artifactsExpiredAt,
+        }),
+        expect.objectContaining({ id: retained.id, evidenceStatus: 'retained', outcome: 'passed' }),
+      ])
+    );
+  }
+  getRawDb().prepare('UPDATE eda_jobs SET retention_until=? WHERE id=?').run('2000-01-01', retained.jobId);
+  expect(purgeExpired()).toBe(1);
+  const files = archiveFiles(await exportJourney(learner, revision.projectId, revision.id, 'engineering'));
+  expect(files['src/design.v']).toBe(revision.rtl);
+  expect(
+    JSON.parse(files['manifest.json']).runs.every(
+      (item: { evidenceStatus: string; outcome?: string }) => item.evidenceStatus === 'expired' && !item.outcome
+    )
+  ).toBe(true);
 });

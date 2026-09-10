@@ -427,8 +427,44 @@ export async function exportJourney(
     ),
   };
   let evidenceBytes = 0;
+  const expiredRuns = new Map<string, string>();
+  for (const execution of executions) {
+    if (execution.artifactsExpiredAt) expiredRuns.set(execution.id, execution.artifactsExpiredAt);
+  }
   for (const execution of executions.slice(0, 12)) {
-    const job = getJob(identity, execution.jobId)!;
+    let job = getJob(identity, execution.jobId)!;
+    const runFiles: Record<string, string | Buffer> = {};
+    let runBytes = 0;
+    try {
+      if (!job.artifactsExpiredAt) {
+        const retainedInputs = await journeyRunInputs(identity, projectId, execution.id);
+        for (const [name, content] of Object.entries(retainedInputs))
+          runFiles[`runs/${execution.id}/inputs/${name}`] = content;
+        for (const artifact of execution.artifacts
+          .filter((item) => /\.(json|rpt|txt|log)$/i.test(item.relativePath))
+          .slice(0, 10)) {
+          if (artifact.size <= 1_000_000 && evidenceBytes + runBytes + artifact.size <= 30000000) {
+            runFiles[`evidence/${execution.id}/${artifact.id}.txt`] = verifiedRunArtifact(
+              identity,
+              execution.jobId,
+              artifact,
+              1_000_000
+            );
+            runBytes += artifact.size;
+          }
+        }
+      }
+    } catch (error) {
+      // Expiry can finish while an export is reading a run. Only an explicit
+      // retention record permits omission; corruption still fails the export.
+      job = getJob(identity, execution.jobId)!;
+      if (!job.artifactsExpiredAt) throw error;
+    }
+    if (job.artifactsExpiredAt) expiredRuns.set(execution.id, job.artifactsExpiredAt);
+    else {
+      Object.assign(files, runFiles);
+      evidenceBytes += runBytes;
+    }
     files[`runs/${execution.id}/provenance.json`] = JSON.stringify(
       {
         requestHash: job.requestHash,
@@ -436,34 +472,29 @@ export async function exportJourney(
         pdkDigest: job.pdkDigest,
         inputManifest: job.inputManifest,
         resultManifest: job.resultManifest,
+        evidenceStatus: job.artifactsExpiredAt ? 'expired' : 'retained',
+        artifactsExpiredAt: job.artifactsExpiredAt,
       },
       null,
       2
     );
-    const retainedInputs = await journeyRunInputs(identity, projectId, execution.id);
-    for (const [name, content] of Object.entries(retainedInputs))
-      files[`runs/${execution.id}/inputs/${name}`] = content;
-    for (const artifact of execution.artifacts
-      .filter((item) => /\.(json|rpt|txt|log)$/i.test(item.relativePath))
-      .slice(0, 10)) {
-      if (artifact.size <= 1_000_000 && evidenceBytes + artifact.size <= 30000000) {
-        files[`evidence/${execution.id}/${artifact.id}.txt`] = verifiedRunArtifact(
-          identity,
-          execution.jobId,
-          artifact,
-          1_000_000
-        );
-        evidenceBytes += artifact.size;
-      }
-    }
   }
   if (target === 'engineering') {
-    const physical = executions.find((item) => item.kind === 'openroad' && item.jobStatus === 'succeeded');
+    const physical = executions.find(
+      (item) => item.kind === 'openroad' && item.jobStatus === 'succeeded' && !expiredRuns.has(item.id)
+    );
     const layout =
       physical?.artifacts.find((item) => /(?:6_final|final)\.gds$/.test(item.relativePath)) ??
       physical?.artifacts.find((item) => item.relativePath.endsWith('.gds'));
-    if (physical && layout && layout.size <= 50000000)
-      files['layout/design.gds'] = verifiedRunArtifact(identity, physical.jobId, layout, 50000000);
+    if (physical && layout && layout.size <= 50000000) {
+      try {
+        files['layout/design.gds'] = verifiedRunArtifact(identity, physical.jobId, layout, 50000000);
+      } catch (error) {
+        const expiredAt = getJob(identity, physical.jobId)?.artifactsExpiredAt;
+        if (!expiredAt) throw error;
+        expiredRuns.set(physical.id, expiredAt);
+      }
+    }
   }
   if (target === 'tinytapeout') {
     files['src/project.v'] = tinyTapeoutWrapper(revision);
@@ -502,8 +533,10 @@ export async function exportJourney(
         jobId: item.jobId,
         kind: item.kind,
         status: item.jobStatus,
-        outcome: item.report?.outcome,
+        outcome: expiredRuns.has(item.id) ? undefined : item.report?.outcome,
         scope: item.report?.scope,
+        evidenceStatus: expiredRuns.has(item.id) ? 'expired' : 'retained',
+        artifactsExpiredAt: expiredRuns.get(item.id),
       })),
       files: Object.entries(files).map(([name, body]) => ({
         name,

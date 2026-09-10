@@ -672,7 +672,14 @@ export default function ProjectJourney({ projectId, initialView }: { projectId: 
                     ))}
                   </>
                 )}
+                {selectedRun.challengeId && selectedRun.kind === 'formal' && (
+                  <Alert severity="info">
+                    Run the fixed simulation suite to earn challenge credit for its acceptance requirements.
+                  </Alert>
+                )}
                 {selectedRun.purpose === 'lab' &&
+                  !selectedRun.artifactsExpiredAt &&
+                  (!selectedRun.challengeId || selectedRun.kind === 'simulation') &&
                   ['succeeded', 'failed', 'cancelled'].includes(selectedRun.jobStatus) &&
                   selectedRun.createdBy === bundle.userId && (
                     <Box>

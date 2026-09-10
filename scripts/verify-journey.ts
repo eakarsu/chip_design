@@ -63,7 +63,18 @@ async function main() {
       const wave = parseVcd(journey.verifiedRunArtifact(identity, job.id, artifact).toString('utf8'));
       assert.ok(wave.signals.length && wave.endTime > 0);
     }
-    if (purpose === 'lab') {
+    if (purpose === 'lab' && revision.challengeId && kind === 'formal') {
+      await assert.rejects(
+        journey.gradeJourneyRun(
+          identity,
+          revision.projectId,
+          run.id,
+          'A bounded formal safety result cannot establish challenge acceptance coverage.',
+          'real-grade'
+        ),
+        /fixed simulation/
+      );
+    } else if (purpose === 'lab') {
       const grade = await journey.gradeJourneyRun(
         identity,
         revision.projectId,
@@ -113,6 +124,7 @@ async function main() {
     );
     await execute(broken, 'simulation', 'failed');
     if (challenge.id === 'fifo-overflow') await execute(broken, 'formal', 'failed');
+    if (challenge.id === 'clock-budget' || challenge.id === 'latency-budget') await execute(broken, 'formal', 'passed');
   }
   assert.ok(gcd);
   fs.writeFileSync(
@@ -154,6 +166,40 @@ async function main() {
     'compiler-test'
   );
   await execute(brokenSyntax, 'simulation', 'error');
+  const sdcProject = await journey.startJourney(
+    identity,
+    { name: 'Invalid clock references', templateId: 'gcd' },
+    'sdc-start'
+  );
+  const badConstraints = await journey.saveRevision(
+    identity,
+    sdcProject.projectId,
+    {
+      baseRevisionId: sdcProject.id,
+      templateId: sdcProject.templateId,
+      topModule: sdcProject.topModule,
+      specification: sdcProject.specification,
+      requirements: sdcProject.requirements,
+      rtl: sdcProject.rtl,
+      testbench: sdcProject.testbench,
+      properties: sdcProject.properties,
+      sdc: sdcProject.sdc
+        .replace('[get_ports clk]', '[get_ports nonexistent_clock]')
+        .replaceAll('-clock core_clock', '-clock nonexistent_clock'),
+    },
+    'sdc-save'
+  );
+  const invalidRun = await execute(badConstraints, 'simulation', 'failed');
+  assert.equal(invalidRun.report!.checks.find((item) => item.id === 'constraint_contract')?.status, 'failed');
+  const { getRawDb } = await import('../src/lib/db/connection');
+  getRawDb().prepare('UPDATE eda_jobs SET retention_until=? WHERE id=?').run('2000-01-01', invalidRun.jobId);
+  assert.equal(eda.purgeExpired(), 1);
+  assert.equal(eda.purgeExpired(), 0);
+  assert.ok((await journey.getJourneyRun(identity, badConstraints.projectId, invalidRun.id)).artifactsExpiredAt);
+  fs.writeFileSync(
+    path.join(root, 'expired-evidence-export.tar.gz'),
+    await exportJourney(identity, badConstraints.projectId, badConstraints.id, 'engineering')
+  );
   console.log(`Real verification complete; retained evidence: ${root}`);
 }
 main().catch((error) => {

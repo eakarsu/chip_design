@@ -385,6 +385,13 @@ export async function getJourneyRun(identity: EdaIdentity, projectId: string, ru
     challengeId: row.challenge_id ? String(row.challenge_id) : undefined,
     jobStatus: job.status,
     error: job.error,
+    artifactsExpiredAt: job.artifactsExpiredAt,
+    ...(job.artifactsExpiredAt
+      ? {
+          reportError:
+            'Execution evidence expired under its retention policy; rerun this revision to retain new evidence.',
+        }
+      : {}),
     artifacts: (job.resultManifest?.artifacts ?? []) as JourneyArtifact[],
   };
   const artifact = result.artifacts.find((item) => item.relativePath === 'verification-report.json');
@@ -417,6 +424,8 @@ export async function journeyRunInputs(
 ): Promise<Record<string, string>> {
   const execution = await getJourneyRun(identity, projectId, runId);
   const job = getJob(identity, execution.jobId)!;
+  if (job.artifactsExpiredAt)
+    throw new Error('Execution evidence expired; rerun this revision to retain new inputs and reports');
   const entries = job.inputManifest.files as Array<{ name: string; size: number; sha256: string }>;
   const root = fs.realpathSync(path.join(jobWorkspace(job), 'input')) + path.sep;
   const files: Record<string, string> = {};
@@ -457,6 +466,8 @@ export async function gradeJourneyRun(
     throw new Error('Only your own executed work can receive learning credit');
   if (execution.purpose !== 'lab' || !['simulation', 'formal'].includes(execution.kind))
     throw new Error('Only a fixed grading-suite run can receive learning credit');
+  if (execution.challengeId && execution.kind !== 'simulation')
+    throw new Error('Challenge credit requires the fixed simulation suite covering its acceptance requirements');
   if (!['succeeded', 'failed', 'cancelled'].includes(execution.jobStatus))
     throw new Error('Wait for the tool to finish before grading');
   const revision = (await getRevision(identity, projectId, execution.revisionId))!;

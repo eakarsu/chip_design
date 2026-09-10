@@ -1,7 +1,9 @@
 import { createHash } from 'crypto';
 import { z } from 'zod';
 import { SUITE_VERSION, journeyTemplate } from './catalog';
-import type { DesignRevision, TemplateId, VerificationKind, VerificationReport } from './types';
+import type { DesignRevision, TemplateId, VerificationKind } from './types';
+import { expectedChecks } from './checks';
+export { expectedChecks, reportPassed } from './checks';
 
 export const verificationReportSchema = z
   .object({
@@ -320,16 +322,6 @@ endmodule
   );
 }
 
-export function expectedChecks(template: TemplateId, kind: VerificationKind): string[] {
-  return kind === 'formal'
-    ? ['safety_contract']
-    : [
-        'reset_state',
-        ...(template === 'fifo' ? ['backpressure', 'ordering'] : ['arithmetic', 'latency']),
-        'constraint_contract',
-      ];
-}
-
 // Comments inside strings are not comments. Lex both before inspecting HDL
 // tokens, otherwise a quoted "/*" could hide file I/O from the lab boundary.
 function labRtlTokens(source: string): string {
@@ -453,11 +445,4 @@ export function verificationInputs(
       'verification.json': JSON.stringify(contract),
     },
   };
-}
-
-export function reportPassed(report: VerificationReport, checks?: string[]): boolean {
-  if (report.outcome !== 'passed' || !report.checks.length || report.checks.some((item) => item.status !== 'passed'))
-    return false;
-  const ids = new Set(report.checks.map((item) => item.id));
-  return ids.size === report.checks.length && (!checks || checks.every((id) => ids.has(id)));
 }

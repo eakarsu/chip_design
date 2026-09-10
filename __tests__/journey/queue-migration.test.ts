@@ -11,7 +11,11 @@ it('migrates the legacy two-tool CHECK without losing jobs, artifacts, indexes o
   const db = new Database(':memory:');
   db.pragma('foreign_keys = ON');
   for (const table of tables)
-    db.exec(table.sql.replace("'yosys','openroad','simulation','formal'", "'yosys','openroad'"));
+    db.exec(
+      table.sql
+        .replace("'yosys','openroad','simulation','formal'", "'yosys','openroad'")
+        .replace(/\s*artifacts_expired_at TEXT,/, '')
+    );
   db.exec("INSERT INTO eda_projects VALUES ('p','t','project','pdk','digest','license','user','2026-01-01')");
   db.exec(`INSERT INTO eda_jobs (id,tenant_id,project_id,user_id,kind,status,idempotency_key,request_hash,input_manifest_json,tool_image,pdk_digest,expected_cpu_seconds,next_attempt_at,retention_until,created_at,updated_at)
     VALUES ('j','t','p','user','yosys','succeeded','request-1','hash','{}','image','digest',30,'2026-01-01','2027-01-01','2026-01-01','2026-01-01')`);
@@ -29,4 +33,32 @@ it('migrates the legacy two-tool CHECK without losing jobs, artifacts, indexes o
   expect(db.prepare('SELECT COUNT(*) AS n FROM eda_artifacts').get()).toEqual({ n: 1 });
   db.close();
   template.close();
+});
+
+it('backfills previously purged jobs from immutable audit events without expiring untouched jobs', () => {
+  const db = new Database(':memory:');
+  ensureEdaSchema(db);
+  db.exec('DROP INDEX idx_eda_jobs_retention; ALTER TABLE eda_jobs DROP COLUMN artifacts_expired_at');
+  db.exec("INSERT INTO eda_projects VALUES ('p','t','project','pdk','digest','license','user','2026-01-01')");
+  for (const id of ['expired', 'untouched'])
+    db.prepare(
+      `INSERT INTO eda_jobs
+    (id,tenant_id,project_id,user_id,kind,status,idempotency_key,request_hash,input_manifest_json,tool_image,pdk_digest,expected_cpu_seconds,next_attempt_at,retention_until,created_at,updated_at)
+    VALUES (?,'t','p','user','yosys','cancelled',?,'hash','{}','image','digest',30,'2026-01-01','2026-02-01','2026-01-01','2026-03-01')`
+    ).run(id, id);
+  db.exec(`INSERT INTO eda_audit_events (tenant_id,job_id,actor_id,action,details_json,previous_hash,event_hash,created_at)
+    VALUES ('t','expired','retention-sweeper','job.artifacts-expired','{}','previous','event','2026-02-02')`);
+  const audit = db.prepare('SELECT * FROM eda_audit_events').all();
+  expect(() => validateEdaSchema(db)).toThrow(/expiry/);
+  ensureEdaSchema(db);
+  ensureEdaSchema(db);
+  expect(() => validateEdaSchema(db)).not.toThrow();
+  expect(db.prepare('SELECT artifacts_expired_at FROM eda_jobs WHERE id=?').get('expired')).toEqual({
+    artifacts_expired_at: '2026-02-02',
+  });
+  expect(db.prepare('SELECT artifacts_expired_at FROM eda_jobs WHERE id=?').get('untouched')).toEqual({
+    artifacts_expired_at: null,
+  });
+  expect(db.prepare('SELECT * FROM eda_audit_events').all()).toEqual(audit);
+  db.close();
 });

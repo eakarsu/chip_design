@@ -5,6 +5,7 @@ their reports and waveforms and return a completed execution with failed checks.
 """
 import importlib.metadata
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -31,23 +32,116 @@ def check(id, status, message='', requirement=None, source=None):
     return item
 
 
+SDC_NUMBER = r'[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?'
+
+
+def sdc_words(command):
+    """Tokenize the literal reference subset. Never evaluate user Tcl."""
+    words, end = [], 0
+    for match in re.finditer(r'\[[^\[\]\r\n]*\]|\{[^{}\r\n]*\}|"[^"\\\r\n]*"|[^\s\[\]{}";$\\]+', command):
+        if command[end:match.start()].strip():
+            raise ValueError('Unsupported SDC syntax; use literal reference commands')
+        word = match.group()
+        words.append(word[1:-1].strip() if word.startswith(('{', '"')) else word)
+        end = match.end()
+        if end < len(command) and not command[end].isspace():
+            raise ValueError('SDC arguments must be separated by whitespace')
+    if command[end:].strip():
+        raise ValueError('Unsupported SDC syntax; use literal reference commands')
+    return words
+
+
+def sdc_options(words, names):
+    options, positional = {}, []
+    index = 0
+    while index < len(words):
+        word = words[index]
+        if word in names:
+            if word in options or index + 1 == len(words):
+                raise ValueError(f'Missing or duplicate {word} option')
+            options[word] = words[index + 1]
+            index += 2
+        else:
+            if word.startswith('-') and not re.fullmatch(SDC_NUMBER, word):
+                raise ValueError(f'Unsupported option {word}')
+            positional.append(word)
+            index += 1
+    return options, positional
+
+
+def sdc_collection(word, expected):
+    return word.startswith('[') and word.endswith(']') and sdc_words(word[1:-1]) == expected
+
+
+def sdc_number(word):
+    if not re.fullmatch(SDC_NUMBER, word) or not math.isfinite(float(word)):
+        raise ValueError('Clock periods and I/O delays must be finite literal numbers')
+    return float(word)
+
+
 def constraint_check(metadata):
-    """Check the declared clock contract; physical STA is a separate tool run."""
+    """Validate the fixed labs' literal clock/I/O contract, without executing Tcl."""
     text = read_bounded(INPUT / 'constraint.sdc')
-    lines = [line.strip() for line in text.splitlines() if line.strip() and not line.lstrip().startswith('#')]
-    clocks = [line for line in lines if line.startswith('create_clock ')]
-    periods = [float(value) for line in clocks for value in re.findall(r'-period\s+([0-9]+(?:\.[0-9]+)?)\b', line)]
     limit = next((item['target'] for item in metadata['requirements'] if item['metric'] == 'clock_period_ns'), 10)
-    delays = [float(value) for line in lines for value in re.findall(r'^set_(?:input|output)_delay\s+([0-9]+(?:\.[0-9]+)?)\b', line)]
-    valid = (len(clocks) == 1 and len(periods) == 1 and 0 < periods[0] <= limit
-             and len(delays) >= 2 and all(0 <= value < periods[0] / 2 for value in delays)
-             and any(line.startswith('set_input_delay ') for line in lines)
-             and any(line.startswith('set_output_delay ') for line in lines))
-    message = (f'Declared clock period(s): {periods}; maximum {limit} ns. '
-               'Both I/O budgets must be present and less than half a cycle. '
-               'This checks the reference SDC contract; routed timing is not established by this check.')
-    line = next((i + 1 for i, value in enumerate(text.splitlines()) if 'create_clock ' in value), 1)
-    return check('constraint_contract', 'passed' if valid else 'failed', message, 'clock', {'file': 'constraint.sdc', 'line': line})
+    line, clock, period, pending = 1, None, None, ''
+    seen = set()
+    delays = []
+    try:
+        for number, raw in enumerate(text.splitlines(), 1):
+            if not pending:
+                line = number
+            pending += raw.strip()
+            if pending.endswith('\\'):
+                pending = pending[:-1] + ' '
+                continue
+            for command in pending.split(';'):
+                command = command.strip()
+                if command.startswith('#'):
+                    break
+                if not command:
+                    continue
+                name, *words = sdc_words(command)
+                if name in seen:
+                    raise ValueError(f'Duplicate {name} command')
+                seen.add(name)
+                if name == 'current_design':
+                    if words != [metadata['topModule']]:
+                        raise ValueError('current_design must name the reference top module')
+                elif name == 'create_clock':
+                    options, ports = sdc_options(words, {'-name', '-period'})
+                    if len(ports) != 1 or not sdc_collection(ports[0], ['get_ports', 'clk']):
+                        raise ValueError('The reference clock must target [get_ports clk]')
+                    period = sdc_number(options.get('-period', ''))
+                    clock = options.get('-name', 'clk')
+                    if not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', clock) or not 0 < period <= limit:
+                        raise ValueError(f'Use a literal clock name and a positive period at most {limit} ns')
+                elif name in ('set_input_delay', 'set_output_delay'):
+                    options, values = sdc_options(words, {'-clock'})
+                    reference = options.get('-clock', '')
+                    if not clock or (reference != clock and not sdc_collection(reference, ['get_clocks', clock])):
+                        raise ValueError('I/O delays must reference the previously declared clock')
+                    ports = ['all_inputs', '-no_clocks'] if name == 'set_input_delay' else ['all_outputs']
+                    if len(values) != 2 or not sdc_collection(values[1], ports):
+                        raise ValueError(f'{name} must cover [{" ".join(ports)}]')
+                    delay = sdc_number(values[0])
+                    if not 0 <= delay < period / 2:
+                        raise ValueError('Both I/O budgets must be nonnegative and less than half a cycle')
+                    delays.append(delay)
+                elif name == 'set_false_path':
+                    options, values = sdc_options(words, {'-from'})
+                    if values or not sdc_collection(options.get('-from', ''), ['get_ports', 'rst_n']):
+                        raise ValueError('The reference false path may only start at [get_ports rst_n]')
+                else:
+                    raise ValueError(f'Unsupported reference SDC command: {name}')
+            pending = ''
+        if pending or not clock or len(delays) != 2:
+            raise ValueError('Declare one clk clock and both complete I/O budgets')
+        status = 'passed'
+        message = f'Clock {clock} targets clk at {period} ns (maximum {limit} ns); both complete I/O budgets reference it.'
+    except ValueError as error:
+        status, message = 'failed', str(error)
+    message += ' This checks the reference SDC contract; routed timing requires a separate STA report.'
+    return check('constraint_contract', status, message, 'clock', {'file': 'constraint.sdc', 'line': line})
 
 
 def simulate(metadata):

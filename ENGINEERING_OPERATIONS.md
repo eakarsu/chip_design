@@ -35,6 +35,10 @@ filenames and metadata cannot establish a pass. Reports with unwaived failures,
 missing evidence or unverified provenance hold release. Fully checked evidence
 with bounded waivers produces a conditional decision.
 
+The signed release manifest and its independent approval must identify the same
+commit as the current PPA candidate and primary reports. Changing the candidate
+holds release readiness until a matching manifest receives independent approval.
+
 Example report (replace references and measurements with actual tool evidence):
 
 ```json

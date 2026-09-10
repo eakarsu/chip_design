@@ -78,6 +78,7 @@ export interface JourneyRun {
   error?: string;
   report?: VerificationReport;
   reportError?: string;
+  artifactsExpiredAt?: string;
   artifacts: JourneyArtifact[];
   sourceHash: string;
   suiteHash: string;

@@ -8,6 +8,7 @@ import {
   referenceTestbench,
   revisionDigest,
   verificationInputs,
+  expectedChecks,
 } from '@/lib/journey/verification';
 import { tarGzip } from '@/lib/journey/hardware';
 import type { DesignRevision, JourneyAssessment, JourneyRun } from '@/lib/journey/types';
@@ -80,7 +81,31 @@ it('keeps grading harnesses fixed when engineering tests or targets are weakened
 });
 
 it('recommends preparation from demonstrated fixes and failed requirements', () => {
-  const assessment = { challengeId: 'reset-stale', technicalPassed: true } as JourneyAssessment;
+  const assessment = {
+    runId: 'passed-reset',
+    revisionId: 'fixed-reset',
+    userId: 'learner',
+    challengeId: 'reset-stale',
+    technicalPassed: true,
+  } as JourneyAssessment;
+  const passed = {
+    id: assessment.runId,
+    revisionId: assessment.revisionId,
+    createdBy: assessment.userId,
+    challengeId: assessment.challengeId,
+    purpose: 'lab',
+    kind: 'simulation',
+    jobStatus: 'succeeded',
+    sourceHash: 'source',
+    suiteHash: 'suite',
+    report: {
+      kind: 'simulation',
+      sourceHash: 'source',
+      suiteHash: 'suite',
+      outcome: 'passed',
+      checks: expectedChecks('gcd', 'simulation').map((id) => ({ id, status: 'passed' })),
+    },
+  } as JourneyRun;
   const run = {
     purpose: 'lab',
     kind: 'simulation',
@@ -88,7 +113,7 @@ it('recommends preparation from demonstrated fixes and failed requirements', () 
       checks: [{ requirementId: 'latency', name: 'latency', status: 'failed', message: 'No completion by cycle 260' }],
     },
   } as JourneyRun;
-  const practice = adaptivePractice('gcd', [run], [assessment]);
+  const practice = adaptivePractice('gcd', [run, passed], [assessment]);
   expect(practice.challenges.find((item) => item.id === 'reset-stale')?.solved).toBe(true);
   expect(practice.challenges.find((item) => item.id === 'latency-budget')?.recommended).toBe(true);
   expect(practice.reason).toMatch(/cycle 260/);

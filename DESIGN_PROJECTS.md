@@ -36,6 +36,14 @@ a declared SDC contract check. The SDC check verifies the reference clock and I/
 budget; it does not claim STA or routed timing closure. Yosys and OpenROAD use the
 saved RTL/SDC; physical jobs retain the existing independent execution-budget gate.
 
+Fixed labs accept a literal SDC subset: one clock on `clk`, one input budget covering
+`[all_inputs -no_clocks]`, and one output budget covering `[all_outputs]`, both
+referencing that clock. `current_design` may name the reference top, and the optional
+false path may start only at `rst_n`. Quoted identifiers, clock collections, numeric
+exponents, semicolons and line continuations are supported. Dynamic Tcl, partial
+port coverage, duplicate commands and other timing overrides fail the lab contract;
+use custom engineering regressions for other constraint styles.
+
 The queue's `succeeded` status means the tool completed. **Design correctness is
 the report's outcome.** Failed tests still retain artifacts. Missing/skipped checks,
 compiler failures and solver timeouts cannot pass a lab. The UI distinguishes these.
@@ -71,6 +79,9 @@ the complete retained artifact remains downloadable.
 Recommendations use the learner's actual failed requirements and successful graded
 challenge fixes. Attempt history is retained. Prerequisites guide ordering without
 preventing advanced learners from attempting another challenge.
+Challenge credit requires the fixed simulation suite for the assessed revision.
+Formal safety results remain available for inspection and do not complete a
+challenge. Historical formal-only assessments cannot mark a challenge demonstrated.
 
 ## Project-aware AI
 
@@ -103,6 +114,11 @@ requires an independently approved artifact in the existing commercial workspace
 Physical measurements require matching hardware and instruments; software testing
 of this workflow cannot substitute for them.
 
+When a run's retention period ends, its evidence expiry is recorded once. Export
+packages still contain the saved revision and available evidence; expired runs are
+identified in the manifest and provenance without their deleted input/report files.
+Missing or corrupt files without a recorded expiry remain integrity errors.
+
 ## Install and validate
 
 1. Build `docker build --platform linux/amd64 -f Dockerfile.verification -t <registry>/chip-verification:<version> .`
@@ -114,6 +130,9 @@ of this workflow cannot substitute for them.
    then run the normal `npm run migrate` deployment step. The SQLite queue CHECK is
    rebuilt transactionally with its jobs, artifact foreign keys and indexes preserved.
    Four commercial tables retain revisions, run links, assessments and hardware evidence.
+   The queue migration also adds an evidence-expiry timestamp and recovers prior
+   expiry records from the append-only audit ledger. Rebuild `Dockerfile.verification`
+   and configure its new immutable digest to install updated SDC contract validation.
 4. Restart the web and workers using the same shared durable object paths. Existing
    Compose services load these optional image settings from their configured env file.
    No public demo permission is added to `/api/journey`; authenticated tenant access is required.

@@ -339,7 +339,9 @@ export async function projectSignoffMatrix(identity: EdaIdentity, projectId: str
   );
   const latestPpa = ppaRows[0];
   const latestManifest = await one("SELECT id FROM commercial_feature_records WHERE tenant_id = ? AND project_id = ? AND feature = 'tapeout-release' AND record_type = 'signed-manifest' ORDER BY created_at DESC, id DESC LIMIT 1", [identity.tenantId, projectId]);
-  const release = latestManifest ? await verifyReleasePrerequisites(identity, projectId, String(latestManifest.id)) : undefined;
+  const release = latestManifest ? await verifyReleasePrerequisites(
+    identity, projectId, String(latestManifest.id), latestPpa ? String(latestPpa.commit_sha) : null
+  ) : undefined;
   const checks: SignoffCheck[] = await Promise.all(SIGNOFF_DOMAINS.map(async ([key, label, aliases]) => {
     const artifact = artifactRows.find((item) => aliases.some((alias) => String(item.kind).toLowerCase() === alias));
     const check: SignoffCheck = { key, label, domain: key.toUpperCase(), state: artifact ? 'attention' : 'missing',
