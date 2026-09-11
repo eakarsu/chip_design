@@ -57,14 +57,28 @@ import {
   Hub,
   School,
   Close,
+  ExpandLess,
+  ExpandMore,
+  Star,
+  StarBorder,
 } from '@mui/icons-material';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import ThemeSwitcher from './ThemeSwitcher';
 import SearchDialog from './SearchDialog';
 import { useAuth } from '@/lib/auth/context';
-import { CHIP_DESIGN_LIFECYCLE } from '@/lib/commercial/lifecycle';
+import {
+  emptyNavPreferences,
+  isFavorite,
+  isGroupExpanded,
+  loadNavPreferences,
+  pushRecent,
+  saveNavPreferences,
+  setGroupCollapsed,
+  toggleFavorite,
+  type NavPreferences,
+} from '@/lib/navigation';
 
 export const SIDENAV_WIDTH = 240;
 
@@ -94,15 +108,11 @@ const GROUPS: Group[] = [
     title: 'Governed AI',
     items: [
       {
-        label: 'Lifecycle Overview',
+        label: 'Chip Lifecycle',
         href: '/governed-ai/lifecycle',
         icon: <Timeline />,
       },
-      ...CHIP_DESIGN_LIFECYCLE.map((phase) => ({
-        label: `${String(phase.order).padStart(2, '0')} · ${phase.title}`,
-        href: `/governed-ai/lifecycle#phase-${phase.id}`,
-        icon: <FactCheck key={phase.id} />,
-      })),
+      { label: 'AI Chat Workspace', href: '/governed-ai/chat', icon: <FactCheck /> },
     ],
   },
   {
@@ -111,7 +121,6 @@ const GROUPS: Group[] = [
       { label: 'Full Flow', href: '/flow', icon: <AccountTree /> },
       { label: 'Floorplan', href: '/floorplan', icon: <Architecture /> },
       { label: 'OpenLane', href: '/openlane', icon: <Build /> },
-      { label: 'OR Composer', href: '/openroad-composer', icon: <Build /> },
       { label: 'KLayout', href: '/klayout', icon: <GridView /> },
       { label: 'Layout Diff', href: '/layout-diff', icon: <Compare /> },
       { label: 'LVS', href: '/lvs', icon: <FactCheck /> },
@@ -141,10 +150,8 @@ const GROUPS: Group[] = [
       { label: 'Congestion', href: '/congestion', icon: <GridOn /> },
       { label: 'Cong. Map', href: '/congestion-map', icon: <GridOn /> },
       { label: 'IR Drop', href: '/ir-drop', icon: <FlashOn /> },
-      { label: 'IR Map', href: '/irdrop-map', icon: <FlashOn /> },
       { label: 'Power', href: '/power', icon: <Insights /> },
       { label: 'Timing', href: '/timing', icon: <Speed /> },
-      { label: 'Timing Paths', href: '/timing-paths', icon: <Speed /> },
       { label: 'Slack Hist', href: '/slack-histogram', icon: <Speed /> },
       { label: 'Wire Length', href: '/wire-length', icon: <Insights /> },
       { label: 'SDC Editor', href: '/sdc', icon: <MenuBook /> },
@@ -254,6 +261,8 @@ export default function SideNav({ open, onClose, variant = 'permanent' }: SideNa
   const [searchOpen, setSearchOpen] = useState(false);
   const [userAnchor, setUserAnchor] = useState<null | HTMLElement>(null);
   const [currentHash, setCurrentHash] = useState('');
+  const [preferences, setPreferences] = useState<NavPreferences>(emptyNavPreferences);
+  const preferencesLoaded = useRef(false);
 
   const isActive = (href: string) => {
     const [hrefPath, hrefHash] = href.split('#');
@@ -282,6 +291,21 @@ export default function SideNav({ open, onClose, variant = 'permanent' }: SideNa
     updateHash();
     window.addEventListener('hashchange', updateHash);
     return () => window.removeEventListener('hashchange', updateHash);
+  }, [pathname]);
+
+  useEffect(() => {
+    setPreferences(loadNavPreferences());
+    preferencesLoaded.current = true;
+  }, []);
+  useEffect(() => {
+    if (preferencesLoaded.current) saveNavPreferences(preferences);
+  }, [preferences]);
+  useEffect(() => {
+    if (!pathname) return;
+    const match = GROUPS.flatMap((group) => group.items).find((item) => item.href.split('#')[0] === pathname);
+    setPreferences((current) =>
+      pushRecent(current, match ? { href: match.href, label: match.label } : { href: pathname, label: pathname })
+    );
   }, [pathname]);
 
   // Header block: brand + controls that used to live in the top AppBar
@@ -420,6 +444,84 @@ export default function SideNav({ open, onClose, variant = 'permanent' }: SideNa
     </Box>
   );
 
+  const allNavItems = GROUPS.flatMap((group) => group.items);
+  const favoriteItems = allNavItems.filter((item) => isFavorite(preferences, item.href));
+  const recentItems: Item[] = preferences.recent.map((recent) => ({ ...recent, icon: <History /> }));
+  const groupHasActive = (items: Item[]) => items.some((item) => isActive(item.href));
+
+  const toggleCollapsed = (title: string, items: Item[], alwaysOpen = false) => {
+    setPreferences((current) =>
+      setGroupCollapsed(current, title, isGroupExpanded(current, title, groupHasActive(items), { alwaysOpen }))
+    );
+  };
+
+  const renderNavItem = (item: Item, key: string, removable = false) => (
+    <ListItem
+      key={key}
+      disablePadding
+      secondaryAction={
+        <IconButton
+          size="small"
+          aria-label={
+            removable
+              ? `Unpin ${item.label}`
+              : isFavorite(preferences, item.href)
+                ? `Remove ${item.label} from favorites`
+                : `Add ${item.label} to favorites`
+          }
+          onClick={() => setPreferences((current) => toggleFavorite(current, { href: item.href, label: item.label }))}
+        >
+          {removable || isFavorite(preferences, item.href) ? (
+            <Star fontSize="small" color="primary" />
+          ) : (
+            <StarBorder fontSize="small" />
+          )}
+        </IconButton>
+      }
+    >
+      <ListItemButton
+        component={Link}
+        href={item.href}
+        selected={isActive(item.href)}
+        onClick={variant === 'temporary' ? onClose : undefined}
+        sx={{ pr: 6 }}
+      >
+        <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
+        <ListItemText primary={item.label} />
+      </ListItemButton>
+    </ListItem>
+  );
+
+  const renderGroup = (
+    title: string,
+    items: Item[],
+    options: { alwaysOpen?: boolean; keyPrefix?: string; removable?: boolean } = {}
+  ) => {
+    const expanded = isGroupExpanded(preferences, title, groupHasActive(items), {
+      alwaysOpen: options.alwaysOpen,
+    });
+    return (
+      <Box key={title}>
+        <ListItemButton
+          onClick={() => toggleCollapsed(title, items, options.alwaysOpen)}
+          aria-expanded={expanded}
+          aria-label={`${expanded ? 'Collapse' : 'Expand'} ${title} section`}
+          sx={{ px: 2, pt: 1.5, pb: 0.5 }}
+        >
+          <Typography variant="overline" sx={{ flex: 1, color: 'text.secondary', lineHeight: 1.6 }}>
+            {title}
+          </Typography>
+          {expanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+        </ListItemButton>
+        {expanded && (
+          <List dense>
+            {items.map((item) => renderNavItem(item, `${options.keyPrefix ?? title}:${item.href}`, options.removable))}
+          </List>
+        )}
+      </Box>
+    );
+  };
+
   const content = (
     <Box
       id={variant === 'temporary' ? 'mobile-side-navigation' : undefined}
@@ -429,29 +531,26 @@ export default function SideNav({ open, onClose, variant = 'permanent' }: SideNa
     >
       {header}
       <Divider />
-      {GROUPS.filter((group) => group.title !== 'Admin' || user?.role === 'admin').map((group, idx) => (
-        <Box key={group.title}>
-          {idx > 0 && <Divider />}
-          <Typography variant="overline" sx={{ display: 'block', px: 2, pt: 2, pb: 0.5, color: 'text.secondary' }}>
-            {group.title}
-          </Typography>
-          <List dense>
-            {group.items.map((item) => (
-              <ListItem key={item.href} disablePadding>
-                <ListItemButton
-                  component={Link}
-                  href={item.href}
-                  selected={isActive(item.href)}
-                  onClick={variant === 'temporary' ? onClose : undefined}
-                >
-                  <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
-                  <ListItemText primary={item.label} />
-                </ListItemButton>
-              </ListItem>
-            ))}
-          </List>
-        </Box>
-      ))}
+      {(() => {
+        const sections: ReactNode[] = [];
+        let firstSection = true;
+        const add = (
+          title: string,
+          items: Item[],
+          options: { alwaysOpen?: boolean; keyPrefix?: string; removable?: boolean } = {}
+        ) => {
+          if (!items.length) return;
+          if (!firstSection) sections.push(<Divider key={`divider-${title}`} />);
+          firstSection = false;
+          sections.push(renderGroup(title, items, options));
+        };
+        add('Favorites', favoriteItems, { alwaysOpen: true, keyPrefix: 'favorites', removable: true });
+        add('Recent', recentItems, { alwaysOpen: true, keyPrefix: 'recent' });
+        for (const group of GROUPS.filter((entry) => entry.title !== 'Admin' || user?.role === 'admin')) {
+          add(group.title, group.items);
+        }
+        return sections;
+      })()}
     </Box>
   );
 
