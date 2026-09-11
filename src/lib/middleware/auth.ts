@@ -59,6 +59,7 @@ export async function requireAuth(request: NextRequest | Request): Promise<AuthC
 
   const user = users.getById(session.userId);
   if (!user) return unauthorized('Session user no longer exists');
+  if (user.status !== 'active') return forbidden('Account is not active');
 
   return { user, session };
 }

@@ -13,6 +13,7 @@ import {
   PlayArrow, Psychology, Route, Save, School, Science,
 } from '@mui/icons-material';
 import type { AcademyCapstone, AcademyDashboard as Dashboard } from '@/lib/academy/types';
+import MasteryPanel from '@/components/academy/MasteryPanel';
 
 const capstoneDefinition = {
   title: 'Pipelined Vector MAC Accelerator',
@@ -124,6 +125,8 @@ export default function AcademyDashboardPage() {
       {error && <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>}
       {notice && <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 2 }}>{notice}</Alert>}
       <Grid container spacing={2}>{stats.map(([value, label, icon]) => <Grid key={label} size={{ xs: 6, md: 3 }}><Card variant="outlined"><CardContent><Stack direction="row" justifyContent="space-between" color="primary.main">{icon}<Typography variant="h4" fontWeight={900}>{value}</Typography></Stack><Typography color="text.secondary">{label}</Typography></CardContent></Card></Grid>)}</Grid>
+
+      <MasteryPanel />
 
       <Paper variant="outlined" sx={{ mt: 3 }}><Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto"><Tab label="Overview" /><Tab label="Curriculum & labs" /><Tab label="Diagnostic" /><Tab label="Capstone" /></Tabs></Paper>
 

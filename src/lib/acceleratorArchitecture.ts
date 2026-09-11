@@ -260,3 +260,133 @@ export function compareAcceleratorOrganizations(input: AcceleratorArchitectureIn
     evaluateAcceleratorArchitecture(input, organization)
   );
 }
+
+export interface PrecisionSweepPoint {
+  precisionBits: 4 | 8 | 16;
+  bytesPerElement: number;
+  peakTops: number;
+  bandwidthRoofTops: number;
+  sustainedTops: number;
+  arithmeticIntensityOpsPerByte: number;
+  bottleneck: AcceleratorArchitectureResult['bottleneck'];
+  weightsFitLocally: boolean;
+  latencyMs: number;
+}
+
+export function analyzePrecisionSweep(rawInput: AcceleratorArchitectureInput): PrecisionSweepPoint[] {
+  return ([4, 8, 16] as const).map((precisionBits) => {
+    const result = evaluateAcceleratorArchitecture({ ...rawInput, precisionBits });
+    const peakTops = round(result.peakTops * (8 / precisionBits));
+    const computeRoofTops = peakTops * (result.arrayUtilizationPct / 100);
+    const sustainedTops = round(Math.min(computeRoofTops, result.bandwidthRoofTops));
+    const bottleneck: AcceleratorArchitectureResult['bottleneck'] = result.recurrenceLimited
+      ? 'feedback-loop-timing'
+      : result.bandwidthRoofTops < computeRoofTops
+        ? 'off-chip-bandwidth'
+        : 'compute';
+    return {
+      precisionBits,
+      bytesPerElement: precisionBits / 8,
+      peakTops,
+      bandwidthRoofTops: result.bandwidthRoofTops,
+      sustainedTops,
+      arithmeticIntensityOpsPerByte: result.arithmeticIntensityOpsPerByte,
+      bottleneck,
+      weightsFitLocally: result.weightsFitLocally,
+      latencyMs: round((result.matrixOperations / Math.max(1, sustainedTops * 1e12)) * 1000, 4),
+    };
+  });
+}
+
+export interface TileRecommendation {
+  rows: number;
+  columns: number;
+  utilizationPct: number;
+  rationale: string;
+}
+
+function tileCandidateValues(limit: number, reference: number): number[] {
+  const bounded = Math.min(1024, Math.max(4, Math.floor(limit)));
+  const values = new Set<number>();
+  for (let candidate = 4; candidate <= Math.min(bounded, 32); candidate += 1) values.add(candidate);
+  for (let candidate = 4; candidate <= bounded; candidate *= 2) values.add(candidate);
+  const divisorLimit = Math.min(reference, bounded);
+  for (let divisor = 4; divisor <= divisorLimit; divisor += 1) {
+    if (reference % divisor === 0) values.add(divisor);
+  }
+  values.add(bounded);
+  return [...values].filter((candidate) => candidate >= 4 && candidate <= bounded).sort((left, right) => left - right);
+}
+
+export function recommendTile(rawInput: AcceleratorArchitectureInput): TileRecommendation {
+  const input = acceleratorArchitectureInputSchema.parse(rawInput);
+  const rowLimit = Math.min(1024, input.arrayRows);
+  const columnLimit = Math.min(1024, input.arrayColumns);
+  const rowCandidates = tileCandidateValues(rowLimit, Math.max(input.matrixM, input.matrixK));
+  const columnCandidates = tileCandidateValues(columnLimit, Math.max(input.matrixN, input.matrixK));
+  let bestRows = rowCandidates[0];
+  let bestColumns = columnCandidates[0];
+  let bestUtilization = -1;
+  let bestSquareness = -Infinity;
+  let bestArea = -Infinity;
+  for (const rows of rowCandidates) {
+    for (const columns of columnCandidates) {
+      const candidate = evaluateAcceleratorArchitecture(
+        { ...input, arrayRows: rows, arrayColumns: columns },
+        input.organization
+      );
+      const utilization = candidate.arrayUtilizationPct;
+      const squareness = -Math.abs(rows - columns);
+      const area = rows * columns;
+      if (
+        utilization > bestUtilization
+        || (utilization === bestUtilization && squareness > bestSquareness)
+        || (utilization === bestUtilization && squareness === bestSquareness && area > bestArea)
+      ) {
+        bestRows = rows;
+        bestColumns = columns;
+        bestUtilization = utilization;
+        bestSquareness = squareness;
+        bestArea = area;
+      }
+    }
+  }
+  return {
+    rows: bestRows,
+    columns: bestColumns,
+    utilizationPct: round(bestUtilization, 1),
+    rationale: `Sampled ${rowCandidates.length * columnCandidates.length} candidate tiles within ${rowLimit} × ${columnLimit} upper bounds; ${bestRows} × ${bestColumns} maximizes modeled array utilization while preferring square tiles. Fill/drain and control overhead beyond the analytical model still require simulation.`,
+  };
+}
+
+export type RooflineRegion = 'compute-bound' | 'memory-bound' | 'balanced';
+
+export interface RooflineClassification {
+  region: RooflineRegion;
+  intensityOpsPerByte: number;
+  ridgePointOpsPerByte: number;
+  note: string;
+}
+
+export function classifyRoofline(
+  rawInput: AcceleratorArchitectureInput,
+  organization: AcceleratorOrganization = rawInput.organization
+): RooflineClassification {
+  const input = acceleratorArchitectureInputSchema.parse(rawInput);
+  const result = evaluateAcceleratorArchitecture(input, organization);
+  const ridgePointOpsPerByte = round((result.peakTops * 1e12) / (input.offChipBandwidthGBps * 1e9), 2);
+  const intensityOpsPerByte = result.arithmeticIntensityOpsPerByte;
+  const ratio = intensityOpsPerByte / Math.max(1e-9, ridgePointOpsPerByte);
+  const region: RooflineRegion = ratio > 1.1 ? 'compute-bound' : ratio < 0.9 ? 'memory-bound' : 'balanced';
+  const comparison = region === 'compute-bound'
+    ? 'above the ridge point, so compute and array utilization dominate'
+    : region === 'memory-bound'
+      ? 'below the ridge point, so off-chip bandwidth and data reuse dominate'
+      : 'at the ridge point, so compute and bandwidth must be co-designed';
+  return {
+    region,
+    intensityOpsPerByte,
+    ridgePointOpsPerByte,
+    note: `Arithmetic intensity ${intensityOpsPerByte} ops/B is ${comparison}: ridge point ${ridgePointOpsPerByte} ops/B.`,
+  };
+}

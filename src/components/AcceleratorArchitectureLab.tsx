@@ -40,17 +40,27 @@ import {
 import ProfessionalAIResult from '@/components/ai/ProfessionalAIResult';
 import {
   acceleratorArchitectureInputSchema,
+  analyzePrecisionSweep,
+  classifyRoofline,
   compareAcceleratorOrganizations,
   DEFAULT_ACCELERATOR_ARCHITECTURE_INPUT,
+  recommendTile,
   type AcceleratorArchitectureInput,
   type AcceleratorArchitectureResult,
   type AcceleratorOrganization,
 } from '@/lib/acceleratorArchitecture';
+import { DEFAULT_MAC_ARRAY, generateMacArrayVerilog } from '@/lib/ai/rtlSkeleton';
 
 const organizationLabel: Record<AcceleratorOrganization, string> = {
   'coarse-tpu': 'Coarse TPU-style array',
   'fine-gpu': 'Fine GPU-style tiles',
   splittable: 'Splittable hybrid array',
+};
+
+const precisionLabel: Record<4 | 8 | 16, string> = {
+  4: 'INT4',
+  8: 'INT8',
+  16: 'FP16 / BF16',
 };
 
 const bottleneckLabel: Record<AcceleratorArchitectureResult['bottleneck'], string> = {
@@ -103,6 +113,9 @@ export default function AcceleratorArchitectureLab() {
   const parsed = useMemo(() => acceleratorArchitectureInputSchema.safeParse(input), [input]);
   const comparisons = useMemo(() => parsed.success ? compareAcceleratorOrganizations(parsed.data) : [], [parsed]);
   const selected = comparisons.find((item) => item.organization === input.organization);
+  const precisionSweep = useMemo(() => parsed.success ? analyzePrecisionSweep(parsed.data) : [], [parsed]);
+  const roofline = useMemo(() => parsed.success ? classifyRoofline(parsed.data) : undefined, [parsed]);
+  const tileRecommendation = useMemo(() => parsed.success ? recommendTile(parsed.data) : undefined, [parsed]);
 
   const updateNumber = (key: NumericInputKey, raw: string) => {
     setAiResult('');
@@ -122,6 +135,23 @@ export default function AcceleratorArchitectureLab() {
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = `accelerator-architecture-${Date.now()}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadVerilog = () => {
+    if (!tileRecommendation) return;
+    const verilog = generateMacArrayVerilog({
+      ...DEFAULT_MAC_ARRAY,
+      rows: tileRecommendation.rows,
+      columns: tileRecommendation.columns,
+      dataWidth: input.precisionBits,
+    });
+    const blob = new Blob([verilog], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `mac-array-${tileRecommendation.rows}x${tileRecommendation.columns}-int${input.precisionBits}.v`;
     anchor.click();
     URL.revokeObjectURL(url);
   };
@@ -399,6 +429,68 @@ Identify invalid assumptions, the dominant bottleneck, the most useful next arch
                 <Grid size={{ xs: 6, md: 4 }}><MetricCard label="Array boundary" metric={value(selected.arrayBoundaryBandwidthGBps, ' GB/s')} detail={`${selected.weightLoadCycles.toLocaleString()} cycles to load weights`} /></Grid>
                 <Grid size={{ xs: 6, md: 4 }}><MetricCard label="Pipeline" metric={`${selected.recommendedPipelineStages} stages`} detail={`${selected.gatesPerPipelineStage} gate levels/stage`} /></Grid>
               </Grid>
+
+              <Paper variant="outlined" sx={{ p: 2.5 }}>
+                <Stack direction="row" gap={1} alignItems="center">
+                  <Bolt color="primary" />
+                  <Typography variant="h6" fontWeight={900}>Quantization &amp; roofline</Typography>
+                </Stack>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  The same workload at INT4, INT8 and FP16/BF16 precision. Lower precision raises effective MAC
+                  throughput and reduces bytes per element, which moves both roofs and the ridge point.
+                </Typography>
+                <TableContainer sx={{ mt: 1.5 }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Precision</TableCell>
+                        <TableCell align="right">Effective peak</TableCell>
+                        <TableCell align="right">Bandwidth roof</TableCell>
+                        <TableCell align="right">Sustained</TableCell>
+                        <TableCell>Bottleneck</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {precisionSweep.map((point) => (
+                        <TableRow key={point.precisionBits} selected={point.precisionBits === input.precisionBits} hover>
+                          <TableCell><strong>{precisionLabel[point.precisionBits]}</strong></TableCell>
+                          <TableCell align="right">{value(point.peakTops, ' TOPS')}</TableCell>
+                          <TableCell align="right">{value(point.bandwidthRoofTops, ' TOPS')}</TableCell>
+                          <TableCell align="right">{value(point.sustainedTops, ' TOPS')}</TableCell>
+                          <TableCell>{bottleneckLabel[point.bottleneck]}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+                {roofline && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} flexWrap="wrap" useFlexGap>
+                      <Chip
+                        color={roofline.region === 'compute-bound' ? 'success' : roofline.region === 'memory-bound' ? 'warning' : 'info'}
+                        label={`Roofline region: ${roofline.region}`}
+                      />
+                      <Chip variant="outlined" label={`Ridge point: ${value(roofline.ridgePointOpsPerByte, ' ops/B')}`} />
+                      <Chip variant="outlined" label={`Intensity: ${value(roofline.intensityOpsPerByte, ' ops/B')}`} />
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>{roofline.note}</Typography>
+                  </>
+                )}
+                {tileRecommendation && (
+                  <>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="subtitle2" fontWeight={900}>Tile recommendation</Typography>
+                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                      <strong>{tileRecommendation.rows} × {tileRecommendation.columns}</strong> tile · {value(tileRecommendation.utilizationPct, '%')} modeled array utilization
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{tileRecommendation.rationale}</Typography>
+                    <Button size="small" variant="outlined" startIcon={<Download />} sx={{ mt: 1.5 }} onClick={downloadVerilog}>
+                      Download Verilog skeleton
+                    </Button>
+                  </>
+                )}
+              </Paper>
 
               <Paper variant="outlined" sx={{ p: 2.5 }}>
                 <Typography variant="h6" fontWeight={900} sx={{ mb: 1.5 }}>Organization comparison</Typography>
