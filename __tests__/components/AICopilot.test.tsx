@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { TextDecoder as NodeTextDecoder } from 'util';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import AICopilot, { CHAT_REQUEST_TIMEOUT_MS, GOVERNED_CHAT_PROMPTS } from '@/components/AICopilot';
 import { CopilotPageContext, CopilotProvider } from '@/components/ai/CopilotProvider';
@@ -281,4 +282,99 @@ it('preserves page context when initial authentication resolves and clears conve
   view.rerender(content(false, false));
   expect(screen.queryByText('Use the Design Workspace.')).not.toBeInTheDocument();
   expect(screen.getByLabelText('Your question')).toHaveValue('');
+});
+
+it('renders model follow-ups as chips and keeps them out of the answer text', async () => {
+  global.fetch = jest
+    .fn()
+    .mockResolvedValue(
+      reply('Open the academy from the sidebar.\n\nFOLLOWUPS: Where is the academy? | How do I enroll? | What labs exist?')
+    ) as typeof fetch;
+  render(wrapper({ embedded: true }));
+  fireEvent.change(screen.getByLabelText('Your question'), { target: { value: 'How do I learn chip design?' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
+  expect(await screen.findByText('Open the academy from the sidebar.')).toBeVisible();
+  expect(screen.queryByText(/FOLLOWUPS:/)).not.toBeInTheDocument();
+  expect(screen.getByText('How do I enroll?')).toBeInTheDocument();
+});
+
+it('regenerates the last answer by re-asking the same question', async () => {
+  const fetchMock = jest.fn().mockResolvedValue(reply('First answer.'));
+  global.fetch = fetchMock as typeof fetch;
+  render(wrapper({ embedded: true }));
+  fireEvent.change(screen.getByLabelText('Your question'), { target: { value: 'Explain CDC.' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
+  await screen.findByText('First answer.');
+  fireEvent.click(screen.getByRole('button', { name: 'Regenerate answer' }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  const second = JSON.parse(fetchMock.mock.calls[1][1].body);
+  expect(second.messages.filter((message: { role: string }) => message.role === 'user')).toEqual([
+    { role: 'user', content: 'Explain CDC.' },
+  ]);
+});
+
+it('records an answer rating through the feedback endpoint', async () => {
+  const fetchMock = jest.fn().mockResolvedValue(reply('Rate me.'));
+  global.fetch = fetchMock as typeof fetch;
+  render(wrapper({ embedded: true }));
+  fireEvent.change(screen.getByLabelText('Your question'), { target: { value: 'Is this useful?' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
+  await screen.findByText('Rate me.');
+  fireEvent.click(screen.getByRole('button', { name: 'Mark answer helpful' }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  expect(fetchMock.mock.calls[1][0]).toBe('/api/ai/feedback');
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({ rating: 'up', answer: 'Rate me.' });
+});
+
+it('restores the conversation for the same reader after a remount', async () => {
+  global.fetch = jest.fn().mockResolvedValue(reply('Persisted answer.')) as typeof fetch;
+  const view = render(wrapper({ embedded: true }));
+  fireEvent.change(screen.getByLabelText('Your question'), { target: { value: 'Persist this' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
+  await screen.findByText('Persisted answer.');
+  await waitFor(() => expect(localStorage.getItem('neuralchip-chat-history-v1:guest')).not.toBeNull());
+  view.unmount();
+  render(wrapper({ embedded: true }));
+  await waitFor(() => expect(screen.getByText('Persisted answer.')).toBeVisible());
+});
+
+it('renders a streamed answer and its follow-ups', async () => {
+  const stream = [
+    'data: {"model":"stream/model","provider":"Stream provider","choices":[{"delta":{"content":"Check the "}}]}\n\n',
+    'data: {"choices":[{"delta":{"content":"CDC report.\\n\\nFOLLOWUPS: A? | B? | C?"}}]}\n\n',
+    'data: [DONE]\n\n',
+  ].join('');
+  const headers = new Map<string, string>([
+    ['content-type', 'text/event-stream'],
+    ['x-copilot-model', 'stream/model'],
+  ]);
+  const bytes = new Uint8Array(Array.from(stream).map((character) => character.charCodeAt(0)));
+  let sent = false;
+  const fakeResponse = {
+    ok: true,
+    status: 200,
+    headers: { get: (name: string) => headers.get(name.toLowerCase()) ?? null },
+    body: {
+      getReader: () => ({
+        read: async () => {
+          if (sent) return { done: true, value: undefined };
+          sent = true;
+          return { done: false, value: bytes };
+        },
+      }),
+    },
+  } as unknown as Response;
+  const originalDecoder = (globalThis as { TextDecoder?: unknown }).TextDecoder;
+  (globalThis as { TextDecoder?: unknown }).TextDecoder = NodeTextDecoder;
+  global.fetch = jest.fn().mockResolvedValue(fakeResponse) as typeof fetch;
+  try {
+    render(wrapper({ embedded: true }));
+    fireEvent.change(screen.getByLabelText('Your question'), { target: { value: 'What should I check next?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
+    expect(await screen.findByText('Check the CDC report.')).toBeVisible();
+    expect(screen.getByText('B?')).toBeInTheDocument();
+    expect(screen.queryByText(/FOLLOWUPS:/)).not.toBeInTheDocument();
+  } finally {
+    (globalThis as { TextDecoder?: unknown }).TextDecoder = originalDecoder;
+  }
 });

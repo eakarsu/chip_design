@@ -177,6 +177,21 @@ export function ensureTables(raw: Database.Database): void {
     -- ALTER in the column so the app keeps working after a schema bump.
     -- (SQLite doesn't have IF NOT EXISTS on ALTER; guard with pragma.)
     CREATE INDEX IF NOT EXISTS idx_openlane_runs_design ON openlane_runs(design_id);
+
+    CREATE TABLE IF NOT EXISTS ai_feedback (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      tenant_id TEXT,
+      rating TEXT NOT NULL,
+      mode TEXT NOT NULL DEFAULT 'chat',
+      model TEXT,
+      provider TEXT,
+      page TEXT,
+      question TEXT NOT NULL DEFAULT '',
+      answer TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_feedback_created ON ai_feedback(created_at);
   `);
 
   // Safe forward-migration for `openlane_runs.layout_json`.  A DB created
@@ -201,7 +216,7 @@ export function ensureTables(raw: Database.Database): void {
 export function validateCoreSchema(raw: Database.Database): void {
   const required = [
     'users', 'sessions', 'audit_logs', 'password_resets', 'email_verifications',
-    'error_logs', 'roles', 'designs', 'algorithm_runs', 'openlane_designs', 'openlane_runs',
+    'error_logs', 'roles', 'designs', 'algorithm_runs', 'openlane_designs', 'openlane_runs', 'ai_feedback',
   ];
   const existing = new Set((raw.prepare(
     "SELECT name FROM sqlite_master WHERE type='table'",
@@ -339,7 +354,7 @@ export function resetDbForTests(): void {
   const raw = getRawDb();
   const tables = ['users', 'sessions', 'audit_logs', 'password_resets',
                   'email_verifications', 'error_logs', 'roles', 'designs',
-                  'algorithm_runs'];
+                  'algorithm_runs', 'ai_feedback'];
   const drop = raw.transaction(() => {
     for (const t of tables) raw.exec(`DROP TABLE IF EXISTS ${t}`);
   });

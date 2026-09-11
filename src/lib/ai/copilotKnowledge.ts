@@ -150,3 +150,27 @@ export function copilotKnowledge(question: string, pathname = '/') {
     context: `NeuralChip app guide (from this build's feature and learning catalogs):\n${corePages.map((item) => `${item.title} — ${item.href}: ${item.description}`).join('\n')}\n\nRelevant catalog entries:\n${sources.map((item) => `${item.title} — ${item.href}: ${item.description}`).join('\n')}\n\nThis catalog describes implemented interfaces, not live project state or deployment configuration. Adapters, licensed tools, signing keys and workers need their actual deployment configuration. Chat cannot run tools, change records or grant approvals.`,
   };
 }
+
+const defaultPrompts = [
+  'What can I do in this app?',
+  'How do I run my own RTL design?',
+  'Why is my signoff or approval blocked?',
+];
+
+/** Page-aware starter questions for the chat empty state. */
+export function suggestedPrompts(pathname = '/'): string[] {
+  const route = pathname.split(/[?#]/)[0];
+  if (route === '/' || route === '') return defaultPrompts;
+  const page =
+    corePages.find((item) => item.href.split(/[?#]/)[0] === route) ??
+    corePages.find((item) => {
+      const href = item.href.split(/[?#]/)[0];
+      return href !== '/' && route.startsWith(`${href}/`);
+    });
+  if (!page) return defaultPrompts;
+  return [
+    `What does ${page.title} do?`,
+    `How do I use ${page.title}?`,
+    `What evidence does ${page.title} require?`,
+  ];
+}

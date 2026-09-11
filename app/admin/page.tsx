@@ -30,6 +30,7 @@ export default function AdminDashboard() {
           fetch('/api/email-verifications?pageSize=1'),
           fetch('/api/error-logs?pageSize=1'),
           fetch('/api/roles?pageSize=1'),
+          fetch('/api/ai/feedback'),
         ]);
         const data = await Promise.all(responses.map(r => r.json()));
         setStats({
@@ -40,9 +41,12 @@ export default function AdminDashboard() {
           emailVerifications: data[4].total || 0,
           errorLogs: data[5].total || 0,
           roles: data[6].total || 0,
+          aiFeedback: data[7].total || 0,
+          aiFeedbackUp: data[7].up || 0,
+          aiFeedbackDown: data[7].down || 0,
         });
       } catch {
-        setStats({ users: 0, sessions: 0, auditLogs: 0, passwordResets: 0, emailVerifications: 0, errorLogs: 0, roles: 0 });
+        setStats({ users: 0, sessions: 0, auditLogs: 0, passwordResets: 0, emailVerifications: 0, errorLogs: 0, roles: 0, aiFeedback: 0, aiFeedbackUp: 0, aiFeedbackDown: 0 });
       }
       setLoading(false);
     }
@@ -59,6 +63,7 @@ export default function AdminDashboard() {
     { title: 'Email Verifications', icon: 'mark_email_read', count: stats?.emailVerifications ?? null, description: 'Email verification status', href: '/admin/email-verifications', color: '#10B981' },
     { title: 'Error Logs', icon: 'bug_report', count: stats?.errorLogs ?? null, description: 'Monitor system errors', href: '/admin/error-logs', color: '#EF4444' },
     { title: 'Roles & Permissions', icon: 'admin_panel_settings', count: stats?.roles ?? null, description: 'RBAC configuration', href: '/admin/roles', color: '#EC4899' },
+    { title: 'AI Feedback', icon: 'reviews', count: stats?.aiFeedback ?? null, description: `${stats?.aiFeedbackUp ?? 0} helpful · ${stats?.aiFeedbackDown ?? 0} not helpful`, href: '/admin/ai-feedback', color: '#0EA5E9' },
     { title: 'Security', icon: 'security', count: null, description: 'Security headers & sanitization', href: '/admin/security', color: '#14B8A6' },
   ];
 

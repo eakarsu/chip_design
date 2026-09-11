@@ -176,3 +176,19 @@ export const algorithmRuns = sqliteTable('algorithm_runs', {
   success:       integer('success', { mode: 'boolean' }).notNull().default(true),
   createdAt:     text('created_at').notNull(),
 });
+
+/** Thumbs up/down ratings for AI chat answers, with a bounded excerpt of the
+ *  rated exchange so the admin rollup shows what was rated. */
+export const aiFeedback = sqliteTable('ai_feedback', {
+  id:        text('id').primaryKey(),
+  userId:    text('user_id'),
+  tenantId:  text('tenant_id'),
+  rating:    text('rating').notNull(),
+  mode:      text('mode').notNull().default('chat'),
+  model:     text('model'),
+  provider:  text('provider'),
+  page:      text('page'),
+  question:  text('question').notNull().default(''),
+  answer:    text('answer').notNull().default(''),
+  createdAt: text('created_at').notNull(),
+});

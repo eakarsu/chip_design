@@ -20,6 +20,7 @@ const navItems = [
   { label: 'Email Verifications', href: '/admin/email-verifications', icon: 'mark_email_read' },
   { label: 'Error Logs', href: '/admin/error-logs', icon: 'bug_report' },
   { label: 'Roles & Permissions', href: '/admin/roles', icon: 'admin_panel_settings' },
+  { label: 'AI Feedback', href: '/admin/ai-feedback', icon: 'reviews' },
   { label: 'Security', href: '/admin/security', icon: 'security' },
 ];
 

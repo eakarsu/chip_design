@@ -1,6 +1,6 @@
 'use client';
 
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -10,6 +10,8 @@ import {
   Chip,
   CircularProgress,
   IconButton,
+  Menu,
+  MenuItem,
   Paper,
   Stack,
   Tab,
@@ -18,10 +20,37 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { ContentCopy, DeleteOutline, ExpandLess, ExpandMore, Send, SmartToy, StopCircle } from '@mui/icons-material';
+import {
+  ContentCopy,
+  DeleteOutline,
+  Edit,
+  ExpandLess,
+  ExpandMore,
+  FileDownload,
+  Mic,
+  MicOff,
+  PushPin,
+  Refresh,
+  Search,
+  Send,
+  SmartToy,
+  StopCircle,
+  ThumbDown,
+  ThumbUp,
+  VolumeOff,
+  VolumeUp,
+} from '@mui/icons-material';
 import ProfessionalAIResult from '@/components/ai/ProfessionalAIResult';
 import ChatAnswer from '@/components/ai/ChatAnswer';
 import FloatingChatWindow from '@/components/ai/FloatingChatWindow';
+import {
+  createSpeechRecognition,
+  speakText,
+  speechRecognitionAvailable,
+  stopSpeaking,
+  type SpeechRecognitionLike,
+} from '@/components/ai/speech';
+import { suggestedPrompts } from '@/lib/ai/copilotKnowledge';
 import {
   CopilotContext,
   CopilotProvider,
@@ -157,12 +186,26 @@ interface AICopilotProps {
   };
 }
 
-const questions = [
-  'What can I do in this app?',
-  'How do I run my own RTL design?',
-  'Why is my signoff or approval blocked?',
-  'Where should I start learning chip design?',
-];
+function downloadConversation(markdown: string) {
+  const blob = new Blob([markdown], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `neuralchip-chat-${new Date().toISOString().slice(0, 10)}.md`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function conversationMarkdown(messages: Array<{ role: string; content: string; mode: string }>) {
+  const lines = messages.map((message) =>
+    message.role === 'user'
+      ? `### You\n\n${message.content}`
+      : `### NeuralChip${message.mode === 'review' ? ' · engineering review' : ''}\n\n${message.content}`
+  );
+  return `# Ask NeuralChip conversation\n\n${lines.join('\n\n---\n\n')}\n`;
+}
 
 function CopilotContent({
   embedded = false,
@@ -185,6 +228,74 @@ function CopilotContent({
   const [presetPhase, setPresetPhase] = useState<string | null>(null);
   const end = useRef<HTMLDivElement>(null);
   const initialPromptLoaded = useRef('');
+  const starterPrompts = useMemo(() => suggestedPrompts(pathname), [pathname]);
+  const [conversationSearch, setConversationSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null);
+  const [modelAnchor, setModelAnchor] = useState<HTMLElement | null>(null);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [listening, setListening] = useState(false);
+  const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const dictatedRef = useRef('');
+  let lastAssistantIndex = -1;
+  for (let index = chat.messages.length - 1; index >= 0; index--) {
+    if (chat.messages[index].role === 'assistant') {
+      lastAssistantIndex = index;
+      break;
+    }
+  }
+  const lastIsUser = chat.messages.length > 0 && chat.messages[chat.messages.length - 1].role === 'user';
+  const query = conversationSearch.trim().toLowerCase();
+  const indexedMessages = chat.messages.map((message, index) => ({ message, index }));
+  const visibleMessages = query
+    ? indexedMessages.filter(({ message }) => message.content.toLowerCase().includes(query))
+    : indexedMessages;
+  const pinnedMessages = indexedMessages.filter(({ message }) => message.pinned);
+
+  const toggleListening = () => {
+    if (listening) {
+      recognitionRef.current?.stop();
+      recognitionRef.current = null;
+      setListening(false);
+      return;
+    }
+    const recognition = createSpeechRecognition(
+      (text) => {
+        dictatedRef.current = `${dictatedRef.current} ${text}`.trim();
+        chat.setInput(dictatedRef.current);
+      },
+      () => {
+        recognitionRef.current = null;
+        setListening(false);
+      }
+    );
+    if (!recognition) return;
+    dictatedRef.current = chat.input;
+    recognitionRef.current = recognition;
+    setListening(true);
+    recognition.start();
+  };
+  const toggleSpeak = (index: number, content: string) => {
+    if (speakingIndex === index) {
+      stopSpeaking();
+      setSpeakingIndex(null);
+      return;
+    }
+    stopSpeaking();
+    if (speakText(content, () => setSpeakingIndex(null))) setSpeakingIndex(index);
+  };
+  const openModels = async (event: React.MouseEvent<HTMLElement>) => {
+    setModelAnchor(event.currentTarget);
+    if (availableModels.length) return;
+    try {
+      const response = await fetch('/api/ai/copilot');
+      const data = await response.json();
+      if (Array.isArray(data.models)) setAvailableModels(data.models.filter((item: unknown) => typeof item === 'string'));
+    } catch {
+      /* The default model remains available. */
+    }
+  };
 
   useEffect(() => {
     if (initialMode) setMode(initialMode);
@@ -242,6 +353,15 @@ function CopilotContent({
       setCopied(null);
     }
   };
+  const copyThread = async () => {
+    try {
+      await navigator.clipboard.writeText(conversationMarkdown(chat.messages));
+      setCopied(-1);
+    } catch {
+      setCopied(null);
+    }
+    setExportAnchor(null);
+  };
 
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
@@ -279,7 +399,7 @@ function CopilotContent({
       <Stack
         direction="row"
         alignItems="center"
-        gap={1}
+        gap={0.5}
         sx={{ px: 2, py: 0.75, borderBottom: 1, borderColor: 'divider', minWidth: 0 }}
       >
         <Typography variant="caption" color="text.secondary" noWrap sx={{ flex: 1 }}>
@@ -287,6 +407,39 @@ function CopilotContent({
             ? 'App-wide answers · follows your current page'
             : `Phase ${phase.order}: ${phase.title}`}
         </Typography>
+        <Tooltip title={chat.selectedModel ? `Model: ${chat.selectedModel}` : 'Choose AI model'}>
+          <Button
+            size="small"
+            aria-label="Choose AI model"
+            onClick={openModels}
+            sx={{ minWidth: 0, textTransform: 'none' }}
+          >
+            {chat.selectedModel ? chat.selectedModel.split('/').pop() : 'Auto'}
+          </Button>
+        </Tooltip>
+        <Tooltip title="Search conversation">
+          <IconButton
+            size="small"
+            aria-label="Search conversation"
+            color={searchOpen ? 'primary' : 'default'}
+            onClick={() => {
+              setSearchOpen((value) => !value);
+              setConversationSearch('');
+            }}
+          >
+            <Search fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Export conversation">
+          <IconButton
+            size="small"
+            aria-label="Export conversation"
+            onClick={(event) => setExportAnchor(event.currentTarget)}
+            disabled={!chat.messages.length}
+          >
+            <FileDownload fontSize="small" />
+          </IconButton>
+        </Tooltip>
         <Button
           size="small"
           onClick={() => setExamples((value) => !value)}
@@ -295,6 +448,43 @@ function CopilotContent({
           Ideas
         </Button>
       </Stack>
+      {searchOpen && (
+        <Stack direction="row" alignItems="center" gap={1} sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}>
+          <TextField
+            size="small"
+            fullWidth
+            autoFocus
+            placeholder="Search this conversation"
+            value={conversationSearch}
+            onChange={(event) => setConversationSearch(event.target.value)}
+            slotProps={{ htmlInput: { 'aria-label': 'Search this conversation', maxLength: 200 } }}
+          />
+          {query && (
+            <Typography variant="caption" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
+              {visibleMessages.length} match{visibleMessages.length === 1 ? '' : 'es'}
+            </Typography>
+          )}
+        </Stack>
+      )}
+      {pinnedMessages.length > 0 && (
+        <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider', maxHeight: 150, overflow: 'auto' }}>
+          <Typography variant="caption" color="text.secondary">
+            Pinned answers · {pinnedMessages.length}
+          </Typography>
+          <Stack gap={0.5} sx={{ mt: 0.5 }}>
+            {pinnedMessages.map(({ message, index }) => (
+              <Stack key={index} direction="row" alignItems="center" gap={0.5}>
+                <Typography variant="body2" noWrap sx={{ flex: 1 }}>
+                  {message.content.slice(0, 120)}
+                </Typography>
+                <IconButton size="small" aria-label="Unpin answer" onClick={() => chat.setPinned(index, false)}>
+                  <PushPin fontSize="inherit" />
+                </IconButton>
+              </Stack>
+            ))}
+          </Stack>
+        </Box>
+      )}
       {examples && (
         <Stack
           direction="row"
@@ -304,7 +494,7 @@ function CopilotContent({
           sx={{ px: 2, py: 1, maxHeight: 160, overflow: 'auto' }}
         >
           {chat.mode === 'chat'
-            ? questions.map((question) => (
+            ? starterPrompts.map((question) => (
                 <Chip
                   key={question}
                   label={question}
@@ -346,7 +536,7 @@ function CopilotContent({
               </Typography>
             </Box>
             <Stack gap={1}>
-              {questions.map((question) => (
+              {starterPrompts.map((question) => (
                 <Button
                   key={question}
                   variant="outlined"
@@ -359,7 +549,7 @@ function CopilotContent({
             </Stack>
           </Stack>
         )}
-        {chat.messages.map((message, index) => (
+        {visibleMessages.map(({ message, index }) => (
           <Box
             key={index}
             sx={{ display: 'flex', justifyContent: message.role === 'user' ? 'flex-end' : 'flex-start', mb: 2.5 }}
@@ -371,19 +561,28 @@ function CopilotContent({
               }}
             >
               {message.role === 'user' ? (
-                <Paper
-                  elevation={0}
-                  sx={{
-                    p: 1.5,
-                    bgcolor: 'primary.main',
-                    color: 'primary.contrastText',
-                    borderRadius: '16px 16px 4px 16px',
-                  }}
-                >
-                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-                    {message.content}
-                  </Typography>
-                </Paper>
+                <>
+                  <Paper
+                    elevation={0}
+                    sx={{
+                      p: 1.5,
+                      bgcolor: 'primary.main',
+                      color: 'primary.contrastText',
+                      borderRadius: '16px 16px 4px 16px',
+                    }}
+                  >
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                      {message.content}
+                    </Typography>
+                  </Paper>
+                  <Stack direction="row" justifyContent="flex-end">
+                    <Tooltip title="Edit and resend this question">
+                      <IconButton size="small" aria-label="Edit question" onClick={() => chat.editMessage(index)}>
+                        <Edit sx={{ fontSize: 14 }} />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                </>
               ) : (
                 <>
                   {message.mode === 'review' ? (
@@ -393,9 +592,9 @@ function CopilotContent({
                       title="Engineering review"
                       result={message.content}
                     />
-                  ) : (
+                  ) : message.content ? (
                     <ChatAnswer content={message.content} />
-                  )}
+                  ) : null}
                   {Boolean(message.sources?.length) && (
                     <Box sx={{ mt: 1.5 }}>
                       <Typography variant="caption" color="text.secondary">
@@ -410,23 +609,99 @@ function CopilotContent({
                       </Stack>
                     </Box>
                   )}
-                  <Stack direction="row" alignItems="center" gap={1} sx={{ mt: 0.5 }}>
+                  {index === lastAssistantIndex && Boolean(message.followUps?.length) && (
+                    <Stack direction="row" gap={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
+                      <Typography variant="caption" color="text.secondary" sx={{ width: '100%' }}>
+                        Suggested follow-ups
+                      </Typography>
+                      {message.followUps!.map((followUp) => (
+                        <Chip key={followUp} size="small" label={followUp} onClick={() => chat.setInput(followUp)} />
+                      ))}
+                    </Stack>
+                  )}
+                  <Stack direction="row" alignItems="center" gap={0.25} sx={{ mt: 0.5 }}>
                     <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
-                      {[message.provider, message.model].filter(Boolean).join(' · ')}
+                      {[
+                        [message.provider, message.model].filter(Boolean).join(' · '),
+                        typeof message.durationMs === 'number'
+                          ? `${(message.durationMs / 1000).toFixed(1)}s`
+                          : '',
+                        message.contextChars
+                          ? `context ${(message.contextChars / 1024).toFixed(1)} KB${message.contextTruncated ? ' (excerpt)' : ''}`
+                          : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </Typography>
-                    <IconButton
-                      size="small"
-                      aria-label={copied === index ? 'Answer copied' : 'Copy AI answer'}
-                      onClick={() => void copy(message.content, index)}
-                    >
-                      <ContentCopy sx={{ fontSize: 15 }} />
-                    </IconButton>
+                    {index === lastAssistantIndex && (
+                      <Tooltip title="Regenerate answer">
+                        <IconButton size="small" aria-label="Regenerate answer" onClick={() => void chat.regenerate()}>
+                          <Refresh sx={{ fontSize: 15 }} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    <Tooltip title={speakingIndex === index ? 'Stop reading' : 'Read aloud'}>
+                      <IconButton
+                        size="small"
+                        aria-label={speakingIndex === index ? 'Stop reading answer' : 'Read answer aloud'}
+                        onClick={() => toggleSpeak(index, message.content)}
+                      >
+                        {speakingIndex === index ? (
+                          <VolumeOff sx={{ fontSize: 15 }} />
+                        ) : (
+                          <VolumeUp sx={{ fontSize: 15 }} />
+                        )}
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title={message.pinned ? 'Unpin answer' : 'Pin answer'}>
+                      <IconButton
+                        size="small"
+                        aria-label={message.pinned ? 'Unpin pinned answer' : 'Pin answer'}
+                        onClick={() => chat.setPinned(index, !message.pinned)}
+                      >
+                        <PushPin sx={{ fontSize: 15 }} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Helpful">
+                      <IconButton
+                        size="small"
+                        color={message.feedback === 'up' ? 'primary' : 'default'}
+                        aria-label="Mark answer helpful"
+                        onClick={() => void chat.rate(index, 'up')}
+                      >
+                        <ThumbUp sx={{ fontSize: 15 }} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Not helpful">
+                      <IconButton
+                        size="small"
+                        color={message.feedback === 'down' ? 'primary' : 'default'}
+                        aria-label="Mark answer not helpful"
+                        onClick={() => void chat.rate(index, 'down')}
+                      >
+                        <ThumbDown sx={{ fontSize: 15 }} />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title={copied === index ? 'Copied' : 'Copy answer'}>
+                      <IconButton
+                        size="small"
+                        aria-label={copied === index ? 'Answer copied' : 'Copy AI answer'}
+                        onClick={() => void copy(message.content, index)}
+                      >
+                        <ContentCopy sx={{ fontSize: 15 }} />
+                      </IconButton>
+                    </Tooltip>
                   </Stack>
                 </>
               )}
             </Box>
           </Box>
         ))}
+        {query && visibleMessages.length === 0 && (
+          <Typography variant="body2" color="text.secondary">
+            No messages match this search.
+          </Typography>
+        )}
         {chat.loading && (
           <Stack role="status" direction="row" gap={1.5} alignItems="center">
             <CircularProgress size={18} />
@@ -477,7 +752,17 @@ function CopilotContent({
         sx={{ p: 1.5, pb: 2, borderTop: 1, borderColor: 'divider', bgcolor: 'background.paper', flexShrink: 0 }}
       >
         {chat.error && (
-          <Alert severity="error" sx={{ mb: 1 }}>
+          <Alert
+            severity="error"
+            sx={{ mb: 1 }}
+            action={
+              lastIsUser ? (
+                <Button color="inherit" size="small" onClick={() => void chat.retry()}>
+                  Retry
+                </Button>
+              ) : undefined
+            }
+          >
             {chat.error}
           </Alert>
         )}
@@ -502,6 +787,19 @@ function CopilotContent({
             }}
             slotProps={{ htmlInput: { maxLength: 20_000 } }}
           />
+          <Tooltip title={listening ? 'Stop dictation' : 'Dictate your question'}>
+            <span>
+              <IconButton
+                aria-label={listening ? 'Stop dictation' : 'Dictate question'}
+                color={listening ? 'primary' : 'default'}
+                disabled={!speechRecognitionAvailable()}
+                onClick={toggleListening}
+                sx={{ mb: 1 }}
+              >
+                {listening ? <MicOff /> : <Mic />}
+              </IconButton>
+            </span>
+          </Tooltip>
           {chat.loading ? (
             <Tooltip title="Stop response">
               <IconButton color="primary" aria-label="Stop AI response" onClick={chat.stop} sx={{ mb: 1 }}>
@@ -528,6 +826,42 @@ function CopilotContent({
           Enter to send · Shift+Enter for a new line
         </Typography>
       </Box>
+      <Menu anchorEl={exportAnchor} open={Boolean(exportAnchor)} onClose={() => setExportAnchor(null)}>
+        <MenuItem onClick={() => void copyThread()}>
+          {copied === -1 ? 'Conversation copied' : 'Copy conversation'}
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            downloadConversation(conversationMarkdown(chat.messages));
+            setExportAnchor(null);
+          }}
+        >
+          Download as Markdown
+        </MenuItem>
+      </Menu>
+      <Menu anchorEl={modelAnchor} open={Boolean(modelAnchor)} onClose={() => setModelAnchor(null)}>
+        <MenuItem
+          selected={!chat.selectedModel}
+          onClick={() => {
+            chat.setSelectedModel('');
+            setModelAnchor(null);
+          }}
+        >
+          Auto (configured default)
+        </MenuItem>
+        {availableModels.map((model) => (
+          <MenuItem
+            key={model}
+            selected={chat.selectedModel === model}
+            onClick={() => {
+              chat.setSelectedModel(model);
+              setModelAnchor(null);
+            }}
+          >
+            {model}
+          </MenuItem>
+        ))}
+      </Menu>
     </Box>
   );
 
