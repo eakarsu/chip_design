@@ -78,6 +78,13 @@ PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENV_FILE="$PROJECT_DIR/.env"
 load_env_file(){ local line key value;while IFS= read -r line||[ -n "$line" ];do [[ "$line" =~ ^[[:space:]]*# || "$line" =~ ^[[:space:]]*$ ]]&&continue;line="${line#export }";key="${line%%=*}";value="${line#*=}";key="${key//[[:space:]]/}";[[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]||continue;[ -n "${!key+x}" ]&&continue;if [[ "$value" == \"*\" && "$value" == *\" ]];then value="${value:1:${#value}-2}";elif [[ "$value" == \'*\' && "$value" == *\' ]];then value="${value:1:${#value}-2}";fi;export "$key=$value";done < "$ENV_FILE"; }
 [ -f "$ENV_FILE" ]||{ echo "Missing required file: $ENV_FILE" >&2;exit 1; };load_env_file
+# Reclaim ports held by a previous run of this project before the occupancy
+# gate. Default "auto" only terminates listeners owned by this project (stale
+# ./start.sh children); RECLAIM_PORTS=force kills any listener, RECLAIM_PORTS=0
+# preserves the old fail-closed behavior.
+port_listener_pids(){ lsof -tnP -iTCP:"$1" -sTCP:LISTEN 2>/dev/null||true; }
+port_belongs_to_project(){ local cwd cmd;cwd="$(lsof -a -p "$1" -d cwd -Fn 2>/dev/null|sed -n 's/^n//p'|head -1)";[ -n "$cwd" ]&&[ "$cwd" -ef "$PROJECT_DIR" ]&&return 0;cmd="$(ps -o command= -p "$1" 2>/dev/null||true)";case "$cmd" in *"$PROJECT_DIR"*)return 0;;esac;return 1; }
+reclaim_port(){ local port="$1" pids pid targeted="" mode="${RECLAIM_PORTS:-auto}" i;case "$mode" in 0|off|false)return 0;;esac;pids="$(port_listener_pids "$port")";[ -n "$pids" ]||return 0;for pid in $pids;do if [ "$mode" = force ]||[ "$mode" = 1 ]||port_belongs_to_project "$pid";then echo "Reclaiming port $port from stale process $pid: $(ps -o command= -p "$pid" 2>/dev/null||echo unknown)" >&2;kill "$pid" 2>/dev/null||true;targeted="$targeted $pid";else echo "Port $port is held by unrelated process $pid; set RECLAIM_PORTS=force to terminate it" >&2;fi;done;[ -n "$targeted" ]||return 0;for i in 1 2 3 4 5 6 7 8 9 10;do [ -z "$(port_listener_pids "$port")" ]&&return 0;sleep 0.5;done;for pid in $targeted;do kill -9 "$pid" 2>/dev/null||true;done;sleep 0.5; }
 case "${1:-start}" in
   check) cd "$PROJECT_DIR";npm run typecheck&&npm run check:production;exit ;;
   migrate) { [ "${ALLOW_SCHEMA_MIGRATION:-0}" = 1 ] || [ "${CHIP_ALLOW_SCHEMA_MIGRATION:-false}" = true ]; }||{ echo "Set CHIP_ALLOW_SCHEMA_MIGRATION=true for explicit migration" >&2;exit 1; };cd "$PROJECT_DIR";exec npm run migrate ;;
@@ -91,7 +98,8 @@ esac
 [ "${OPENROUTER_BASE_URL:-}" = "https://openrouter.ai/api/v1" ]||{ echo "Exact OPENROUTER_BASE_URL is required" >&2;exit 1; }
 [ "$FRONTEND_HOST" = "127.0.0.1" ]||[ "$FRONTEND_HOST" = "0.0.0.0" ]||{ echo "FRONTEND_HOST must be 127.0.0.1 or 0.0.0.0" >&2;exit 1; }
 [ "$BACKEND_PORT" != "$FRONTEND_PORT" ]||{ echo "Assigned ports must differ" >&2;exit 1; }
-for assigned_port in "$BACKEND_PORT" "$FRONTEND_PORT";do [[ "$assigned_port" =~ ^[0-9]+$ ]]||exit 1;lsof -nP -iTCP:"$assigned_port" -sTCP:LISTEN >/dev/null 2>&1&&{ echo "Assigned port $assigned_port is occupied" >&2;exit 1; };done
+for assigned_port in "$BACKEND_PORT" "$FRONTEND_PORT";do [[ "$assigned_port" =~ ^[0-9]+$ ]]||{ echo "Assigned port $assigned_port is not numeric" >&2;exit 1; };reclaim_port "$assigned_port";done
+for assigned_port in "$BACKEND_PORT" "$FRONTEND_PORT";do lsof -nP -iTCP:"$assigned_port" -sTCP:LISTEN >/dev/null 2>&1&&{ echo "Assigned port $assigned_port is occupied" >&2;exit 1; };done
 [ -d "$PROJECT_DIR/node_modules" ]||{ echo "Dependencies are missing" >&2;exit 1; }
 export RUNTIME_PROJECT_NAME=chip_design RUNTIME_AI_ENDPOINT=/api/ai/chip-design-review RUNTIME_AI_FEATURE=chip-design-review
 export RUNTIME_AI_SYSTEM_PROMPT='You are a chip-design review assistant. Provide grounded design checks, assumptions, verification steps, risks, and human review gates.'
