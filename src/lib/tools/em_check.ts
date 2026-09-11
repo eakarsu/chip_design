@@ -6,10 +6,10 @@
  * computed current density J = I / (W·T) against a per-layer maximum
  * Jmax. Anything over Jmax fails; over 0.8·Jmax is a warning.
  *
- * Inputs are in microns / amperes. Layer Jmax is given in MA/cm² and we
- * convert internally. We don't reason about thermal coupling — that's
- * what the IR-drop tool is for; here we just flag dangerously thin
- * straps.
+ * Inputs are in microns / amperes. Layer Jmax is given in MA/cm²
+ * (1 MA/cm² = 10 mA/μm²) and we convert internally. We don't reason about
+ * thermal coupling — that's what the IR-drop tool is for; here we just
+ * flag dangerously thin straps.
  */
 export interface EmSegment {
   name: string;
@@ -27,7 +27,7 @@ export interface EmLayerSpec {
   name: string;
   /** Metal thickness (μm). */
   thickness: number;
-  /** Maximum allowable current density (MA/cm² = mA/μm²). */
+  /** Maximum allowable current density (MA/cm²; 1 MA/cm² = 10 mA/μm²). */
   jmax: number;
 }
 
@@ -68,9 +68,10 @@ export function checkEM(
       warnings.push(`segment ${s.name}: non-positive geometry`);
       continue;
     }
-    // J = I / (w·t), units A / μm². Jmax is given in mA/μm² (= MA/cm²).
+    // J = I / (w·t), units A / μm². Jmax is given in MA/cm²:
+    // 1 MA/cm² = 1e6 A / 1e8 μm² = 1e-2 A/μm².
     const J = Math.abs(s.current) / (s.width * layer.thickness);
-    const Jmax = layer.jmax * 1e-3;     // → A/μm²
+    const Jmax = layer.jmax * 1e-2;     // MA/cm² → A/μm²
     const ratio = J / Jmax;
     let status: EmReport['status'] = 'ok';
     if (ratio >= 1) { status = 'fail'; failing++; }

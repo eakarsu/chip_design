@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { users, auditLogs } from '@/lib/db';
+import { requireAdmin } from '@/lib/middleware/auth';
 import { handleApiError } from '@/lib/middleware/errorHandler';
 import { sanitizeObject } from '@/lib/middleware/sanitize';
 
@@ -13,6 +14,8 @@ const updateSchema = z.object({
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const guard = await requireAdmin(request);
+    if (guard instanceof NextResponse) return guard;
     const { id } = await params;
     const user = users.getById(id);
     if (!user) {
@@ -27,6 +30,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const guard = await requireAdmin(request);
+    if (guard instanceof NextResponse) return guard;
     const { id } = await params;
     const body = sanitizeObject(await request.json());
     const data = updateSchema.parse(body);
@@ -57,6 +62,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const guard = await requireAdmin(request);
+    if (guard instanceof NextResponse) return guard;
     const { id } = await params;
     const user = users.getById(id);
     if (!user) {

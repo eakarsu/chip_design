@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { users, auditLogs } from '@/lib/db';
+import { requireAdmin } from '@/lib/middleware/auth';
 import { handleApiError } from '@/lib/middleware/errorHandler';
 
 const bulkDeleteSchema = z.object({
@@ -21,6 +22,8 @@ const bulkSchema = z.union([bulkDeleteSchema, bulkUpdateSchema]);
 
 export async function POST(request: Request) {
   try {
+    const guard = await requireAdmin(request);
+    if (guard instanceof NextResponse) return guard;
     const body = await request.json();
     const data = bulkSchema.parse(body);
     const now = new Date().toISOString();

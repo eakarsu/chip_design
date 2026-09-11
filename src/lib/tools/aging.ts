@@ -3,12 +3,13 @@
  *
  * Reaction-diffusion model used by industry sign-off:
  *
- *   ΔVth(t) = A · α · exp(γ·Vgs/kT) · t^n
+ *   ΔVth(t) = A · α · exp(γ·Vgs) · exp(−Ea/kT) · t^n
  *
  * α is the duty cycle (fraction of time the device is biased "on"),
  * t is time in seconds, n ≈ 1/6 for NBTI, A and γ are technology
- * constants. We parameterise with a few PDK-level knobs and let the
- * caller sweep activity / years.
+ * constants, and Ea is the Arrhenius activation energy. We
+ * parameterise with a few PDK-level knobs and let the caller sweep
+ * activity / years.
  */
 export interface AgingSpec {
   /** Per-device activity α (0..1). */
@@ -23,6 +24,8 @@ export interface AgingSpec {
   A?: number;
   /** Field acceleration γ (1/V). Default 0.5. */
   gamma?: number;
+  /** Arrhenius activation energy Ea (eV). Default 0.1. */
+  Ea?: number;
   /** Time exponent n. NBTI = 1/6, HCI ≈ 0.5. Default 1/6. */
   n?: number;
 }
@@ -49,22 +52,19 @@ export function projectAging(spec: AgingSpec): AgingResult {
   if (spec.years <= 0) throw new Error('years must be positive');
   const A = spec.A ?? 5e-4;
   const gamma = spec.gamma ?? 0.5;
+  const Ea = spec.Ea ?? 0.1;
   const n = spec.n ?? 1 / 6;
-  const baseT = spec.alpha * spec.years * 365 * 86400; // seconds
-  const factor = A * Math.exp(gamma * spec.vgs / (k * spec.tempK / 0.0259));
-  // Note: kT/q approximated as kT_eV/0.0259 — keep gamma·Vgs/kT classical.
-  // We simplify by using gamma·Vgs at room-temperature-equivalent:
-  const F = A * Math.exp(gamma * spec.vgs);
-  const dVth = F * Math.pow(Math.max(baseT, 1), n);
+  // Field acceleration exp(γ·Vgs) times Arrhenius thermal acceleration
+  // exp(−Ea/kT); both must feed the projected drift.
+  const factor = A * Math.exp(gamma * spec.vgs) * Math.exp(-Ea / (k * spec.tempK));
+  const dVth = factor * spec.alpha * Math.pow(Math.max(spec.years * 365 * 86400, 1), n);
   // Generate log samples.
   const samples: AgingPoint[] = [];
   const steps = 24;
   for (let i = 0; i <= steps; i++) {
     const yr = (spec.years * (i + 1)) / (steps + 1);
-    const t = spec.alpha * yr * 365 * 86400;
-    samples.push({ years: yr, dVth: F * Math.pow(Math.max(t, 1), n) });
+    const t = yr * 365 * 86400;
+    samples.push({ years: yr, dVth: factor * spec.alpha * Math.pow(Math.max(t, 1), n) });
   }
-  // Use `factor` so it is referenced (avoid linter unused).
-  void factor;
   return { dVth, samples, slackLossPs: dVth * 1000 };
 }

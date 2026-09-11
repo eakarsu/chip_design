@@ -295,10 +295,11 @@ export function runFloorplanning(
     fixedBlocks = validatedCells;
   }
 
-  // Calculate corrected metrics
+  // Calculate corrected metrics (utilization stays a 0..1 fraction; the
+  // UI and OpenLane composer apply their own percent scaling).
   const totalBlockArea = fixedBlocks.reduce((sum, b) => sum + b.width * b.height, 0);
   const chipArea = params.chipWidth * params.chipHeight;
-  const utilization = (totalBlockArea / chipArea) * 100;
+  const utilization = totalBlockArea / chipArea;
 
   return {
     ...result,

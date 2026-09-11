@@ -13,13 +13,14 @@
  *
  * Standard formulas (Razavi, "Design of CMOS PLLs"):
  *   ωc = 2π fc
- *   tan(PM) = 1/(ωc R C2) − ωc R C1
- *   pick C2 = 10 · C1 (typical)
- * Use approximate closed form:
- *   R = 2π · PM_radian_factor / (ωc · K · Icp / N)
- *   C1 = 1 / (ωc · R · b)
- * Implementation uses: Icp · Kvco / N = ωc² · C / (b - 1) where b is
- * the zero/pole ratio derived from PM.
+ *   Z(s) = (1 + s·R·C2) / (s·(C1+C2)·(1 + s·R·C1·C2/(C1+C2)))
+ *   zero ωz = 1/(R·C2), pole ωp = (C1+C2)/(R·C1·C2)
+ * Place the zero/pole symmetrically about ωc: ωz = ωc/√b, ωp = ωc·√b,
+ * with b = (C1+C2)/C1. Then tan(PM) = (b−1)/(2√b), so
+ *   b = (1 + sin PM) / (1 − sin PM)
+ * Unity loop gain |Icp·Kvco_rad·Z(jωc)/(N·ωc)| = 1 gives
+ *   R = N·ωc·b / (2π·Kvco·Icp)
+ * and the components follow from R·C2 = √b/ωc and C1 = C2/(b−1).
  */
 export interface PllSpec {
   /** Reference frequency (Hz). */
@@ -62,16 +63,16 @@ export function calcPllFilter(spec: PllSpec): PllResult {
   const N = spec.fvco / spec.fref;
   const wc = 2 * Math.PI * spec.fc;
   const pm = spec.pmDeg * Math.PI / 180;
-  // b = (1 + sec(PM)) / 2 picks zero/pole spacing for target PM
-  const b = (1 + 1 / Math.cos(pm)) / 2;
-  // R · Icp · Kvco / N = ωc · sqrt(b) → R = ωc·sqrt(b)·N/(Icp·Kvco)
-  const R = (wc * Math.sqrt(b) * N) / (spec.icp * spec.kvco);
-  // C1 chosen so zero is at ωc/√b, pole at ωc·√b
-  const C1 = Math.sqrt(b) / (wc * R);
-  const C2 = (b - 1) * C1;
-  // Recompute PM as sanity check.
-  const wzero = 1 / (R * (C1 + C2));
-  const wpole = 1 / (R * (C1 * C2 / (C1 + C2)));
+  // Zero/pole spacing for the target PM, from tan(PM) = (b − 1)/(2√b).
+  const b = (1 + Math.sin(pm)) / (1 - Math.sin(pm));
+  // Unity loop gain at ωc for the symmetric zero/pole placement.
+  const R = (N * wc * b) / (2 * Math.PI * spec.kvco * spec.icp);
+  // R·C2 sets the zero at ωc/√b; C1 follows from b = (C1+C2)/C1.
+  const C2 = Math.sqrt(b) / (wc * R);
+  const C1 = C2 / (b - 1);
+  // Recompute PM from the actual zero/pole of C1 ‖ (R + C2).
+  const wzero = 1 / (R * C2);
+  const wpole = (C1 + C2) / (R * C1 * C2);
   const pmActual = Math.atan(wc / wzero) - Math.atan(wc / wpole);
   const notes: string[] = [];
   if (spec.fc > spec.fref / 10) {

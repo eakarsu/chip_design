@@ -294,6 +294,25 @@ describe('Floorplanning Algorithms', () => {
       expect(result.blocks).toHaveLength(4);
     });
 
+    it('should report utilization as a 0..1 fraction', () => {
+      const params: FloorplanningParams = {
+        algorithm: FloorplanningAlgorithm.SLICING_TREE,
+        chipWidth: 200,
+        chipHeight: 200,
+        blocks: createTestBlocks(),
+      };
+
+      const result = runFloorplanning(params);
+
+      const totalBlockArea = result.blocks.reduce(
+        (sum, block) => sum + block.width * block.height,
+        0
+      );
+
+      expect(result.utilization).toBeCloseTo(totalBlockArea / result.area, 5);
+      expect(result.utilization).toBeLessThanOrEqual(1);
+    });
+
     it('should throw error for unsupported algorithm', () => {
       const params: FloorplanningParams = {
         algorithm: 'unsupported' as FloorplanningAlgorithm,

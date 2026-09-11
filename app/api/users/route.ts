@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { users, auditLogs } from '@/lib/db';
 import { hashPassword } from '@/lib/auth/password';
+import { requireAdmin } from '@/lib/middleware/auth';
 import { handleApiError } from '@/lib/middleware/errorHandler';
 import { sanitizeObject, sanitizeSearchParam } from '@/lib/middleware/sanitize';
 import type { QueryOptions } from '@/lib/db/types';
@@ -17,6 +18,8 @@ const createUserSchema = z.object({
 
 export async function GET(request: Request) {
   try {
+    const guard = await requireAdmin(request);
+    if (guard instanceof NextResponse) return guard;
     const { searchParams } = new URL(request.url);
     const options: QueryOptions = {
       page: parseInt(searchParams.get('page') || '1'),
@@ -41,6 +44,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const guard = await requireAdmin(request);
+    if (guard instanceof NextResponse) return guard;
     const body = sanitizeObject(await request.json());
     const data = createUserSchema.parse(body);
 
