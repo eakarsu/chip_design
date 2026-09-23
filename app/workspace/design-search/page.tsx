@@ -106,7 +106,10 @@ export default function DesignSearchPage() {
   }, [details, loadDetails]);
 
   const createCampaign = async () => {
-    if (!projectId || !selectedRevisionId) return;
+    if (!projectId || !selectedRevisionId) {
+      setError('Create a reference design or import your own RTL to get a locked source revision before starting a campaign.');
+      return;
+    }
     setBusy('create'); setError('');
     try {
       const result = await api<Details>('/api/design-search/campaigns', {
@@ -181,7 +184,7 @@ export default function DesignSearchPage() {
       No saved RTL revisions are available yet. Create a reference design below or import your own RTL, then its revision will appear in “Start a bounded search”.
     </Alert>}
 
-    <Card variant="outlined" sx={{ mt: 3 }}><CardContent>
+    <Card id="reference-design" variant="outlined" sx={{ mt: 3 }}><CardContent>
       <Typography variant="h6" fontWeight={750}>Create a reference design</Typography>
       <Typography variant="body2" color="text.secondary">Creates a saved GCD, FIFO, or MAC revision that you can select immediately.</Typography>
       <Stack direction={{ xs: 'column', sm: 'row' }} gap={2} sx={{ mt: 2 }}>
@@ -250,9 +253,12 @@ export default function DesignSearchPage() {
         </Select></FormControl>
       </Stack>
       <Stack direction="row" alignItems="center" gap={2} sx={{ mt: 2 }}>
-        <Button variant="contained" disabled={!selectedRevisionId || !!busy} onClick={() => void createCampaign()}>Create campaign</Button>
+        <Button variant="contained" disabled={!!busy} onClick={() => void createCampaign()}>Create campaign</Button>
         <Typography variant="body2" color="text.secondary">The reference revision and SDC remain locked throughout this campaign.</Typography>
       </Stack>
+      {!selectedRevisionId && <Alert severity="info" sx={{ mt: 2 }}>
+        A campaign needs a saved RTL revision. <Link href="#reference-design">Create a reference design</Link> above or import your own RTL, then select its revision here.
+      </Alert>}
     </CardContent></Card>
 
     {!!campaigns.length && <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} flexWrap="wrap" sx={{ mt: 3 }}>
