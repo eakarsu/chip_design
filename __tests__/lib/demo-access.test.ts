@@ -37,6 +37,8 @@ describe('commercial demo access gate', () => {
     process.env.CHIP_ALLOW_COMMERCIAL_DEMO_SEED = 'true';
 
     expect(commercialDemoPageAllowed('/workspace')).toBe(true);
+    expect(commercialDemoPageAllowed('/workspace/design-search')).toBe(false);
+    expect(commercialDemoPageAllowed('/workspace/design-search/campaigns')).toBe(false);
     expect(commercialDemoPageAllowed('/academy/instructor')).toBe(true);
     expect(commercialDemoPageAllowed('/governed-ai/chat')).toBe(true);
     expect(commercialDemoPageAllowed('/governed-ai/lifecycle')).toBe(true);

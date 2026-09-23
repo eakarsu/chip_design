@@ -29,6 +29,9 @@ function matchesRoutePrefix(pathname: string, prefix: string): boolean {
 }
 
 export function commercialDemoPageAllowed(pathname: string): boolean {
+  // Design Search reads and mutates tenant-owned revisions through APIs that
+  // require a real browser session, even when other demo pages are public.
+  if (matchesRoutePrefix(pathname, '/workspace/design-search')) return false;
   return commercialDemoAccessEnabled()
     && commercialDemoPagePrefixes.some(prefix => matchesRoutePrefix(pathname, prefix));
 }

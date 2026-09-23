@@ -37,6 +37,10 @@ type Details = {
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, cache: 'no-store', headers: { 'Content-Type': 'application/json', ...init?.headers } });
   const body = await response.json();
+  if (response.status === 401) {
+    window.location.assign(`/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+    throw new Error('Sign in to use Design Search');
+  }
   if (!response.ok) throw new Error(body.message ?? body.error ?? `Request failed (${response.status})`);
   return body as T;
 }
