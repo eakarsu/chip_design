@@ -38,6 +38,22 @@ it('accepts only novel source-backed settings and withholds RTL from the proposa
   expect(prompt).not.toContain(revision.sdc);
 });
 
+it('labels a valid placement proposal when the model omits its optional display title', async () => {
+  process.env.OPENROUTER_MODEL = 'approved/test-model';
+  mockCompletion.mockResolvedValueOnce({ proposals: [{
+    hypothesis: 'A moderately denser placement may reduce die area while preserving routed timing.',
+    sourceIds: ['source-a'], coreUtilization: 52, placeDensity: 0.62,
+  }] });
+  const revision = { id: 'revision', projectId: 'project', number: 1, templateId: 'gcd', topModule: 'gcd',
+    specification: 'Optimize a GCD engine.', requirements: [], rtl: 'module gcd; endmodule', sdc: '',
+    testbench: '', properties: '', sourceHash: 'hash', createdBy: 'user', createdAt: 'now' } as DesignRevision;
+  const result = await proposeExperiments({ revision, objective: 'min_area', literature: [{
+    id: 'source-a', title: 'Placement study', url: 'https://example.org/source',
+    abstract: 'Placement density is a search parameter.', origin: 'OpenAlex',
+  }], previous: [], count: 1 });
+  expect(result.proposals[0].title).toBe('Placement 52% utilization, 0.62 density');
+});
+
 it('rejects proposal requests when confidential-design routing is relaxed', async () => {
   mockCompletion.mockClear();
   const oldZdr = process.env.OPENROUTER_REQUIRE_ZDR;
