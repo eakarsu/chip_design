@@ -278,12 +278,12 @@ export default function DesignSearchPage() {
           <MenuItem value="placement">Placement settings</MenuItem><MenuItem value="rtl">RTL architecture</MenuItem>
         </Select></FormControl>
       </Stack>
-      <Stack direction={{ xs: 'column', sm: 'row' }} gap={2} sx={{ mt: 2 }}>
-        <Box sx={{ flex: 1 }}><Typography variant="body2" fontWeight={700}>{topic === 'rtl' ? 'RTL architecture search' : 'Placement settings search'}</Typography><Typography variant="body2" color="text.secondary">{topic === 'rtl' ? 'The agent may propose RTL refactors. Each needs isolated simulation, bounded safety, and exact-cycle equivalence before the same physical flow measures it.' : 'The agent may tune core utilization and placement density. RTL and constraints stay locked.'}</Typography></Box>
-        <FormControl fullWidth><InputLabel>Candidate limit</InputLabel><Select label="Candidate limit" value={maxCandidates} onChange={(event) => setMaxCandidates(Number(event.target.value))}>
+      <Stack direction={{ xs: 'column', lg: 'row' }} gap={2} sx={{ mt: 2 }}>
+        <Box sx={{ flex: 1, minWidth: 250 }}><Typography variant="body2" fontWeight={700}>{topic === 'rtl' ? 'RTL architecture search' : 'Placement settings search'}</Typography><Typography variant="body2" color="text.secondary">{topic === 'rtl' ? 'The agent may propose RTL refactors. Each needs isolated simulation, bounded safety, and exact-cycle equivalence before the same physical flow measures it.' : 'The agent may tune core utilization and placement density. RTL and constraints stay locked.'}</Typography></Box>
+        <FormControl sx={{ width: { xs: '100%', lg: 260 }, flexShrink: 0 }}><InputLabel>Candidate limit</InputLabel><Select label="Candidate limit" value={maxCandidates} onChange={(event) => setMaxCandidates(Number(event.target.value))}>
           {[3, 6, 9, 12].map((item) => <MenuItem key={item} value={item}>{item} including baseline</MenuItem>)}
         </Select></FormControl>
-        <FormControl fullWidth><InputLabel>Time limit per run</InputLabel><Select label="Time limit per run" value={jobCpuSeconds} onChange={(event) => setJobCpuSeconds(Number(event.target.value))}>
+        <FormControl sx={{ width: { xs: '100%', lg: 280 }, flexShrink: 0 }}><InputLabel>Time limit per run</InputLabel><Select label="Time limit per run" value={jobCpuSeconds} onChange={(event) => setJobCpuSeconds(Number(event.target.value))}>
           <MenuItem value={600}>10 minutes · queued directly</MenuItem>
           <MenuItem value={1800}>30 minutes · independent approval</MenuItem>
           <MenuItem value={3600}>60 minutes · independent approval</MenuItem>
