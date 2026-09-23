@@ -1,5 +1,7 @@
 # Includes the same immutable Yosys/OpenROAD/SBY toolchain as the reference flow.
-FROM openroad/orfs@sha256:d62222129f808c92b6cc7f5db59d1e867581cf6e7fff0370ece133e395be222a
+# Production can supply its approved ORFS digest with --build-arg ORFS_IMAGE=...
+ARG ORFS_IMAGE=openroad/orfs@sha256:d62222129f808c92b6cc7f5db59d1e867581cf6e7fff0370ece133e395be222a
+FROM ${ORFS_IMAGE}
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends iverilog z3 python3-pip \
     && python3 -m pip install --no-cache-dir cocotb==2.0.1 \

@@ -198,6 +198,30 @@ export async function startJourney(
   );
 }
 
+export async function importDesignSearchSource(identity: EdaIdentity, input: {
+  name: string; topModule: string; specification: string; rtl: string; sdc: string;
+  testbench: string; properties: string;
+}, requestId: string): Promise<DesignRevision> {
+  requireEditor(identity);
+  const source = revisionSchema.parse({
+    baseRevisionId: null, templateId: 'custom', topModule: input.topModule,
+    specification: input.specification,
+    requirements: [{ id: 'reference_behavior', description: 'Match the locked reference behavior and pass the supplied independent regressions.',
+      metric: 'regression_failures', comparison: 'eq', target: 0, unit: 'failures' }],
+    rtl: input.rtl, sdc: input.sdc, testbench: input.testbench, properties: input.properties,
+  });
+  if (!source.testbench.trim() || !source.properties.trim() || !source.sdc.trim())
+    throw new Error('Imported designs need a testbench, formal properties, and SDC');
+  if (source.rtl.length > 16_000)
+    throw new Error('Agent RTL search currently accepts at most 16,000 RTL characters');
+  const project = await createWorkspaceProject(identity, {
+    name: input.name, description: input.specification.slice(0, 700), repositoryUrl: '',
+    defaultBranch: 'main', topModule: source.topModule,
+    pdkRef: SKY130_REFERENCE_PROJECT.pdkRef, status: 'active',
+  }, requestId);
+  return saveRevision(identity, project.id, source, requestId);
+}
+
 export async function startChallenge(
   identity: EdaIdentity,
   projectId: string,
@@ -576,19 +600,20 @@ export function nextJourneyAction(revision: DesignRevision | null, runs: Journey
       lesson: 'product-requirements-and-architecture',
     };
   const current = runs.filter((item) => item.revisionId === revision.id);
-  const simulation = current.find((item) => item.kind === 'simulation' && item.purpose === 'lab');
+  const purpose = revision.templateId === 'custom' ? 'regression' : 'lab';
+  const simulation = current.find((item) => item.kind === 'simulation' && item.purpose === purpose);
   if (!simulation?.report || !reportPassed(simulation.report))
     return {
-      title: simulation?.report ? 'Debug the first failing check' : 'Run the reference simulation',
+      title: simulation?.report ? 'Debug the first failing check' : `Run the ${purpose === 'lab' ? 'reference' : 'saved regression'} simulation`,
       detail:
         simulation?.report?.checks.find((item) => item.status !== 'passed')?.message ||
-        'Execute the fixed testbench against this exact revision, then inspect its waveform and checks.',
+        'Execute the saved testbench against this exact revision, then inspect its waveform and checks.',
       tab: 'verification',
       lesson: simulation?.report?.checks.some((item) => item.requirementId === 'reset' && item.status !== 'passed')
         ? 'clock-reset-and-cdc'
         : 'functional-verification',
     };
-  if (!current.some((item) => item.kind === 'formal' && item.report && reportPassed(item.report)))
+  if (!current.some((item) => item.kind === 'formal' && item.purpose === purpose && item.report && reportPassed(item.report)))
     return {
       title: 'Check the formal safety contract',
       detail: 'Inspect the harness assumptions and bounded proof scope before interpreting its result.',

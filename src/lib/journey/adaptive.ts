@@ -48,7 +48,7 @@ export function adaptivePractice(templateId: TemplateId, runs: JourneyRun[], ass
     challenges.find((item) => item.recommended) ?? challenges.find((item) => !item.solved && item.prerequisitesMet);
   return {
     challenges,
-    lesson: recommendation?.lesson ?? journeyTemplate(templateId).lesson,
+    lesson: recommendation?.lesson ?? (templateId === 'custom' ? 'functional-verification' : journeyTemplate(templateId).lesson),
     reason: failure
       ? `Review ${failure.name}: ${failure.message.slice(0, 280)}`
       : recommendation

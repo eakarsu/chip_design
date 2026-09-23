@@ -144,6 +144,45 @@ const schemaSql = `
     revision_id TEXT NOT NULL, kind TEXT NOT NULL, document_json TEXT NOT NULL,
     created_by TEXT NOT NULL, created_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS design_search_campaigns (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, project_id TEXT NOT NULL,
+    revision_id TEXT NOT NULL, source_hash TEXT NOT NULL,
+    tool_image TEXT NOT NULL, pdk_digest TEXT NOT NULL, objective TEXT NOT NULL,
+    topic TEXT NOT NULL, max_candidates INTEGER NOT NULL, max_cpu_seconds INTEGER NOT NULL,
+    job_cpu_seconds INTEGER NOT NULL,
+    literature_json TEXT NOT NULL, selected_candidate_id TEXT, selected_by TEXT,
+    selected_at TEXT, selection_rationale TEXT, created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS design_search_campaigns_tenant_project_idx
+    ON design_search_campaigns(tenant_id, project_id, created_at);
+  CREATE TABLE IF NOT EXISTS design_search_candidates (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, campaign_id TEXT NOT NULL,
+    project_id TEXT NOT NULL, iteration INTEGER NOT NULL, title TEXT NOT NULL,
+    hypothesis TEXT NOT NULL, source_ids_json TEXT NOT NULL,
+    core_utilization INTEGER NOT NULL, place_density REAL NOT NULL,
+    proposed_by TEXT NOT NULL, job_id TEXT, created_at TEXT NOT NULL,
+    UNIQUE(tenant_id, campaign_id, core_utilization, place_density)
+  );
+  CREATE INDEX IF NOT EXISTS design_search_candidates_campaign_idx
+    ON design_search_candidates(tenant_id, campaign_id, created_at);
+  CREATE TABLE IF NOT EXISTS design_search_rtl_candidates (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, campaign_id TEXT NOT NULL,
+    project_id TEXT NOT NULL, iteration INTEGER NOT NULL, title TEXT NOT NULL,
+    hypothesis TEXT NOT NULL, source_ids_json TEXT NOT NULL, rtl TEXT NOT NULL,
+    source_hash TEXT NOT NULL, core_utilization INTEGER NOT NULL,
+    place_density REAL NOT NULL, proposed_by TEXT NOT NULL,
+    simulation_job_id TEXT, formal_job_id TEXT, job_id TEXT,
+    created_at TEXT NOT NULL, UNIQUE(tenant_id,campaign_id,source_hash)
+  );
+  CREATE INDEX IF NOT EXISTS design_search_rtl_candidates_campaign_idx
+    ON design_search_rtl_candidates(tenant_id, campaign_id, created_at);
+  CREATE TABLE IF NOT EXISTS design_search_proofs (
+    candidate_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, campaign_id TEXT NOT NULL,
+    job_id TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS design_search_proofs_campaign_idx
+    ON design_search_proofs(tenant_id, campaign_id);
   CREATE TABLE IF NOT EXISTS commercial_projects (
     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL,
     description TEXT NOT NULL, repository_url TEXT NOT NULL, default_branch TEXT NOT NULL,
@@ -318,6 +357,10 @@ const requiredCommercialTables = [
   'design_journey_runs',
   'design_journey_assessments',
   'design_journey_hardware',
+  'design_search_campaigns',
+  'design_search_candidates',
+  'design_search_rtl_candidates',
+  'design_search_proofs',
   'commercial_projects',
   'commercial_constraint_sets',
   'commercial_corners',

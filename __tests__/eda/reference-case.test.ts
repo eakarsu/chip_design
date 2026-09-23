@@ -24,7 +24,12 @@ describe('complete ORFS reference job', () => {
     const invocation = buildDockerInvocation(job);
     expect(invocation.args).toEqual(expect.arrayContaining(['--network=none', '--read-only']));
     expect(invocation.args.join(' ')).toContain('DESIGN_CONFIG=/input/config.mk');
+    expect(invocation.args.join(' ')).toContain('source /OpenROAD-flow-scripts/env.sh');
     expect(invocation.args.join(' ')).toContain('RESULTS_DIR=/output/results');
+    if (os.platform() === 'darwin' && os.arch() === 'arm64') {
+      expect(invocation.args).toContain('--platform=linux/amd64');
+      expect(invocation.args.join(' ')).toContain('SKIP_CTS_REPAIR_TIMING=1');
+    }
     fs.rmSync(root, { recursive: true, force: true });
   });
 });

@@ -34,6 +34,9 @@ evidence.
   instructor review.
 - Custom RTL/SDC ingestion, governed run detail, live bounded logs, artifact
   preview, and normalized baseline-versus-candidate metric comparison.
+- Governed Design Search campaigns for literature-backed placement and RTL refactors, including imported sources and exact-cycle equivalence proofs
+  hypotheses, fixed candidate verification, budgeted OpenROAD experiments,
+  report-verified ranking and accountable selection.
 - A tenant-scoped engineering-operations cockpit for MCMM signoff readiness,
   expiring waivers, accountable review items, CI evidence, notification rules,
   SPICE matrices, commercial-tool adapters, and enterprise control records.
@@ -120,6 +123,7 @@ foundry rule versions, and accountable signoff owners. The platform records and
 enforces those references but never fabricates them.
 
 See [BEST_CHIP_FLOW.md](BEST_CHIP_FLOW.md), [DEPLOYMENT.md](DEPLOYMENT.md), [EDA_OPERATIONS.md](EDA_OPERATIONS.md),
+[DESIGN_SEARCH.md](DESIGN_SEARCH.md),
 [ENGINEERING_OPERATIONS.md](ENGINEERING_OPERATIONS.md),
 [CAPABILITY_CENTER.md](CAPABILITY_CENTER.md),
 [SECURITY.md](SECURITY.md), and [COMMERCIAL_WORKSPACE.md](COMMERCIAL_WORKSPACE.md).

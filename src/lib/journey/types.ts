@@ -1,7 +1,7 @@
 export type JourneyView = 'learn' | 'engineer';
 export type VerificationKind = 'simulation' | 'formal';
 export type JourneyRunKind = VerificationKind | 'yosys' | 'openroad';
-export type TemplateId = 'gcd' | 'fifo' | 'mac';
+export type TemplateId = 'gcd' | 'fifo' | 'mac' | 'custom';
 
 export interface DesignRequirement {
   id: string;

@@ -249,6 +249,48 @@ dffunmap
     return [check('safety_contract', normalized, f'{status}: bounded safety at depth {depth}.\n{log[-5000:]}', 'formal-safety', source)], {'formal_depth': depth}, version or 'SBY from pinned tool image'
 
 
+def equivalence(metadata):
+    """Require EQY's completed unbounded PDR proof, never a depth-only pass."""
+    read_bounded(INPUT / 'gold.v')
+    read_bounded(INPUT / 'design.v')
+    if not re.fullmatch(r'[a-f0-9]{64}', metadata.get('referenceHash', '')):
+        raise ValueError('Invalid locked reference identity')
+    top = metadata['topModule']
+    config = OUTPUT / 'equivalence.eqy'
+    config.write_text(f'''[gold]
+read -sv /input/gold.v
+prep -top {top}
+memory_map
+
+[gate]
+read -sv /input/design.v
+prep -top {top}
+memory_map
+
+[strategy pdr]
+use sby
+engine abc pdr
+timeout 220
+''')
+    try:
+        completed = subprocess.run(['eqy', '-f', '-d', str(OUTPUT / 'equivalence'), str(config)],
+                                   cwd=OUTPUT, text=True, capture_output=True, timeout=240, check=False)
+    except subprocess.TimeoutExpired as error:
+        output = error.stdout or b''
+        if isinstance(output, bytes):
+            output = output.decode('utf-8', errors='replace')
+        (OUTPUT / 'equivalence.log').write_text(output[-1_000_000:])
+        return [check('equivalence', 'unknown', 'Equivalence wall-clock limit exceeded; inspect equivalence.log.')], {}, 'EQY from pinned tool image'
+    log = (completed.stdout + '\n' + completed.stderr)[-1_000_000:]
+    (OUTPUT / 'equivalence.log').write_text(log)
+    print(log[-16000:], flush=True)
+    result_dir = OUTPUT / 'equivalence'
+    status = 'PASS' if (result_dir / 'PASS').is_file() else 'FAIL' if (result_dir / 'FAIL').is_file() else 'UNKNOWN'
+    normalized = 'passed' if status == 'PASS' and completed.returncode == 0 else 'failed' if status == 'FAIL' else 'unknown'
+    version = subprocess.run(['eqy', '--version'], capture_output=True, text=True, check=False).stdout.strip()
+    return [check('equivalence', normalized, f'{status}: exact-cycle sequential equivalence to the locked reference.\n{log[-5000:]}', 'equivalence')], {}, version or 'EQY from pinned tool image'
+
+
 def main():
     started = time.monotonic()
     metadata = json.loads(read_bounded(INPUT / 'verification.json', 200_000))
@@ -264,9 +306,12 @@ def main():
     for key in ['sourceHash', 'suiteHash']:
         if not re.fullmatch('[a-f0-9]{64}', metadata[key]):
             raise ValueError('Invalid source or suite identity')
-    tool = 'Icarus Verilog + cocotb' if kind == 'simulation' else 'SymbiYosys + Yosys + ABC (Yosys witness replay)'
+    mode = metadata.get('mode')
+    if mode and (kind != 'formal' or mode != 'equivalence'):
+        raise ValueError('Unsupported verification mode')
+    tool = 'Icarus Verilog + cocotb' if kind == 'simulation' else 'EQY + Yosys + ABC PDR' if mode == 'equivalence' else 'SymbiYosys + Yosys + ABC (Yosys witness replay)'
     try:
-        checks, metrics, version = simulate(metadata) if kind == 'simulation' else formal(metadata)
+        checks, metrics, version = simulate(metadata) if kind == 'simulation' else equivalence(metadata) if mode == 'equivalence' else formal(metadata)
     except Exception as error:
         checks, metrics, version = [check('execution', 'unknown', str(error))], {}, 'See worker log and pinned image'
     seen = {item['id'] for item in checks}
@@ -284,7 +329,10 @@ def main():
                 'suiteHash': metadata['suiteHash'], 'sourceHash': metadata['sourceHash'], 'seed': metadata['seed'],
                 'checks': checks[:1000], 'metrics': metrics, 'waveforms': waves, 'elapsedSeconds': time.monotonic()-started,
                 'scope': ('Reference simulation vectors and declared SDC contract. Physical timing requires a separate STA report.'
-                          if kind == 'simulation' else f'Bounded safety, {metadata["formalDepth"]} steps, with the retained harness assumptions. No unbounded or complete functional proof is claimed.')}
+                          if kind == 'simulation' else
+                          'EQY exact-cycle sequential equivalence to the locked RTL under the tool semantics; timeout and unknown do not pass.'
+                          if mode == 'equivalence' else
+                          f'Bounded safety, {metadata["formalDepth"]} steps, with the retained harness assumptions. No unbounded or complete functional proof is claimed.')}
     (OUTPUT / 'verification-report.json').write_text(json.dumps(document, allow_nan=False))
     (OUTPUT / 'metrics.json').write_text(json.dumps(metrics, allow_nan=False))
     print(f'Verification execution completed: {outcome}, {metrics["checks_passed"]}/{metrics["checks_total"]} checks passed', flush=True)

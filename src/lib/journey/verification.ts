@@ -413,7 +413,7 @@ export function verificationInputs(
       );
     }
   }
-  const harness =
+  const referenceHarness =
     kind === 'simulation'
       ? purpose === 'lab'
         ? referenceTestbench(revision.templateId)
@@ -421,6 +421,9 @@ export function verificationInputs(
       : purpose === 'lab'
         ? referenceProperties(revision.templateId)
         : revision.properties;
+  const harness = kind === 'simulation' && purpose === 'lab' && seed !== 2026
+    ? referenceHarness.replaceAll('random.Random(2026)', `random.Random(${seed})`)
+    : referenceHarness;
   if (!harness.trim()) throw new Error('A testbench or formal harness is required');
   const suiteHash = digest(`${SUITE_VERSION}\0${kind}\0${purpose}\0${harness}`);
   const contract = {

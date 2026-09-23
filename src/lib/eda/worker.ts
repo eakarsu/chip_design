@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { readMeasuredMetrics } from './measuredMetrics';
 import {
   claimNextJob,
   completeJob,
@@ -44,11 +45,15 @@ function configuredToolBinary(kind: EdaJob['kind']): string {
 }
 
 function orfsCommand(): string {
+  // The x86 ORFS image needs this compatibility setting under Apple-silicon
+  // emulation. Final routed setup/hold checks still gate campaign qualification.
+  const emulatedMac = os.platform() === 'darwin' && os.arch() === 'arm64';
   return [
     'set -euo pipefail',
     'flow_root=/OpenROAD-flow-scripts/flow',
     'test -f "$flow_root/Makefile"',
-    'make -C "$flow_root" DESIGN_CONFIG=/input/config.mk FLOW_VARIANT=governed RESULTS_DIR=/output/results REPORTS_DIR=/output/reports LOG_DIR=/output/logs OBJECTS_DIR=/output/objects all',
+    'source /OpenROAD-flow-scripts/env.sh',
+    `make -C "$flow_root" DESIGN_CONFIG=/input/config.mk FLOW_VARIANT=governed RESULTS_DIR=/output/results REPORTS_DIR=/output/reports LOG_DIR=/output/logs OBJECTS_DIR=/output/objects${emulatedMac ? ' SKIP_CTS_REPAIR_TIMING=1' : ''} all`,
     // ORFS objects are restart intermediates and can be hundreds of MB. The
     // governed record retains final layouts, reports, logs and checksums.
     'rm -rf /output/objects',
@@ -69,9 +74,8 @@ function containerUser(): string {
   return `${uid}:${gid}`;
 }
 
-export function buildDockerInvocation(job: EdaJob): DockerInvocation {
+export function buildDockerInvocation(job: EdaJob, workspace = jobWorkspace(job)): DockerInvocation {
   if (!/@sha256:[0-9a-f]{64}$/.test(job.toolImage)) throw new Error('unpinned tool image refused');
-  const workspace = jobWorkspace(job);
   const inputDirectory = path.join(workspace, 'input');
   const outputDirectory = path.join(workspace, 'output');
   const verification = job.kind === 'simulation' || job.kind === 'formal';
@@ -96,6 +100,7 @@ export function buildDockerInvocation(job: EdaJob): DockerInvocation {
       : [configuredToolBinary(job.kind), '-no_init', `/input/${script}`];
   const args = [
     'run', '--rm', `--name=${containerName(job)}`, '--network=none', '--read-only',
+    ...(useOrfs && os.platform() === 'darwin' && os.arch() === 'arm64' ? ['--platform=linux/amd64'] : []),
     '--cap-drop=ALL', '--security-opt=no-new-privileges:true',
     `--pids-limit=${pids}`, `--memory=${memory}`, `--cpus=${cpus}`,
     `--user=${containerUser()}`,
@@ -108,13 +113,23 @@ export function buildDockerInvocation(job: EdaJob): DockerInvocation {
   return { command: 'docker', args, timeoutMs: Math.min(86_400, job.expectedCpuSeconds + 60) * 1000 };
 }
 
-function numericMetrics(outputDirectory: string): Record<string, number> {
-  const metricsPath = path.join(outputDirectory, 'metrics.json');
-  if (!fs.existsSync(metricsPath) || fs.statSync(metricsPath).size > 1024 * 1024) return {};
-  const candidate = JSON.parse(fs.readFileSync(metricsPath, 'utf8')) as Record<string, unknown>;
-  return Object.fromEntries(Object.entries(candidate).filter((entry): entry is [string, number] => (
-    typeof entry[1] === 'number' && Number.isFinite(entry[1])
-  )));
+function dockerWorkspace(job: EdaJob): { path: string; staged: boolean } {
+  const canonical = jobWorkspace(job);
+  const explicit = process.env.CHIP_EDA_DOCKER_SHARED_ROOT?.trim();
+  if (explicit && !path.isAbsolute(explicit)) throw new Error('CHIP_EDA_DOCKER_SHARED_ROOT must be absolute');
+  const home = fs.realpathSync(os.homedir());
+  const canonicalReal = fs.realpathSync(canonical);
+  if (!explicit && (os.platform() !== 'darwin' || canonicalReal.startsWith(home + path.sep)))
+    return { path: canonical, staged: false };
+  const root = path.resolve(explicit || path.join(home, '.chip-design', 'docker-worker'));
+  fs.mkdirSync(root, { recursive: true, mode: 0o700 });
+  if (fs.lstatSync(root).isSymbolicLink()) throw new Error('Docker staging root cannot be a symlink');
+  const staged = path.join(root, `${job.id}-${job.attempts}`);
+  fs.rmSync(staged, { recursive: true, force: true });
+  fs.mkdirSync(path.join(staged, 'input'), { recursive: true, mode: 0o700 });
+  fs.mkdirSync(path.join(staged, 'output'), { recursive: true, mode: 0o700 });
+  fs.cpSync(path.join(canonical, 'input'), path.join(staged, 'input'), { recursive: true });
+  return { path: staged, staged: true };
 }
 
 function terminate(processId: number | undefined): void {
@@ -129,10 +144,13 @@ export async function executeJob(job: EdaJob, workerId: string): Promise<EdaJob>
   // A recovered lease must stop its previous container before reusing output.
   if (job.attempts > 1) await removeContainer(containerName(job, job.attempts - 1));
   let invocation: DockerInvocation;
+  let docker: { path: string; staged: boolean } | undefined;
   try {
     verifyJobInputs(job);
-    invocation = buildDockerInvocation(job);
+    docker = dockerWorkspace(job);
+    invocation = buildDockerInvocation(job, docker.path);
   } catch (error) {
+    if (docker?.staged) fs.rmSync(docker.path, { recursive: true, force: true });
     return failJob(job.id, workerId, error instanceof Error ? error.message : String(error), false);
   }
   const outputDirectory = path.join(jobWorkspace(job), 'output');
@@ -172,13 +190,23 @@ export async function executeJob(job: EdaJob, workerId: string): Promise<EdaJob>
   });
   await removeContainer(containerName(job));
   await new Promise<void>(resolve => log.end(resolve));
+  if (docker?.staged) {
+    try {
+      fs.cpSync(path.join(docker.path, 'output'), outputDirectory, { recursive: true });
+    } catch (error) {
+      fs.rmSync(docker.path, { recursive: true, force: true });
+      return failJob(job.id, workerId, `Could not retain Docker-staged output: ${error instanceof Error ? error.message : String(error)}`, false);
+    }
+    fs.rmSync(docker.path, { recursive: true, force: true });
+  }
   const current = getJob({ tenantId: job.tenantId }, job.id);
   if (current && (current.status !== 'running' || current.leaseOwner !== workerId)) return current;
   if (current?.cancelRequested) return failJob(job.id, workerId, 'cancelled by user', false);
   if (Date.now() - started > invocation.timeoutMs) return failJob(job.id, workerId, 'wall-clock limit exceeded');
   if (exitCode !== 0) return failJob(job.id, workerId, `isolated tool exited with code ${exitCode}`);
   try {
-    return completeJob(job.id, workerId, numericMetrics(outputDirectory));
+    const orfsMode = job.kind === 'openroad' && fs.existsSync(path.join(jobWorkspace(job), 'input', 'config.mk'));
+    return completeJob(job.id, workerId, readMeasuredMetrics(outputDirectory, orfsMode ? 'openroad' : 'other'));
   } catch (error) {
     return failJob(job.id, workerId, error instanceof Error ? error.message : String(error), false);
   }

@@ -93,6 +93,7 @@ export default function ProjectJourney({ projectId, initialView }: { projectId: 
     setDraft(revision);
     setSaved(revision);
     setRequirements(JSON.stringify(revision.requirements, null, 2));
+    setPurpose(revision.templateId === 'custom' ? 'regression' : 'lab');
     setAttach(false);
     setArtifactIds([]);
   }, []);
@@ -521,7 +522,7 @@ export default function ProjectJourney({ projectId, initialView }: { projectId: 
                   onChange={(event) => setPurpose(event.target.value as 'lab' | 'regression')}
                   sx={{ minWidth: 250 }}
                 >
-                  <MenuItem value="lab">Fixed reference lab</MenuItem>
+                  {saved.templateId !== 'custom' && <MenuItem value="lab">Fixed reference lab</MenuItem>}
                   <MenuItem value="regression">Custom engineering regression</MenuItem>
                 </TextField>
               )}

@@ -14,7 +14,7 @@ export const requirementSchema = z
 export const revisionSchema = z
   .object({
     baseRevisionId: z.string().uuid().nullable(),
-    templateId: z.enum(['gcd', 'fifo', 'mac']),
+    templateId: z.enum(['gcd', 'fifo', 'mac', 'custom']),
     topModule: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,100}$/),
     specification: z.string().trim().min(10).max(16000),
     requirements: z
