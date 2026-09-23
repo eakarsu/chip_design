@@ -43,6 +43,10 @@ test('every application page renders without a server or browser exception', asy
 
   const failures: string[] = [];
   const me = await page.request.get(`${baseURL}/api/auth/me`).then((response) => response.json());
+  const journeyProjectsResponse = await page.request.get(`${baseURL}/api/journey/projects`);
+  expect(journeyProjectsResponse.ok(), `journey project list failed with ${journeyProjectsResponse.status()}`).toBeTruthy();
+  const journeyProjects = await journeyProjectsResponse.json();
+  const journeyProjectId: string | undefined = journeyProjects.projects?.[0]?.id;
   const edaIdentity = await page.request
     .post(`${baseURL}/api/auth/eda-token`)
     .then(async (response) => (response.ok() ? response.json() : null));
@@ -91,6 +95,10 @@ test('every application page renders without a server or browser exception', asy
   for (const route of pageRoutes) {
     const resolvedRoute = route
       .replace('/admin/users/00000000-0000-4000-8000-000000000001', `/admin/users/${me.user?.id ?? 'runtime_admin'}`)
+      .replace(
+        '/workspace/projects/00000000-0000-4000-8000-000000000001',
+        journeyProjectId ? `/workspace/projects/${journeyProjectId}` : '/workspace/projects'
+      )
       .replace(
         '/openlane/designs/00000000-0000-4000-8000-000000000001',
         `/openlane/designs/${designs.designs?.[0]?.id ?? 'missing'}`
