@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { Button, Container, Stack, Typography } from '@mui/material';
 import ProjectStarter from '@/components/journey/ProjectStarter';
 
@@ -16,7 +15,7 @@ export default async function ProjectsPage({ searchParams }: { searchParams: Pro
           <Typography variant="h6" fontWeight={750}>
             Design projects
           </Typography>
-          <Button component={Link} href="/workspace/projects/new" variant="contained">
+          <Button href="/workspace/projects/new" variant="contained">
             New from specification
           </Button>
         </Stack>
