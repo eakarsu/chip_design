@@ -183,6 +183,31 @@ const schemaSql = `
   );
   CREATE INDEX IF NOT EXISTS design_search_proofs_campaign_idx
     ON design_search_proofs(tenant_id, campaign_id);
+  CREATE TABLE IF NOT EXISTS design_search_agent_runs (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, campaign_id TEXT NOT NULL,
+    project_id TEXT NOT NULL, created_by TEXT NOT NULL,
+    status TEXT NOT NULL, phase TEXT NOT NULL, round INTEGER NOT NULL,
+    lease_owner TEXT, lease_expires_at TEXT, next_attempt_at TEXT NOT NULL,
+    error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    completed_at TEXT, UNIQUE(tenant_id,campaign_id)
+  );
+  CREATE INDEX IF NOT EXISTS design_search_agent_runs_queue_idx
+    ON design_search_agent_runs(status,next_attempt_at,lease_expires_at);
+  CREATE TABLE IF NOT EXISTS design_search_agent_events (
+    id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, run_id TEXT NOT NULL,
+    role TEXT NOT NULL, phase TEXT NOT NULL, status TEXT NOT NULL,
+    summary TEXT NOT NULL, details_json TEXT NOT NULL, model TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS design_search_agent_events_run_idx
+    ON design_search_agent_events(tenant_id,run_id,created_at);
+  CREATE TABLE IF NOT EXISTS design_search_agent_reviews (
+    candidate_id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, run_id TEXT NOT NULL,
+    verdict TEXT NOT NULL, reason TEXT NOT NULL, risks_json TEXT NOT NULL,
+    model TEXT NOT NULL, created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS design_search_agent_reviews_run_idx
+    ON design_search_agent_reviews(tenant_id,run_id,created_at);
   CREATE TABLE IF NOT EXISTS commercial_projects (
     id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, name TEXT NOT NULL,
     description TEXT NOT NULL, repository_url TEXT NOT NULL, default_branch TEXT NOT NULL,
@@ -361,6 +386,9 @@ const requiredCommercialTables = [
   'design_search_candidates',
   'design_search_rtl_candidates',
   'design_search_proofs',
+  'design_search_agent_runs',
+  'design_search_agent_events',
+  'design_search_agent_reviews',
   'commercial_projects',
   'commercial_constraint_sets',
   'commercial_corners',

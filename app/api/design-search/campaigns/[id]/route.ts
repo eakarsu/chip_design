@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { workspaceOperation } from '@/lib/commercial/http';
 import { journeyBody } from '@/lib/journey/http';
 import { adoptSelectedRtl, dispatchRtlVerification, dispatchSearchBatch, dispatchSearchCandidate, generateSearchCandidates, researchCampaign, searchCampaignDetails, selectSearchCandidate } from '@/lib/design-search/store';
+import { agentTeamForCampaign } from '@/lib/design-search/team';
 
 export const runtime = 'nodejs';
 type Context = { params: Promise<{ id: string }> };
@@ -25,6 +26,9 @@ export async function POST(request: Request, context: Context) {
   return workspaceOperation(request, 'design-search.update', async (identity, requestId) => {
     const campaignId = z.string().uuid().parse(id);
     const input = actionSchema.parse(await journeyBody(request));
+    if (input.action !== 'select' && input.action !== 'adopt' &&
+      (await agentTeamForCampaign(identity, campaignId)).run)
+      throw new Error('This campaign is managed by an agent team; use its activity and retry controls');
     if (input.action === 'research') {
       await researchCampaign(identity, campaignId, requestId);
       return searchCampaignDetails(identity, campaignId);

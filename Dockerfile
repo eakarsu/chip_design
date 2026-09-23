@@ -84,6 +84,21 @@ RUN mkdir -p /var/lib/chip /var/backups/chip \
 USER nextjs
 CMD ["npm", "run", "eda:worker"]
 
+# The agent coordinator owns the model key and commercial database connection.
+# It schedules governed jobs but has no container-engine socket.
+FROM node:22-alpine AS design-agent-worker
+WORKDIR /app
+ENV NODE_ENV=production
+RUN apk add --no-cache bash libc6-compat \
+    && addgroup --system --gid 1001 nodejs \
+    && adduser --system --uid 1001 --ingroup nodejs nextjs
+COPY --chown=nextjs:nodejs --from=deps /app/node_modules ./node_modules
+COPY --chown=nextjs:nodejs package.json package-lock.json tsconfig.json ./
+COPY --chown=nextjs:nodejs src ./src
+COPY --chown=nextjs:nodejs scripts ./scripts
+USER nextjs
+CMD ["npm", "run", "agent:worker"]
+
 # Authenticated enterprise integration gateway. This service owns outbound
 # provider credentials and is deployed independently from the web process.
 FROM node:22-alpine AS enterprise-adapter

@@ -264,7 +264,8 @@ export async function researchCampaign(identity: EdaIdentity, campaignId: string
   return getSearchCampaign(identity, campaign.id);
 }
 
-export async function generateSearchCandidates(identity: EdaIdentity, campaignId: string, requestId: string): Promise<ReturnType<typeof searchCampaignDetails>> {
+export async function generateSearchCandidates(identity: EdaIdentity, campaignId: string, requestId: string,
+  researchBrief?: string): Promise<ReturnType<typeof searchCampaignDetails>> {
   if (identity.role === 'viewer') throw new Error('Editor role required');
   let details = await searchCampaignDetails(identity, campaignId);
   if (!details.candidates.find((item) => item.iteration === 0)?.qualified)
@@ -279,7 +280,7 @@ export async function generateSearchCandidates(identity: EdaIdentity, campaignId
   if (!revision) throw new Error('Locked revision not found');
   if (details.campaign.topic !== 'placement') {
     const generated = await proposeRtlExperiments({ revision, objective: details.campaign.objective,
-      literature: details.campaign.literature, previous: details.candidates, count: Math.min(2, available) });
+      literature: details.campaign.literature, previous: details.candidates, count: Math.min(2, available), researchBrief });
     const valid = generated.proposals.flatMap((proposal) => {
       const rtl = proposal.rtl.trim();
       if (/\b(?:initial|final|force|release|specify|specparam|primitive|endprimitive)\b|\$/.test(rtl)) return [];
@@ -313,7 +314,7 @@ export async function generateSearchCandidates(identity: EdaIdentity, campaignId
     return searchCampaignDetails(identity, campaignId);
   }
   const generated = await proposeExperiments({ revision, objective: details.campaign.objective,
-    literature: details.campaign.literature, previous: details.candidates, count: Math.min(3, available) });
+    literature: details.campaign.literature, previous: details.candidates, count: Math.min(3, available), researchBrief });
   await commercialTransaction(async () => {
     await lockCommercialProject(identity.tenantId, details.campaign.projectId);
     const current = await candidatesFor(identity, campaignId);

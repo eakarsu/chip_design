@@ -18,6 +18,7 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,mdx}\"",
     "cli": "tsx bin/chip-design.ts",
     "eda:worker": "tsx scripts/eda-worker.ts",
+    "agent:worker": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=react-server\" ./scripts/run-compatible-node.sh node_modules/tsx/dist/cli.mjs scripts/design-agent-worker.ts",
     "eda:doctor": "./scripts/run-best-chip-flow.sh doctor",
     "eda:best-flow": "./scripts/run-best-chip-flow.sh all",
     "integrations:adapter": "tsx scripts/enterprise-adapter.ts",

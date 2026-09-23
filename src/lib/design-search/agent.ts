@@ -5,6 +5,7 @@ import { generateJSONCompletion } from '@/lib/openrouter';
 import type { DesignRevision } from '@/lib/journey/types';
 import type { CandidateEvaluation, SearchObjective } from './evaluation';
 import type { LiteratureSource } from './literature';
+import { searchAgentModel } from './model';
 
 const proposalSchema = z.object({
   proposals: z.array(z.object({
@@ -29,23 +30,15 @@ const rtlProposalSchema = z.object({
 
 export type RtlAgentProposal = z.infer<typeof rtlProposalSchema>['proposals'][number];
 
-function approvedModel(): string {
-  if (process.env.OPENROUTER_REQUIRE_ZDR === 'false' || process.env.OPENROUTER_ALLOW_DATA_COLLECTION === 'true') {
-    throw new Error('Design Search requires an OpenRouter route with zero data retention and data collection denied');
-  }
-  const model = process.env.OPENROUTER_MODEL?.trim();
-  if (!model) throw new Error('Configure an approved OPENROUTER_MODEL before requesting Design Search proposals');
-  return model;
-}
-
 export async function proposeExperiments(input: {
   revision: DesignRevision;
   objective: SearchObjective;
   literature: LiteratureSource[];
   previous: CandidateEvaluation[];
   count: number;
+  researchBrief?: string;
 }): Promise<{ model: string; proposals: AgentProposal[] }> {
-  const model = approvedModel();
+  const model = searchAgentModel('design');
   const available = new Set(input.literature.map((item) => item.id));
   const prior = input.previous.map((item) => ({
     utilization: item.coreUtilization,
@@ -66,6 +59,7 @@ export async function proposeExperiments(input: {
     specification: input.revision.specification.slice(0, 1800),
     requirements: input.revision.requirements,
     objective: input.objective,
+    researchBrief: input.researchBrief?.slice(0, 2000),
     prior,
     literature: input.literature.map((item) => ({ id: item.id, title: item.title, url: item.url, abstract: item.abstract.slice(0, 1400) })),
     proposalCount: Math.min(4, Math.max(1, input.count)),
@@ -96,10 +90,11 @@ export async function proposeRtlExperiments(input: {
   literature: LiteratureSource[];
   previous: CandidateEvaluation[];
   count: number;
+  researchBrief?: string;
 }): Promise<{ model: string; proposals: RtlAgentProposal[] }> {
   if (input.revision.rtl.length > 16_000)
     throw new Error('Reference RTL exceeds the bounded proposal context');
-  const model = approvedModel();
+  const model = searchAgentModel('design');
   const available = new Set(input.literature.map((item) => item.id));
   const payload = {
     topModule: input.revision.topModule,
@@ -107,6 +102,7 @@ export async function proposeRtlExperiments(input: {
     requirements: input.revision.requirements,
     referenceRtl: input.revision.rtl,
     objective: input.objective,
+    researchBrief: input.researchBrief?.slice(0, 2000),
     prior: input.previous.map((item) => ({ title: item.title, sourceHash: item.rtlSourceHash,
       status: item.status, metrics: item.metrics && {
         dieAreaUm2: item.metrics.dieAreaUm2, powerMw: item.metrics.powerMw, fmaxMHz: item.metrics.fmaxMHz,

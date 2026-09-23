@@ -107,6 +107,8 @@ node "$PROJECT_DIR/runtime/setup.mjs"
 CHILD_PIDS=()
 (cd "$PROJECT_DIR"&&exec node runtime/api.mjs)&CHILD_PIDS+=("$!")
 (cd "$PROJECT_DIR"&&exec npm run dev -- -H "$FRONTEND_HOST" -p "$FRONTEND_PORT")&CHILD_PIDS+=("$!")
+(cd "$PROJECT_DIR"&&exec npm run eda:worker)&CHILD_PIDS+=("$!")
+(cd "$PROJECT_DIR"&&exec npm run agent:worker)&CHILD_PIDS+=("$!")
 cleanup(){ trap - EXIT INT TERM;for pid in "${CHILD_PIDS[@]}";do kill "$pid" 2>/dev/null||true;done;for pid in "${CHILD_PIDS[@]}";do wait "$pid" 2>/dev/null||true;done; }
 trap cleanup EXIT INT TERM
 wait "${CHILD_PIDS[@]}"

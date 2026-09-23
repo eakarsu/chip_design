@@ -113,7 +113,7 @@ const GROUPS: Group[] = [
         icon: <Timeline />,
       },
       { label: 'AI Chat Workspace', href: '/governed-ai/chat', icon: <FactCheck /> },
-      { label: 'Design Search', href: '/workspace/design-search', icon: <AutoGraph /> },
+      { label: 'Chip Design Agents', href: '/workspace/design-search', icon: <AutoGraph /> },
     ],
   },
   {

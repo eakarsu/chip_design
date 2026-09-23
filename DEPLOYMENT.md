@@ -13,8 +13,10 @@ reachable.
    SSE-KMS. Its state and root material require independent encrypted backups.
 5. `eda-worker`: non-root queue worker connected to an approved restricted
    container engine.
-6. Digest-pinned Yosys/OpenROAD image and approved PDK mounts.
-7. `enterprise-adapter`: independently deployed, bearer-authenticated provider
+6. `design-agent-worker`: non-root, persistent research/design/critique coordinator
+   with database and approved model access, but no container-engine socket.
+7. Digest-pinned Yosys/OpenROAD image and approved PDK mounts.
+8. `enterprise-adapter`: independently deployed, bearer-authenticated provider
    gateway exposed only through `https://integrations.chipdesign.shop`.
 
 ## Deployment sequence
@@ -28,7 +30,7 @@ reachable.
 5. Run the migrator as an explicit one-shot operation with
    `CHIP_ALLOW_SCHEMA_MIGRATION=true`.
 6. Run `npm run check:production` using the final environment.
-7. Start web and worker services, wait for health, then run authenticated smoke,
+7. Start web and both worker services, wait for health, then run authenticated smoke,
    artifact round-trip, route, and browser audits.
 8. Retain the previous stopped web container/image and pre-migration database
    backup until acceptance is recorded.

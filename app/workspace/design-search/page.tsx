@@ -33,6 +33,13 @@ type Details = {
   verification: { simulationPassed: boolean; formalPassed: boolean };
   bestCandidateId?: string; usedCpuSeconds: number; actorRole: 'admin' | 'editor' | 'viewer';
 };
+type AgentTeam = {
+  run: null | { id: string; status: 'queued' | 'running' | 'waiting' | 'failed' | 'completed';
+    phase: string; round: number; error?: string; updatedAt: string };
+  events: Array<{ id: string; role: string; phase: string; status: string; summary: string;
+    details: Record<string, unknown>; model?: string; createdAt: string }>;
+  reviews: Array<{ candidateId: string; verdict: 'approved' | 'rejected'; reason: string; risks: string[]; model: string }>;
+};
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, cache: 'no-store', headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -57,6 +64,7 @@ export default function DesignSearchPage() {
   const [referenceTemplate, setReferenceTemplate] = useState<'gcd' | 'fifo' | 'mac'>('gcd');
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [details, setDetails] = useState<Details | null>(null);
+  const [team, setTeam] = useState<AgentTeam | null>(null);
   const [objective, setObjective] = useState('min_area');
   const [topic, setTopic] = useState<'placement' | 'rtl'>('placement');
   const [importSource, setImportSource] = useState({ name: '', topModule: '', specification: '',
@@ -82,9 +90,12 @@ export default function DesignSearchPage() {
     return result.campaigns;
   }, []);
   const loadDetails = useCallback(async (id: string) => {
-    const result = await api<Details>(`/api/design-search/campaigns/${id}`);
+    const [result, agentTeam] = await Promise.all([
+      api<Details>(`/api/design-search/campaigns/${id}`),
+      api<AgentTeam>(`/api/design-search/campaigns/${id}/team`),
+    ]);
     setDetails(result);
-    setAdoptedRevisionId('');
+    setTeam(agentTeam);
   }, []);
 
   useEffect(() => {
@@ -101,13 +112,16 @@ export default function DesignSearchPage() {
   }, [loadCampaigns, loadDetails, loadSources]);
 
   useEffect(() => {
-    if (!details?.candidates.some((item) => ['queued', 'running', 'retry', 'awaiting_approval'].includes(item.status) ||
+    if (!details) return;
+    if (!team?.run || ['completed', 'failed'].includes(team.run.status)) {
+      if (!details.candidates.some((item) => ['queued', 'running', 'retry', 'awaiting_approval'].includes(item.status) ||
       ['queued', 'running', 'retry'].includes(item.verification?.simulationStatus ?? '') ||
       ['queued', 'running', 'retry'].includes(item.verification?.formalStatus ?? '') ||
       ['queued', 'running', 'retry'].includes(item.verification?.proofStatus ?? ''))) return;
+    }
     const timer = window.setInterval(() => void loadDetails(details.campaign.id).catch(() => undefined), 5000);
     return () => window.clearInterval(timer);
-  }, [details, loadDetails]);
+  }, [details, loadDetails, team]);
 
   const createCampaign = async () => {
     if (!projectId || !selectedRevisionId) {
@@ -121,6 +135,8 @@ export default function DesignSearchPage() {
           jobCpuSeconds, maxCpuSeconds: maxCandidates * jobCpuSeconds }),
       });
       setDetails(result);
+      setTeam(null);
+      setAdoptedRevisionId('');
       await loadCampaigns();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to create campaign'); }
     finally { setBusy(''); }
@@ -137,6 +153,8 @@ export default function DesignSearchPage() {
       setProjectId(created.id);
       setRevisionId(result.revision.id);
       setDetails(null);
+      setTeam(null);
+      setAdoptedRevisionId('');
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to create reference design'); }
     finally { setBusy(''); }
   };
@@ -150,6 +168,8 @@ export default function DesignSearchPage() {
       setProjectId(result.revision.projectId);
       setRevisionId(result.revision.id);
       setDetails(null);
+      setTeam(null);
+      setAdoptedRevisionId('');
       setTopic('rtl');
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to import design'); }
     finally { setBusy(''); }
@@ -171,13 +191,26 @@ export default function DesignSearchPage() {
     finally { setBusy(''); }
   };
 
+  const teamAction = async (name: 'start' | 'retry') => {
+    if (!details) return;
+    setBusy(name); setError('');
+    try {
+      const result = await api<AgentTeam>(`/api/design-search/campaigns/${details.campaign.id}/team`, {
+        method: 'POST', body: JSON.stringify({ action: name }),
+      });
+      setTeam(result);
+      await loadDetails(details.campaign.id);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to start the agent team'); }
+    finally { setBusy(''); }
+  };
+
   return <Container maxWidth="xl" sx={{ py: 4 }}>
     <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" gap={2} alignItems="flex-start">
       <Box>
         <Typography variant="overline" color="primary">Governed AI · physical design</Typography>
-        <Typography variant="h3" fontWeight={800}>Design Search</Typography>
+        <Typography variant="h3" fontWeight={800}>Chip Design Agents</Typography>
         <Typography color="text.secondary" maxWidth={850}>
-          Research suggests bounded flow experiments. The isolated EDA worker measures each candidate; only verified reports can enter the leaderboard.
+          Research, design, and critique agents coordinate bounded experiments. Separate verification jobs measure each approved candidate; only verified reports enter the leaderboard.
         </Typography>
       </Box>
       <Button component={Link} href="/workspace/execution" variant="outlined">Governed EDA runs</Button>
@@ -266,20 +299,53 @@ export default function DesignSearchPage() {
     </CardContent></Card>
 
     {!!campaigns.length && <Stack direction={{ xs: 'column', sm: 'row' }} gap={1} flexWrap="wrap" sx={{ mt: 3 }}>
-      {campaigns.map((item) => <Button key={item.id} size="small" variant={details?.campaign.id === item.id ? 'contained' : 'outlined'} onClick={() => void loadDetails(item.id)}>
+      {campaigns.map((item) => <Button key={item.id} size="small" variant={details?.campaign.id === item.id ? 'contained' : 'outlined'} onClick={() => { setAdoptedRevisionId(''); void loadDetails(item.id); }}>
         {item.topic === 'placement' ? 'Placement' : 'RTL'} · {item.objective.replace('_', ' ')} · {new Date(item.createdAt).toLocaleDateString()} · {item.id.slice(0, 8)}
       </Button>)}
     </Stack>}
 
     {details && <>
       <Card variant="outlined" sx={{ mt: 3 }}><CardContent>
+        <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" gap={2} alignItems="flex-start">
+          <Box>
+            <Typography variant="h5" fontWeight={750}>Agent team</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Research → reference checks → baseline → design → independent critique → verification → evaluation.
+              The team runs in the background within this campaign’s candidate and execution limits.
+            </Typography>
+          </Box>
+          {!team?.run && <Button variant="contained" disabled={!!busy || details.actorRole === 'viewer'} onClick={() => void teamAction('start')}>Start agent team</Button>}
+          {team?.run?.status === 'failed' && <Button variant="contained" disabled={!!busy || details.actorRole === 'viewer'} onClick={() => void teamAction('retry')}>Retry failed step</Button>}
+        </Stack>
+        {team?.run && <>
+          <Stack direction="row" gap={1} flexWrap="wrap" alignItems="center" sx={{ mt: 2 }}>
+            <Chip label={team.run.status} color={team.run.status === 'completed' ? 'success' : team.run.status === 'failed' ? 'error' : 'primary'} />
+            <Chip label={`Phase: ${team.run.phase}`} variant="outlined" />
+            <Chip label={team.run.status === 'completed' ? `Rounds completed: ${team.run.round}` : `Round: ${team.run.round + 1}`} variant="outlined" />
+            <Typography variant="caption" color="text.secondary">Updated {new Date(team.run.updatedAt).toLocaleString()}</Typography>
+          </Stack>
+          {team.run.error && <Alert severity="error" sx={{ mt: 2 }}>{team.run.error}</Alert>}
+          {team.run.status === 'waiting' && <Alert severity="info" sx={{ mt: 2 }}>
+            The team is waiting for a verification job or independent run approval. Inspect pending jobs in <Link href="/workspace/execution">Governed EDA runs</Link>.
+          </Alert>}
+          <Typography variant="subtitle2" sx={{ mt: 2 }}>Agent activity</Typography>
+          <Stack gap={1} sx={{ mt: 1, maxHeight: 300, overflowY: 'auto' }}>
+            {[...team.events].reverse().map((item) => <Box key={item.id} sx={{ borderLeft: 2, borderColor: item.status === 'failed' ? 'error.main' : 'divider', pl: 1.5 }}>
+              <Typography variant="body2"><strong>{item.role}</strong> · {item.summary}</Typography>
+              <Typography variant="caption" color="text.secondary">{item.phase} · {new Date(item.createdAt).toLocaleString()}{item.model ? ` · ${item.model}` : ''}</Typography>
+            </Box>)}
+          </Stack>
+        </>}
+      </CardContent></Card>
+
+      <Card variant="outlined" sx={{ mt: 3 }}><CardContent>
         <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" gap={2}>
           <Box><Typography variant="h5" fontWeight={750}>Campaign {details.campaign.id.slice(0, 8)}</Typography>
             <Typography variant="body2" color="text.secondary">{details.candidates.length}/{details.campaign.maxCandidates} candidates · {format(details.usedCpuSeconds, 0)}/{format(details.campaign.maxCpuSeconds, 0)} reserved execution seconds</Typography></Box>
           <Stack direction="row" gap={1} flexWrap="wrap">
-            <Button startIcon={<MenuBook />} disabled={!!busy} onClick={() => void action('research')}>Discover sources</Button>
-            <Button startIcon={<AutoGraph />} disabled={!!busy || details.candidates.length >= details.campaign.maxCandidates || !details.candidates.find((item) => item.iteration === 0)?.qualified} onClick={() => void action('propose')}>Propose experiments</Button>
-            <Button startIcon={<PlayArrow />} disabled={!!busy || !details.verification.simulationPassed || !details.verification.formalPassed || !details.candidates.some((item) => !item.jobId && (item.kind !== 'rtl' || (item.verification?.simulationPassed && item.verification?.formalPassed && item.verification?.proofPassed)))} onClick={() => void action('dispatchBatch')}>Queue eligible experiments</Button>
+            {!team?.run && <Button startIcon={<MenuBook />} disabled={!!busy} onClick={() => void action('research')}>Discover sources</Button>}
+            {!team?.run && <Button startIcon={<AutoGraph />} disabled={!!busy || details.candidates.length >= details.campaign.maxCandidates || !details.candidates.find((item) => item.iteration === 0)?.qualified} onClick={() => void action('propose')}>Propose experiments</Button>}
+            {!team?.run && <Button startIcon={<PlayArrow />} disabled={!!busy || !details.verification.simulationPassed || !details.verification.formalPassed || !details.candidates.some((item) => !item.jobId && (item.kind !== 'rtl' || (item.verification?.simulationPassed && item.verification?.formalPassed && item.verification?.proofPassed)))} onClick={() => void action('dispatchBatch')}>Queue eligible experiments</Button>}
             <Button startIcon={<Refresh />} disabled={!!busy} onClick={() => void loadDetails(details.campaign.id)}>Refresh results</Button>
           </Stack>
         </Stack>
@@ -316,13 +382,13 @@ export default function DesignSearchPage() {
         <TableBody>{details.candidates.map((item) => <TableRow key={item.id}>
           <TableCell sx={{ minWidth: 250 }}><Typography fontWeight={700}>{item.title}</Typography><Typography variant="body2">{item.hypothesis}</Typography><Typography variant="caption" color="text.secondary">{item.proposedBy} · sources: {item.sourceIds.join(', ') || 'control'}</Typography>{item.rtl && <Box component="details" sx={{ mt: 1 }}><Box component="summary" sx={{ cursor: 'pointer' }}>Review candidate RTL · {item.rtlSourceHash?.slice(0, 10)}</Box><Box component="pre" sx={{ overflowX: 'auto', maxHeight: 300, fontSize: 11 }}>{item.rtl}</Box></Box>}</TableCell>
           <TableCell>{item.coreUtilization}% / {item.placeDensity}</TableCell>
-          <TableCell><Stack direction="row" gap={0.5} flexWrap="wrap"><Chip size="small" label={item.status} color={item.qualified ? 'success' : item.status === 'rejected' ? 'error' : 'default'} />{item.pareto && <Chip size="small" label="Pareto" color="primary" />}{details.bestCandidateId === item.id && <Chip size="small" label="Best for objective" color="success" />}{details.campaign.selectedCandidateId === item.id && <Chip size="small" label="Selected" color="secondary" />}</Stack>{item.kind === 'rtl' && <Typography variant="caption" display="block">Simulation: {item.verification?.simulationStatus ?? 'needed'} · Safety: {item.verification?.formalStatus ?? 'needed'} · Equivalence: {item.verification?.proofStatus ?? 'needed'}</Typography>}{item.reasons.length > 0 && <Typography variant="caption" display="block" color="text.secondary">{item.reasons.join('; ')}</Typography>}</TableCell>
+          <TableCell><Stack direction="row" gap={0.5} flexWrap="wrap"><Chip size="small" label={item.status} color={item.qualified ? 'success' : item.status === 'rejected' ? 'error' : 'default'} />{team?.reviews.find((review) => review.candidateId === item.id) && <Chip size="small" label={`Critic: ${team.reviews.find((review) => review.candidateId === item.id)?.verdict}`} color={team.reviews.find((review) => review.candidateId === item.id)?.verdict === 'approved' ? 'success' : 'error'} />}{item.pareto && <Chip size="small" label="Pareto" color="primary" />}{details.bestCandidateId === item.id && <Chip size="small" label="Best for objective" color="success" />}{details.campaign.selectedCandidateId === item.id && <Chip size="small" label="Selected" color="secondary" />}</Stack>{team?.reviews.find((review) => review.candidateId === item.id) && <Typography variant="caption" display="block">{team.reviews.find((review) => review.candidateId === item.id)?.reason}</Typography>}{item.kind === 'rtl' && <Typography variant="caption" display="block">Simulation: {item.verification?.simulationStatus ?? 'needed'} · Safety: {item.verification?.formalStatus ?? 'needed'} · Equivalence: {item.verification?.proofStatus ?? 'needed'}</Typography>}{item.reasons.length > 0 && <Typography variant="caption" display="block" color="text.secondary">{item.reasons.join('; ')}</Typography>}</TableCell>
           <TableCell>{format(item.metrics?.dieAreaUm2, 1)}</TableCell><TableCell>{format(item.metrics?.powerMw)}</TableCell><TableCell>{format(item.metrics?.fmaxMHz)}</TableCell><TableCell>{format(item.metrics?.drcViolations, 0)}</TableCell>
-          <TableCell>{item.kind === 'rtl' && (!item.simulationJobId || !item.formalJobId || !item.proofJobId) && <Button size="small" disabled={!!busy} onClick={() => void action('verify', item.id)}>Verify RTL</Button>}
+          <TableCell>{!team?.run && item.kind === 'rtl' && (!item.simulationJobId || !item.formalJobId || !item.proofJobId) && <Button size="small" disabled={!!busy} onClick={() => void action('verify', item.id)}>Verify RTL</Button>}
             {item.simulationJobId && <Button component={Link} href={`/workspace/execution/${item.simulationJobId}`} size="small">Simulation</Button>}
             {item.formalJobId && <Button component={Link} href={`/workspace/execution/${item.formalJobId}`} size="small">Formal</Button>}
             {item.proofJobId && <Button component={Link} href={`/workspace/execution/${item.proofJobId}`} size="small">Equivalence</Button>}
-            {item.jobId ? <Button component={Link} href={`/workspace/execution/${item.jobId}`} size="small">Inspect job</Button> : <Button size="small" startIcon={<PlayArrow />} disabled={!!busy || !details.verification.simulationPassed || !details.verification.formalPassed || (item.kind === 'rtl' && (!item.verification?.simulationPassed || !item.verification?.formalPassed || !item.verification?.proofPassed)) || details.usedCpuSeconds + details.campaign.jobCpuSeconds > details.campaign.maxCpuSeconds} onClick={() => void action('dispatch', item.id)}>Queue run</Button>}
+            {item.jobId ? <Button component={Link} href={`/workspace/execution/${item.jobId}`} size="small">Inspect job</Button> : !team?.run && <Button size="small" startIcon={<PlayArrow />} disabled={!!busy || !details.verification.simulationPassed || !details.verification.formalPassed || (item.kind === 'rtl' && (!item.verification?.simulationPassed || !item.verification?.formalPassed || !item.verification?.proofPassed)) || details.usedCpuSeconds + details.campaign.jobCpuSeconds > details.campaign.maxCpuSeconds} onClick={() => void action('dispatch', item.id)}>Queue run</Button>}
             {details.actorRole === 'admin' && item.qualified && <Button size="small" disabled={!!busy || selectionRationale.trim().length < 20} onClick={() => void action('select', item.id)}>Select</Button>}
             {item.jobId && item.reportArtifacts?.map((artifact) => <Button key={artifact.id} component="a" href={`/api/eda/jobs/${item.jobId}/artifacts/${artifact.id}`} size="small">{artifact.relativePath.split('/').pop()}</Button>)}
           </TableCell>
