@@ -7,8 +7,15 @@ test.describe('Navigation', () => {
     await expect(page.locator('h1')).toContainText('Next-Generation AI Chip Architecture');
   });
 
+  // The side navigation groups are collapsed by default, so the nav links live
+  // behind the "Resources" expander.
+  async function expandResources(page: import('@playwright/test').Page) {
+    await page.getByRole('button', { name: 'Expand Resources section' }).click();
+  }
+
   test('should navigate to products page', async ({ page }) => {
     await page.goto('/');
+    await expandResources(page);
     await page.getByRole('link', { name: 'Products', exact: true }).first().click();
     await expect(page).toHaveURL('/products');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('AI Accelerators');
@@ -16,6 +23,7 @@ test.describe('Navigation', () => {
 
   test('should navigate to docs page', async ({ page }) => {
     await page.goto('/');
+    await expandResources(page);
     await page.getByRole('link', { name: 'Platform Docs', exact: true }).click();
     await expect(page).toHaveURL('/docs');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Learn the discipline');
