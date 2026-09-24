@@ -489,29 +489,32 @@ function solveQuadraticWirelength(
   chipWidth: number,
   chipHeight: number
 ): Array<{ x: number; y: number }> {
-  // Simplified quadratic solver
+  // Simplified quadratic solver: one relaxation step that pulls each movable
+  // cell toward the centroid of its net neighbours (fixed cells anchor it).
+  // Pin→cell membership is resolved through each cell's own pin list instead
+  // of `pin.split('_')[0]`, which breaks for ids containing '_' and matches
+  // the wrong cell for prefixes like "c1" vs "c10".
+  const cellOfPin = new Map<string, Cell>();
+  for (const c of [...movableCells, ...fixedCells]) {
+    for (const p of c.pins) cellOfPin.set(p.id, c);
+  }
+
   return movableCells.map((cell) => {
     let sumX = 0;
     let sumY = 0;
     let count = 0;
 
     nets.forEach((net) => {
-      if (net.pins.some((pin) => pin.startsWith(cell.id))) {
-        const connectedCells = net.pins
-          .map((pin) => {
-            const cellId = pin.split('_')[0];
-            return [...movableCells, ...fixedCells].find((c) => c.id === cellId);
-          })
-          .filter((c) => c && c.position && c.id !== cell.id);
+      const touchesCell = net.pins.some((pin) => cellOfPin.get(pin) === cell);
+      if (!touchesCell) return;
 
-        connectedCells.forEach((c) => {
-          if (c!.position) {
-            sumX += c!.position.x;
-            sumY += c!.position.y;
-            count++;
-          }
-        });
-      }
+      net.pins.forEach((pin) => {
+        const c = cellOfPin.get(pin);
+        if (!c || c === cell || !c.position) return;
+        sumX += c.position.x;
+        sumY += c.position.y;
+        count++;
+      });
     });
 
     return count > 0

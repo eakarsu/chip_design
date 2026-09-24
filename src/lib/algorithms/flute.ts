@@ -43,7 +43,9 @@ function trivial2(a: Point, b: Point): SteinerTree {
   const seg2 = { a: corner, b };
   return {
     edges: [seg1, seg2].filter(e => manhattan(e.a, e.b) > 0),
-    steinerPoints: corner.x !== a.x && corner.y !== a.y ? [corner] : [],
+    // `corner` is a genuine Steiner point only when the pins differ in both
+    // coordinates (otherwise the corner coincides with one of the pins).
+    steinerPoints: a.x !== b.x && a.y !== b.y ? [corner] : [],
     wirelength: manhattan(a, b),
   };
 }

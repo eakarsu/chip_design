@@ -64,7 +64,10 @@ export class ReplayBuffer {
 
   push(t: Transition): void {
     this.mem.push(t);
-    if (this.mem.length >= this.threshold) this.flush();
+    // Only flush to the DB when persistence is on. With `persistent: false`
+    // flushing would *discard* the buffer (see `flush()`), so auto-flushing at
+    // the threshold would silently lose every transition beyond it.
+    if (this.persistent && this.mem.length >= this.threshold) this.flush();
   }
 
   size(): number { return this.mem.length; }

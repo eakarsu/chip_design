@@ -18,8 +18,10 @@
  * Place the zero/pole symmetrically about ωc: ωz = ωc/√b, ωp = ωc·√b,
  * with b = (C1+C2)/C1. Then tan(PM) = (b−1)/(2√b), so
  *   b = (1 + sin PM) / (1 − sin PM)
- * Unity loop gain |Icp·Kvco_rad·Z(jωc)/(N·ωc)| = 1 gives
- *   R = N·ωc·b / (2π·Kvco·Icp)
+ * Unity loop gain |Icp·Kvco·Z(jωc)/(N·ωc)| = 1 (Kvco in Hz/V, Icp in A — the
+ * 2π of the charge-pump phase detector cancels the 2π of the VCO's Hz→rad/s
+ * conversion) together with |Z(jωc)| = R·(b−1)/b gives
+ *   R = N·ωc·b / (Icp·Kvco·(b−1))
  * and the components follow from R·C2 = √b/ωc and C1 = C2/(b−1).
  */
 export interface PllSpec {
@@ -65,8 +67,9 @@ export function calcPllFilter(spec: PllSpec): PllResult {
   const pm = spec.pmDeg * Math.PI / 180;
   // Zero/pole spacing for the target PM, from tan(PM) = (b − 1)/(2√b).
   const b = (1 + Math.sin(pm)) / (1 - Math.sin(pm));
-  // Unity loop gain at ωc for the symmetric zero/pole placement.
-  const R = (N * wc * b) / (2 * Math.PI * spec.kvco * spec.icp);
+  // Unity loop gain at ωc. |Z(jωc)| = R·(b−1)/b for the symmetric zero/pole
+  // placement, so R = N·ωc·b / (Icp·Kvco·(b−1)) with Kvco in Hz/V.
+  const R = (N * wc * b) / (spec.kvco * spec.icp * (b - 1));
   // R·C2 sets the zero at ωc/√b; C1 follows from b = (C1+C2)/C1.
   const C2 = Math.sqrt(b) / (wc * R);
   const C1 = C2 / (b - 1);

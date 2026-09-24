@@ -167,44 +167,42 @@ function insertNode(root: BStarNode, block: Cell): void {
 function packBStarTree(root: BStarNode): { blocks: Cell[]; width: number; height: number } {
   const packedBlocks: Cell[] = [];
 
-  // Traverse tree and calculate positions
-  function traverse(node: BStarNode | null, parentX: number, parentY: number, isLeft: boolean): void {
-    if (!node) return;
-
-    if (isLeft) {
-      // Left child: place to the right of parent
-      node.x = parentX + node.block.width;
-      node.y = parentY;
-    } else {
-      // Right child: place above parent
-      node.x = parentX;
-      node.y = parentY + node.block.height;
+  // B*-tree semantics (Chang et al.): the left child of a node sits immediately
+  // to the right of the *parent*, i.e. at the parent's right edge
+  // (parentX + parent width), and the right child immediately above the parent
+  // (parentY + parent height). Offsetting by the child's own size put blocks on
+  // top of their parents.
+  //
+  // The coordinate along the stacking axis is then lifted onto the contour of
+  // the blocks already placed, otherwise siblings still overlap each other.
+  function place(node: BStarNode, x: number, y: number): void {
+    node.x = x;
+    node.y = y;
+    for (const placed of packedBlocks) {
+      const placedPos = placed.position!;
+      const placedRight = placedPos.x + placed.width;
+      const placedTop = placedPos.y + placed.height;
+      const overlapsX = node.x < placedRight && placedPos.x < node.x + node.block.width;
+      if (overlapsX && node.y < placedTop) {
+        node.y = placedTop;
+      }
     }
 
-    // Create positioned block
     const positionedBlock: Cell = {
       ...node.block,
       position: { x: node.x, y: node.y },
     };
-
     packedBlocks.push(positionedBlock);
 
-    // Traverse children
-    traverse(node.left, node.x, node.y, true);
-    traverse(node.right, node.x, node.y, false);
+    if (node.left) {
+      place(node.left, node.x + node.block.width, node.y);
+    }
+    if (node.right) {
+      place(node.right, node.x, node.y + node.block.height);
+    }
   }
 
-  // Root placement
-  root.x = 0;
-  root.y = 0;
-  const rootBlock: Cell = {
-    ...root.block,
-    position: { x: 0, y: 0 },
-  };
-  packedBlocks.push(rootBlock);
-
-  traverse(root.left, root.x, root.y, true);
-  traverse(root.right, root.x, root.y, false);
+  place(root, 0, 0);
 
   const bbox = calculateBoundingBox(packedBlocks);
 

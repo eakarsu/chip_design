@@ -592,24 +592,77 @@ function findLeastCongestedLayer(usedLayers: Set<number>, numLayers: number): nu
   return Math.floor(Math.random() * numLayers) + 1;
 }
 
+/** Squared distance from `p` to segment `[a,b]`. */
+function pointSegDist2(p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }): number {
+  const abx = b.x - a.x, aby = b.y - a.y;
+  const apx = p.x - a.x, apy = p.y - a.y;
+  const len2 = abx * abx + aby * aby;
+  if (len2 <= 0) return apx * apx + apy * apy;
+  let t = (apx * abx + apy * aby) / len2;
+  t = Math.max(0, Math.min(1, t));
+  const dx = apx - t * abx, dy = apy - t * aby;
+  return dx * dx + dy * dy;
+}
+
+function segsIntersect(
+  a: { x: number; y: number }, b: { x: number; y: number },
+  c: { x: number; y: number }, d: { x: number; y: number },
+): boolean {
+  const cross = (p: { x: number; y: number }, q: { x: number; y: number }, r: { x: number; y: number }) =>
+    (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const d1 = cross(c, d, a), d2 = cross(c, d, b), d3 = cross(a, b, c), d4 = cross(a, b, d);
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+}
+
+/** Minimum distance between two 2-D segments. */
+function segSegDist(
+  a: { x: number; y: number }, b: { x: number; y: number },
+  c: { x: number; y: number }, d: { x: number; y: number },
+): number {
+  if (segsIntersect(a, b, c, d)) return 0;
+  return Math.sqrt(Math.min(
+    pointSegDist2(a, c, d), pointSegDist2(b, c, d),
+    pointSegDist2(c, a, b), pointSegDist2(d, a, b),
+  ));
+}
+
 function detectDRCViolations(
   routes: Array<{ netId: string; path: Array<{ x: number; y: number; layer: number }> }>,
   spacing: number
 ): Array<{ netId: string; segmentIndex: number }> {
   const violations: Array<{ netId: string; segmentIndex: number }> = [];
 
-  // Simplified DRC check (spacing violations)
-  routes.forEach(route => {
+  // Spacing DRC compares shapes belonging to *different* nets on the same
+  // layer. Consecutive points of one route are the same signal (and meet at a
+  // shared endpoint), so measuring them against the spacing rule flagged every
+  // ordinary bend while never catching a real inter-net violation.
+  const segs: Array<{ netId: string; index: number; layer: number; a: { x: number; y: number }; b: { x: number; y: number } }> = [];
+  for (const route of routes) {
     for (let i = 1; i < route.path.length; i++) {
       const p1 = route.path[i - 1];
       const p2 = route.path[i];
-      const dist = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+      if (p1.x === p2.x && p1.y === p2.y) continue; // degenerate
+      segs.push({ netId: route.netId, index: i, layer: p1.layer, a: p1, b: p2 });
+    }
+  }
 
-      if (dist < spacing && p1.layer === p2.layer) {
-        violations.push({ netId: route.netId, segmentIndex: i });
+  const seen = new Set<string>();
+  for (let i = 0; i < segs.length; i++) {
+    for (let j = i + 1; j < segs.length; j++) {
+      const s1 = segs[i], s2 = segs[j];
+      if (s1.netId === s2.netId) continue;
+      if (s1.layer !== s2.layer) continue;
+      if (segSegDist(s1.a, s1.b, s2.a, s2.b) < spacing) {
+        for (const s of [s1, s2]) {
+          const key = `${s.netId}#${s.index}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            violations.push({ netId: s.netId, segmentIndex: s.index });
+          }
+        }
       }
     }
-  });
+  }
 
   return violations;
 }
@@ -624,10 +677,16 @@ function ripUpAndReroute(
   const route = routes.find(r => r.netId === violation.netId);
   if (!route) return;
 
-  // Simple fix: change layer at violation point
-  const point = route.path[violation.segmentIndex];
-  const newLayer = findLeastCongestedLayer(new Set([point.layer]), numLayers);
-  point.layer = newLayer;
+  // Move the whole violating segment to a less congested layer (both of its
+  // endpoints, so the segment itself — not just one end — leaves the crowded
+  // layer). The joints become vias, which is what a rip-up is supposed to do.
+  const i = violation.segmentIndex;
+  if (i < 1 || i >= route.path.length) return;
+  const usedLayers = new Set<number>();
+  for (const p of route.path) usedLayers.add(p.layer);
+  const newLayer = findLeastCongestedLayer(usedLayers, numLayers);
+  route.path[i - 1].layer = newLayer;
+  route.path[i].layer = newLayer;
 }
 
 function getNetBoundingBox(net: Net, cells: Cell[]): { width: number; height: number } {

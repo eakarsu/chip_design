@@ -18,10 +18,14 @@ export interface VanGinnekenParams {
   net: Net;
   cells: Cell[];
   bufferTypes: BufferType[];
+  /** Maximum load any single gate may drive (fF). Hard constraint. */
   maxCapacitance: number;
+  /** Maximum output slew at any sink. Hard constraint. */
   targetSlew: number;
   wireResistance?: number; // per unit length
   wireCapacitance?: number; // per unit length
+  /** Output resistance of the net's driver (Ω). Default 0 = ideal source. */
+  driverResistance?: number;
 }
 
 interface BufferType {
@@ -44,6 +48,8 @@ interface Solution {
   delay: number;
   capacitance: number;
   power: number;
+  /** Estimated output slew at this point (same units as targetSlew). */
+  slew: number;
   buffers: BufferPlacement[];
 }
 
@@ -63,6 +69,7 @@ export function vanGinnekenBufferInsertion(params: VanGinnekenParams): BufferIns
     targetSlew,
     wireResistance = 0.1, // ohms per unit
     wireCapacitance = 0.2, // fF per unit
+    driverResistance = 0,
   } = params;
 
   try {
@@ -73,7 +80,15 @@ export function vanGinnekenBufferInsertion(params: VanGinnekenParams): BufferIns
     const buffers = bufferTypes.length > 0 ? bufferTypes : getDefaultBuffers();
 
     // Run Van Ginneken algorithm
-    const solution = vanGinnekenDP(tree, buffers, maxCapacitance, wireResistance, wireCapacitance);
+    const solution = vanGinnekenDP(
+      tree,
+      buffers,
+      maxCapacitance,
+      targetSlew,
+      wireResistance,
+      wireCapacitance,
+      driverResistance ?? 0,
+    );
 
     // Convert to cells
     const bufferCells = solution.buffers.map((buf, idx) => createBufferCell(buf, idx));
@@ -102,7 +117,8 @@ export function vanGinnekenBufferInsertion(params: VanGinnekenParams): BufferIns
 }
 
 function buildRoutingTree(net: Net, cells: Cell[]): TreeNode {
-  // Simplified: build tree from net pins
+  // Resolve pin locations. A pin that cannot be resolved is skipped — but a
+  // net whose pins are all missing has nothing to route.
   const pins: Point[] = [];
 
   for (const pinId of net.pins) {
@@ -122,47 +138,66 @@ function buildRoutingTree(net: Net, cells: Cell[]): TreeNode {
     throw new Error('No pins found for net');
   }
 
-  // Create tree (simplified - assumes first pin is source)
-  const root: TreeNode = {
-    id: 'source',
-    position: pins[0],
+  // First pin is the driver (source); every other pin is a sink.
+  const nodes: TreeNode[] = pins.map((position, i) => ({
+    id: i === 0 ? 'source' : `sink_${i}`,
+    position,
     children: [],
     isPin: true,
-    loadCap: 0.1, // fF
-  };
+    loadCap: i === 0 ? 0.1 : 0.5, // fF (source pin / typical input cap)
+  }));
 
-  // Add remaining pins as direct children (simplified topology)
-  for (let i = 1; i < pins.length; i++) {
-    root.children.push({
-      id: `sink_${i}`,
-      position: pins[i],
-      children: [],
-      isPin: true,
-      loadCap: 0.5, // fF (typical input cap)
-    });
+  if (nodes.length === 1) return nodes[0];
+
+  // Root the topology at the source using a rectilinear MST instead of a star.
+  // A star made every sink hang directly off the driver, so the wire RC — and
+  // therefore the delay the DP optimises — was wrong for anything with more
+  // than two pins.
+  const inTree = new Set<number>([0]);
+  while (inTree.size < nodes.length) {
+    let bestDist = Infinity;
+    let bestFrom = -1;
+    let bestTo = -1;
+    for (const i of inTree) {
+      for (let j = 0; j < nodes.length; j++) {
+        if (inTree.has(j)) continue;
+        const d =
+          Math.abs(nodes[i].position.x - nodes[j].position.x) +
+          Math.abs(nodes[i].position.y - nodes[j].position.y);
+        if (d < bestDist) {
+          bestDist = d;
+          bestFrom = i;
+          bestTo = j;
+        }
+      }
+    }
+    if (bestTo < 0) break;
+    inTree.add(bestTo);
+    nodes[bestFrom].children.push(nodes[bestTo]);
   }
 
-  return root;
+  return nodes[0];
 }
 
 function vanGinnekenDP(
   tree: TreeNode,
   bufferTypes: BufferType[],
   maxCap: number,
+  maxSlew: number,
   wireR: number,
-  wireC: number
+  wireC: number,
+  driverR: number
 ): Solution {
   // Bottom-up DP on routing tree
-  const solutions = new Map<string, Solution[]>();
-
   function traverse(node: TreeNode): Solution[] {
-    if (node.isPin && node.children.length === 0) {
-      // Leaf node (sink pin)
+    if (node.children.length === 0) {
+      // Leaf node (sink pin): its pin cap is the entire downstream load.
       return [
         {
           delay: 0,
           capacitance: node.loadCap,
           power: 0,
+          slew: 0,
           buffers: [],
         },
       ];
@@ -172,26 +207,40 @@ function vanGinnekenDP(
     const childSolutions: Solution[][] = node.children.map((child) => traverse(child));
 
     // Merge child solutions
-    const merged = mergeSolutions(childSolutions, node, wireR, wireC);
+    const merged = mergeSolutions(childSolutions, node.children, node, wireR, wireC);
 
-    // Add buffer insertion options
-    const withBuffers = tryBufferInsertion(merged, bufferTypes, maxCap);
+    // Add buffer insertion options at this node. Only the source drives with a
+    // known resistance; deeper nodes are driven by whatever sits upstream, so
+    // their unbuffered slew is the value propagated up from below.
+    const withBuffers = tryBufferInsertion(
+      merged,
+      bufferTypes,
+      node === tree ? driverR : 0,
+      node.position,
+    );
 
     return withBuffers;
   }
 
   const allSolutions = traverse(tree);
 
-  // Select best solution (minimum delay)
-  const best = allSolutions.reduce((min, sol) =>
-    sol.delay < min.delay ? sol : min
-  );
+  // `maxCapacitance` and `targetSlew` are *constraints*, not preferences:
+  // candidates that violate them must not be returned. The previous code used
+  // maxCap to decide whether to *insert* a buffer and never rejected anything,
+  // and targetSlew was ignored entirely.
+  const feasible = allSolutions.filter((s) => s.capacitance <= maxCap && s.slew <= maxSlew);
+  const pool = feasible.length > 0 ? feasible : allSolutions;
+  if (pool.length === 0) {
+    throw new Error('Van Ginneken produced no candidates — empty tree?');
+  }
 
-  return best;
+  // Select best solution (minimum delay)
+  return pool.reduce((min, sol) => (sol.delay < min.delay ? sol : min));
 }
 
 function mergeSolutions(
   childSolutions: Solution[][],
+  children: TreeNode[],
   node: TreeNode,
   wireR: number,
   wireC: number
@@ -202,69 +251,87 @@ function mergeSolutions(
         delay: 0,
         capacitance: node.loadCap,
         power: 0,
+        slew: 0,
         buffers: [],
       },
     ];
   }
 
-  // For each combination of child solutions, create merged solution
-  // Simplified: just take first solution from each child
-  const mergedSolution: Solution = {
-    delay: 0,
-    capacitance: 0,
-    power: 0,
-    buffers: [],
-  };
+  // Fold the child frontiers together one child at a time and prune after
+  // every fold, so the frontier stays small without throwing away
+  // alternatives (taking only childSols[0] collapsed the DP to one candidate
+  // per subtree).
+  let frontier: Solution[] = [
+    { delay: 0, capacitance: node.loadCap, power: 0, slew: 0, buffers: [] },
+  ];
 
-  for (const childSols of childSolutions) {
-    if (childSols.length > 0) {
-      const sol = childSols[0];
+  for (let i = 0; i < childSolutions.length; i++) {
+    const child = children[i];
+    // Real wire geometry between this node and the child — not a constant.
+    const dist =
+      Math.abs(child.position.x - node.position.x) +
+      Math.abs(child.position.y - node.position.y);
+    const wireCap = dist * wireC;
+    const wireRes = dist * wireR;
 
-      // Add wire delay (Elmore delay model)
-      const dist = 100; // Simplified distance
-      const wireCap = dist * wireC;
-      const wireRes = dist * wireR;
-
-      const wireDelay = wireRes * (wireCap + sol.capacitance);
-
-      mergedSolution.delay = Math.max(mergedSolution.delay, sol.delay + wireDelay);
-      mergedSolution.capacitance += sol.capacitance + wireCap;
-      mergedSolution.power += sol.power;
-      mergedSolution.buffers.push(...sol.buffers);
+    const next: Solution[] = [];
+    for (const base of frontier) {
+      for (const sol of childSolutions[i]) {
+        // Elmore delay of this wire driving the child's subtree.
+        const wireDelay = wireRes * (wireCap + sol.capacitance);
+        next.push({
+          delay: Math.max(base.delay, sol.delay + wireDelay),
+          capacitance: base.capacitance + sol.capacitance + wireCap,
+          power: base.power + sol.power,
+          // First-order slew degradation: the wire's own RC stretches the edge.
+          slew: Math.max(base.slew, sol.slew + wireRes * wireCap),
+          buffers: [...base.buffers, ...sol.buffers],
+        });
+      }
     }
+    frontier = pruneDominatedSolutions(next);
   }
 
-  return [mergedSolution];
+  return frontier;
 }
 
 function tryBufferInsertion(
   solutions: Solution[],
   bufferTypes: BufferType[],
-  maxCap: number
+  nodeR: number,
+  position: Point
 ): Solution[] {
-  const result: Solution[] = [...solutions];
+  const result: Solution[] = [];
 
-  // Try inserting each buffer type
   for (const sol of solutions) {
-    for (const bufferType of bufferTypes) {
-      if (sol.capacitance <= maxCap) {
-        // Insert buffer
-        const buffered: Solution = {
-          delay: sol.delay + bufferType.delay,
-          capacitance: bufferType.inputCap,
-          power: sol.power + bufferType.power,
-          buffers: [
-            ...sol.buffers,
-            {
-              id: `buf_${sol.buffers.length}`,
-              type: bufferType.name,
-              position: { x: 0, y: 0 }, // Position TBD
-            },
-          ],
-        };
+    // Keep the unbuffered candidate. When this node has its own driver (the
+    // source) the driver's RC sets the slew here.
+    const unbuffered: Solution =
+      nodeR > 0
+        ? { ...sol, slew: Math.max(sol.slew, nodeR * sol.capacitance) }
+        : sol;
+    result.push(unbuffered);
 
-        result.push(buffered);
-      }
+    for (const bufferType of bufferTypes) {
+      // The buffer re-drives the downstream load `sol.capacitance`, so its
+      // load-dependent delay and its output slew are both Rout·C_load.
+      const driveSlew = bufferType.outputResistance * sol.capacitance;
+      const buffered: Solution = {
+        delay: sol.delay + bufferType.delay + driveSlew,
+        capacitance: bufferType.inputCap,
+        power: sol.power + bufferType.power,
+        slew: driveSlew,
+        buffers: [
+          ...sol.buffers,
+          {
+            id: `buf_${sol.buffers.length}`,
+            type: bufferType.name,
+            // The buffer sits at the node it re-drives, not at the origin.
+            position,
+          },
+        ],
+      };
+      result.push(buffered);
     }
   }
 
@@ -286,7 +353,11 @@ function pruneDominatedSolutions(solutions: Solution[]): Solution[] {
         other.delay <= sol.delay &&
         other.capacitance <= sol.capacitance &&
         other.power <= sol.power &&
-        (other.delay < sol.delay || other.capacitance < sol.capacitance || other.power < sol.power)
+        other.slew <= sol.slew &&
+        (other.delay < sol.delay ||
+          other.capacitance < sol.capacitance ||
+          other.power < sol.power ||
+          other.slew < sol.slew)
       ) {
         isDominated = true;
         break;

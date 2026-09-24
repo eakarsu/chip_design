@@ -116,7 +116,8 @@ export function vanGinneken(root: VGNode, opts: VGOptions): VGResult {
 
   // Bottom-up recursion.
   function solve(n: VGNode): VGCandidate[] {
-    if (n.isSink || n.children.length === 0) {
+    if (n.children.length === 0) {
+      // Leaf: its pin cap is the whole subtree and its RAT is the constraint.
       const base: VGCandidate = {
         c: n.pinCap ?? 0,
         rat: n.rat ?? Infinity,
@@ -126,15 +127,18 @@ export function vanGinneken(root: VGNode, opts: VGOptions): VGResult {
       return [base];
     }
 
-    // Recurse into each child then propagate across its edge.
+    // Recurse into each child, optionally insert a buffer *at the child node*
+    // (between the child's subtree and the wire), then propagate across the
+    // edge. Doing the buffer step before the wire propagation is what keeps
+    // the wire capacitance in the load seen from above: an unbuffered variant
+    // presents `subtree + edge.c`, a buffered one `cin + edge.c`.
     const childCandidateLists: { childId: string; edge: VGEdge; cands: VGCandidate[] }[] = [];
     for (const e of n.children) {
       const childCands = solve(e.node);
-      const propagated = propagateThroughWire(childCands, e);
-      // Try inserting a buffer at the child-side of the edge (i.e. at the child node).
-      const buffered = insertBufferCandidates(propagated, opts.buffers);
-      const merged = prune(propagated.concat(buffered), opts);
-      childCandidateLists.push({ childId: e.node.id, edge: e, cands: merged });
+      const buffered = insertBufferCandidates(childCands, opts.buffers);
+      const merged = prune(childCands.concat(buffered), opts);
+      const propagated = propagateThroughWire(merged, e);
+      childCandidateLists.push({ childId: e.node.id, edge: e, cands: prune(propagated, opts) });
     }
 
     // Merge candidates from all children → cross-product, summing caps and
@@ -156,7 +160,11 @@ export function vanGinneken(root: VGNode, opts: VGOptions): VGResult {
       current = prune(next, opts);
     }
 
-    // If this node itself is a sink (e.g. mid-net cap), add its pin cap.
+    // This node may itself be a sink (a mid-net tap): its RAT constrains every
+    // candidate passing through, and its pin cap joins the downstream load.
+    if (n.isSink && n.rat !== undefined) {
+      current = current.map(c => ({ ...c, rat: Math.min(c.rat, n.rat!) }));
+    }
     if (n.pinCap) {
       current = current.map(c => ({ ...c, c: c.c + n.pinCap! }));
     }
@@ -220,18 +228,22 @@ function propagateThroughWire(cands: VGCandidate[], edge: VGEdge): VGCandidate[]
   }));
 }
 
-/** For every candidate, emit one extra "with buffer B at this node" variant. */
+/**
+ * For every candidate, emit one extra "with buffer B at this node" variant.
+ *
+ * Must be called *before* `propagateThroughWire` for the edge leading up to
+ * this node: `cand.c` is then exactly the downstream load the buffer drives,
+ * and the wire capacitance gets added to `b.cin` afterwards instead of being
+ * silently dropped.
+ */
 function insertBufferCandidates(cands: VGCandidate[], lib: BufferLib[]): VGCandidate[] {
   const out: VGCandidate[] = [];
   for (const cand of cands) {
     for (const b of lib) {
       // After a buffer, upstream sees the buffer's Cin. Downstream of the
-      // buffer the load is `cand.c`, so the buffer's delay is d0 + k·C_load.
+      // buffer the load is `cand.c`, so the buffer's delay is d0 + k·C_load,
+      // plus the Elmore term of its output resistance driving that load.
       const bufDelay = b.d0 + b.k * cand.c;
-      // The buffer's Rout adds an Elmore term to the downstream RAT:
-      //     RAT_downstream ← rat − Rout·C_load
-      // but since we already accounted for wire delay when propagating, we
-      // only add the buffer's drive delay here.
       out.push({
         c: b.cin,
         rat: cand.rat - bufDelay - b.rout * cand.c,

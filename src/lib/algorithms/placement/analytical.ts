@@ -76,9 +76,15 @@ export function analyticalPlacement(params: AnalyticalPlacementParams): Placemen
     // Check convergence
     if (convergenceData.length > 5) {
       const recent = convergenceData.slice(-5);
-      const improvement = (recent[0] - recent[4]) / recent[0];
-      if (improvement < 0.001) {
-        break; // Converged
+      // Guard the ratio: an already-zero wirelength would make `improvement`
+      // NaN/Infinity and the comparison meaningless.
+      if (recent[0] > 0) {
+        const improvement = (recent[0] - recent[4]) / recent[0];
+        if (improvement < 0.001) {
+          break; // Converged
+        }
+      } else {
+        break;
       }
     }
   }
@@ -124,6 +130,12 @@ function initializePositions(cells: Cell[], chipWidth: number, chipHeight: numbe
 /**
  * Global Placement using Quadratic Wirelength Optimization
  * Minimizes: W = Σ (weighted quadratic wirelength of nets)
+ *            + Σ anchor·||xi − centre||²
+ *
+ * The anchor term is what makes the linear system non-singular: without it
+ * `Ax = 0` has only the trivial "every connected cell collapses to the same
+ * point" solution, which is what this code used to converge to (bx/by stayed
+ * zero and no fixed pad contributed to the right-hand side).
  */
 function globalPlacement(
   cells: Cell[],
@@ -148,7 +160,7 @@ function globalPlacement(
 
     if (cellIds.length < 2) continue;
 
-    const weight = net.weight / cellIds.length; // Star model
+    const weight = (net.weight ?? 1) / cellIds.length; // Star model
 
     // Add connection costs
     for (let i = 0; i < cellIds.length; i++) {
@@ -161,6 +173,18 @@ function globalPlacement(
         }
       }
     }
+  }
+
+  // Anchor springs to the chip centre. They contribute to *both* the diagonal
+  // and the right-hand side — a positive-definite diagonal makes the system
+  // solvable and bounds cells that have no nets at all.
+  const anchorW = 1e-3;
+  const cx = chipWidth / 2;
+  const cy = chipHeight / 2;
+  for (let i = 0; i < n; i++) {
+    A[i][i] += anchorW;
+    bx[i] += anchorW * cx;
+    by[i] += anchorW * cy;
   }
 
   // Solve linear system: Ax = bx, Ay = by
@@ -225,15 +249,31 @@ function densityDrivenSpreading(
       const currentDensity = density[gy][gx];
 
       if (currentDensity > targetDensity) {
-        // Apply repulsive force
+        // Repulsive force proportional to how far over target the bin is.
         const force = lambda * (currentDensity - targetDensity);
 
-        // Find direction away from high density
-        const dx = (Math.random() - 0.5) * force * 10;
-        const dy = (Math.random() - 0.5) * force * 10;
+        // Push *down* the density gradient (towards the emptier neighbour).
+        // Using a random direction here just diffused the cells; the whole
+        // point of density-driven spreading is to move them away from the
+        // congested bins.
+        const left = gx > 0 ? density[gy][gx - 1] : Infinity;
+        const right = gx < gridX - 1 ? density[gy][gx + 1] : Infinity;
+        const down = gy > 0 ? density[gy - 1][gx] : Infinity;
+        const up = gy < gridY - 1 ? density[gy + 1][gx] : Infinity;
 
-        const newX = Math.max(0, Math.min(chipWidth - cell.width, cell.position.x + dx));
-        const newY = Math.max(0, Math.min(chipHeight - cell.height, cell.position.y + dy));
+        let dx = 0;
+        let dy = 0;
+        const minNeighbour = Math.min(left, right, down, up);
+        if (minNeighbour < currentDensity) {
+          if (minNeighbour === left) dx = -1;
+          else if (minNeighbour === right) dx = 1;
+          else if (minNeighbour === down) dy = -1;
+          else dy = 1;
+        }
+
+        const step = force * gridSize;
+        const newX = Math.max(0, Math.min(chipWidth - cell.width, cell.position.x + dx * step));
+        const newY = Math.max(0, Math.min(chipHeight - cell.height, cell.position.y + dy * step));
 
         return {
           ...cell,
@@ -259,13 +299,25 @@ function calculateDensityGrid(
   for (const cell of cells) {
     if (!cell.position) continue;
 
-    const gx = Math.floor(cell.position.x / gridSize);
-    const gy = Math.floor(cell.position.y / gridSize);
+    // Smear the cell's area over every bin its footprint touches. Crediting
+    // the whole area to the origin bin made a large cell look like a single
+    // saturated bin plus completely empty neighbours.
+    const x0 = Math.max(0, Math.floor(cell.position.x / gridSize));
+    const y0 = Math.max(0, Math.floor(cell.position.y / gridSize));
+    const x1 = Math.min(gridX - 1, Math.floor((cell.position.x + cell.width) / gridSize));
+    const y1 = Math.min(gridY - 1, Math.floor((cell.position.y + cell.height) / gridSize));
 
-    if (gx >= 0 && gx < gridX && gy >= 0 && gy < gridY) {
-      const cellArea = cell.width * cell.height;
-      const binArea = gridSize * gridSize;
-      density[gy][gx] += cellArea / binArea;
+    for (let gy = y0; gy <= y1; gy++) {
+      for (let gx = x0; gx <= x1; gx++) {
+        const overlapX =
+          Math.min(cell.position.x + cell.width, (gx + 1) * gridSize) -
+          Math.max(cell.position.x, gx * gridSize);
+        const overlapY =
+          Math.min(cell.position.y + cell.height, (gy + 1) * gridSize) -
+          Math.max(cell.position.y, gy * gridSize);
+        const overlap = Math.max(0, overlapX) * Math.max(0, overlapY);
+        density[gy][gx] += overlap / (gridSize * gridSize);
+      }
     }
   }
 
@@ -277,7 +329,12 @@ function calculateDensityGrid(
  * Fine-tune placement by small perturbations
  */
 function localRefinement(cells: Cell[], nets: Net[]): Cell[] {
-  const refinedCells = cells.map((c) => ({ ...c }));
+  // Deep-copy the positions too — a shallow `{ ...c }` still shares the
+  // `position` object, so trial moves mutated the caller's cells in place.
+  const refinedCells = cells.map((c) => ({
+    ...c,
+    position: c.position ? { ...c.position } : undefined,
+  }));
 
   // Try small moves for each cell
   for (let i = 0; i < cells.length; i++) {

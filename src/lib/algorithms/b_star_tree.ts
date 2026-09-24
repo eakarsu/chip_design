@@ -157,6 +157,37 @@ function swapBlocks(a: BNode, b: BNode): void {
 
 function rotate(n: BNode): void { n.rotated = !n.rotated; }
 
+/**
+ * Snapshot of the whole tree state (block↔node assignment, rotation flags and
+ * topology). SA moves mutate all three, so keeping only the bounding box of
+ * the best solution would lose it — we must be able to restore the tree.
+ */
+interface TreeSnapshot {
+  block: Cell;
+  rotated: boolean;
+  left: number;
+  right: number;
+}
+
+function snapshotTree(nodes: BNode[]): TreeSnapshot[] {
+  const idx = new Map<BNode, number>(nodes.map((n, i) => [n, i]));
+  return nodes.map(n => ({
+    block: n.block,
+    rotated: n.rotated,
+    left: n.left ? idx.get(n.left)! : -1,
+    right: n.right ? idx.get(n.right)! : -1,
+  }));
+}
+
+function restoreTree(nodes: BNode[], snap: TreeSnapshot[]): void {
+  nodes.forEach((n, i) => {
+    n.block = snap[i].block;
+    n.rotated = snap[i].rotated;
+    n.left = snap[i].left >= 0 ? nodes[snap[i].left] : null;
+    n.right = snap[i].right >= 0 ? nodes[snap[i].right] : null;
+  });
+}
+
 /* --------------------------------------------------------------------- */
 /* Public entry                                                            */
 /* --------------------------------------------------------------------- */
@@ -176,9 +207,10 @@ export function bStarTreeFloorplanning(params: FloorplanningParams): Floorplanni
     return area + 1000 * (overW + overH);
   };
 
-  let best = pack(root);
-  let bestCost = cost(best);
+  let bestCost = cost(pack(root));
   let curCost = bestCost;
+  // Remember the *tree* that produced `bestCost`, not just its bounding box.
+  let bestSnap = snapshotTree(nodes);
 
   let T = bestCost * 0.1 + 1;
   const cooling = 0.9;
@@ -207,7 +239,10 @@ export function bStarTreeFloorplanning(params: FloorplanningParams): Floorplanni
       const dc = c - curCost;
       if (dc < 0 || Math.random() < Math.exp(-dc / T)) {
         curCost = c;
-        if (c < bestCost) { bestCost = c; best = dims; }
+        if (c < bestCost) {
+          bestCost = c;
+          bestSnap = snapshotTree(nodes);
+        }
       } else {
         undo();
       }
@@ -215,7 +250,10 @@ export function bStarTreeFloorplanning(params: FloorplanningParams): Floorplanni
     T *= cooling;
   }
 
-  // Final pack to make sure positions on `nodes` correspond to the kept tree.
+  // Restore the best tree found — the last accepted state is not necessarily
+  // the best one (SA accepts uphill moves), and without this the reported
+  // placement would be the final iterate rather than the optimum.
+  restoreTree(nodes, bestSnap);
   const finalDims = pack(root);
   const placedBlocks: Cell[] = nodes.map(n => ({
     ...n.block,

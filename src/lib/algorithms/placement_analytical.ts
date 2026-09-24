@@ -99,14 +99,17 @@ function buildSpringGraph(
     }
   }
 
-  // Anchor each cell to the chip center so the system is non-singular when
-  // a cell has no nets, and keep the placement bounded.
+  // Anchor each cell so its *centre* is pulled toward the chip centre. The
+  // solved coordinates are cell origins (pin offsets are measured from the
+  // origin), so the anchor target must be shifted by half the footprint —
+  // otherwise the system is singular for isolated cells and the whole
+  // placement is offset by (w/2, h/2).
   const ax = chipWidth / 2;
   const ay = chipHeight / 2;
   for (let i = 0; i < n; i++) {
     diag[i] += anchorWeight;
-    bx[i] += anchorWeight * ax;
-    by[i] += anchorWeight * ay;
+    bx[i] += anchorWeight * (ax - cells[i].width / 2);
+    by[i] += anchorWeight * (ay - cells[i].height / 2);
   }
 
   const adj: Edge[][] = edgeMap.map(m => {
@@ -197,11 +200,14 @@ export function quadraticPlacement(params: PlacementParams): PlacementResult {
   const xs = solveCG(g, g.bx);
   const ys = solveCG(g, g.by);
 
-  // Clamp to chip area, account for cell footprint.
+  // Clamp to chip area. `xs`/`ys` are cell *origins* (the spring model adds
+  // pin offsets to them), so they are clamped directly — subtracting half the
+  // cell size here would shift every cell and scramble relative distances
+  // between cells of different sizes.
   for (let i = 0; i < n; i++) {
     const c = cells[i];
-    const x = Math.max(0, Math.min(params.chipWidth - c.width, xs[i] - c.width / 2));
-    const y = Math.max(0, Math.min(params.chipHeight - c.height, ys[i] - c.height / 2));
+    const x = Math.max(0, Math.min(params.chipWidth - c.width, xs[i]));
+    const y = Math.max(0, Math.min(params.chipHeight - c.height, ys[i]));
     c.position = { x, y };
   }
 
