@@ -101,6 +101,7 @@ const GROUPS: Group[] = [
       { label: 'Design Workspace', href: '/workspace', icon: <Hub /> },
       { label: 'Governed EDA Runs', href: '/workspace/execution', icon: <PrecisionManufacturing /> },
       { label: 'Engineering Operations', href: '/operations', icon: <FactCheck /> },
+      { label: 'Analog Power Studio', href: '/analog', icon: <FlashOn /> },
       { label: 'AI Design Studio', href: '/capabilities', icon: <AutoGraph /> },
     ],
   },
@@ -114,6 +115,15 @@ const GROUPS: Group[] = [
       },
       { label: 'AI Chat Workspace', href: '/governed-ai/chat', icon: <FactCheck /> },
       { label: 'Chip Design Agents', href: '/workspace/design-search', icon: <AutoGraph /> },
+    ],
+  },
+  {
+    title: 'AI & HLS Workspaces',
+    items: [
+      { label: 'HLS Workspace', href: '/hls', icon: <Memory /> },
+      { label: 'ML Predictor', href: '/ml', icon: <Insights /> },
+      { label: 'Systolic & Polyhedral', href: '/accelerator', icon: <GridOn /> },
+      { label: 'AI Systems Models', href: '/ai-systems', icon: <Speed /> },
     ],
   },
   {

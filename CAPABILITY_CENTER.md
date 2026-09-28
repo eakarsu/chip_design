@@ -1,5 +1,55 @@
 # AI design studio, capability center and phase gates
 
+## Analog Power Design Studio
+
+`/analog` is a governed buck-converter workflow separate from the digital flow:
+requirements review (derived conditions and missing-item flags), ranked IC
+selection from a curated datasheet snapshot, datasheet-style component sizing
+(inductor, DC-bias-derated output capacitance, input RMS, diode, E96 feedback
+divider, loss/efficiency estimates), ngspice simulation with automatic Type-II
+compensator tuning, averaged transient and AC loop measurements, SVG
+schematic/BOM/wiring/netlist exports, a PCB review checklist, an independent AI
+challenge, and run/cost history. What the averaged model does not represent
+(switching ripple, EMI, vendor models) and what is not automated (PSpice,
+EasyEDA, PCB placement/routing) are stated in the UI and in
+[ANALOG_STUDIO.md](ANALOG_STUDIO.md). Simulation is skipped with an explicit
+reason when ngspice is not installed.
+
+## HLS, ML, systolic and AI-systems workspaces
+
+Four additional workspaces extend the platform with honest, evidence-labelled
+tooling:
+
+- **`/hls`** — restricted-C kernel parser and IR, bounded pragma design-space
+  enumeration (parallel/pipeline/unroll/tile) with Pareto ranking, an
+  analytical cost model labelled *not synthesis evidence*, Verilog scaffold
+  generation checked with Yosys (elaboration only) and Icarus (smoke run),
+  and a deterministic synthesizability scanner plus an LLM refactor draft that
+  is explicitly unverified. There is no commercial HLS tool in this
+  environment and the UI never claims one ran.
+- **`/ml`** — a real ridge-regression performance predictor trained on stored
+  OpenLane/EDA run metrics (deterministic, seeded, no `Math.random`), with R²/
+  RMSE, a ±1σ uncertainty proxy and an explicit insufficient-data state. The
+  local database currently has no OpenLane runs, so training reports what to
+  run first rather than fabricating a model.
+- **`/accelerator`** — a systolic GEMM RTL generator (output- and
+  weight-stationary) with self-checking testbenches; generated RTL is verified
+  with Icarus (PASS) and synthesised with Yosys for every tested configuration,
+  and closed-form cycle/utilization formulas are checked in simulation. The
+  polyhedral explorer enumerates legal tilings and loop orders with a
+  documented memory-traffic model and Pareto front.
+- **`/ai-systems`** — analytical models and planners inspired by efficient-AI
+  research: hierarchical memory budgeting, quantization footprint/energy,
+  LUT-based inference, GPU+FPGA pipeline splitting, and embedded-DRAM
+  projections. Every response is labelled `analytical-estimate` with explicit
+  assumptions and limitations; none of these is a measurement or a research
+  implementation.
+
+The earlier simulated "ML/GNN/RL" placement, routing and floorplanning
+implementations were replaced with genuine deterministic algorithms (or
+relabelled where randomness is inherent to the algorithm), and the tests now
+fail if `Math.random` appears in the placement learning path.
+
 ## Fourteen design phases and seven reimplemented workflows
 
 The top of `/capabilities` now starts with the canonical 14-phase chip-design

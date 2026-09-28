@@ -1,6 +1,7 @@
 'use client';
 /** SPICE testbench emitter. */
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import {
   Box, Stack, Typography, Paper, Chip, TextField, MenuItem, Select,
   Button,
@@ -46,6 +47,9 @@ export default function SpiceTbPage() {
         <Button size="small" variant="outlined"
           onClick={() => navigator.clipboard.writeText(r.netlist)}>
           copy netlist
+        </Button>
+        <Button size="small" variant="contained" component={Link} href="/analog">
+          Analog Power Studio
         </Button>
       </Stack>
       <Paper sx={{ p: 2 }}>
