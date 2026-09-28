@@ -32,7 +32,8 @@
     "demo-data:load": "tsx scripts/load-demo-data.ts",
     "demo-data:verify": "tsx scripts/load-demo-data.ts --verify",
     "restore:verify": "tsx scripts/verify-restore.ts",
-    "audit:production": "tsx scripts/audit-production-routes.ts"
+    "audit:production": "tsx scripts/audit-production-routes.ts",
+    "demo-data:load-production": "tsx scripts/load-production-demo.ts"
   },
   "bin": {
     "chip-design": "bin/chip-design.ts"

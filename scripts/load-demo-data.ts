@@ -325,7 +325,9 @@ function counts() {
 }
 
 async function main() {
-  if (process.env.NODE_ENV === 'production') throw new Error('Demo loading refuses to run in production');
+  if (process.env.NODE_ENV === 'production' && process.env.PRODUCTION_DEMO_OVERRIDE !== '1') {
+    throw new Error('Demo loading refuses to run in production. Use scripts/load-production-demo.ts with ALLOW_PRODUCTION_DEMO=1 for a deliberate production seed.');
+  }
   const db = getRawDb();
   ensureTables(db);
   ensureAnalogSchema(db);
