@@ -29,7 +29,9 @@ import {
   PartitioningResult,
   LithographyResult,
   CMPResult,
+  PlacementAlgorithm,
 } from '@/types/algorithms';
+import { abacusLegalization as rowAbacusLegalization } from './legalization';
 
 // ============================================================================
 // LEGALIZATION ALGORITHMS
@@ -94,9 +96,26 @@ export function tetrisLegalization(params: {
     cells: legalizedCells,
     totalDisplacement,
     maxDisplacement,
-    overlap: 0,
+    overlap: pairwiseOverlapArea(legalizedCells),
     runtime: performance.now() - startTime,
   };
+}
+
+/** Measured pairwise overlap area (0 for an overlap-free row packing). */
+function pairwiseOverlapArea(cells: Cell[]): number {
+  let area = 0;
+  for (let i = 0; i < cells.length; i++) {
+    const a = cells[i].position;
+    if (!a) continue;
+    for (let j = i + 1; j < cells.length; j++) {
+      const b = cells[j].position;
+      if (!b) continue;
+      const w = Math.min(a.x + cells[i].width, b.x + cells[j].width) - Math.max(a.x, b.x);
+      const h = Math.min(a.y + cells[i].height, b.y + cells[j].height) - Math.max(a.y, b.y);
+      if (w > 0 && h > 0) area += w * h;
+    }
+  }
+  return area;
 }
 
 /**
@@ -111,8 +130,39 @@ export function abacusLegalization(params: {
   siteWidth: number;
 }): LegalizationResult {
   const startTime = performance.now();
-  // Simplified Abacus implementation
-  return tetrisLegalization(params); // Falls back to Tetris for now
+  const { cells, chipWidth, chipHeight } = params;
+
+  // Real Abacus legalization: optimal single-row L1 cluster placement. The
+  // `rowHeight`/`siteWidth` parameters are accepted for API compatibility; the
+  // legalizer derives its row height from the tallest cell.
+  const legalized = rowAbacusLegalization({
+    algorithm: PlacementAlgorithm.SIMULATED_ANNEALING,
+    cells,
+    nets: [],
+    chipWidth,
+    chipHeight,
+  });
+
+  const originById = new Map(cells.map((c) => [c.id, c.position]));
+  let totalDisplacement = 0;
+  let maxDisplacement = 0;
+  for (const cell of legalized.cells) {
+    const orig = originById.get(cell.id);
+    if (orig && cell.position) {
+      const d = Math.hypot(cell.position.x - orig.x, cell.position.y - orig.y);
+      totalDisplacement += d;
+      maxDisplacement = Math.max(maxDisplacement, d);
+    }
+  }
+
+  return {
+    success: true,
+    cells: legalized.cells,
+    totalDisplacement,
+    maxDisplacement,
+    overlap: legalized.overlap,
+    runtime: performance.now() - startTime,
+  };
 }
 
 // ============================================================================
@@ -141,18 +191,19 @@ export function powerGridAnalysis(params: {
     Array(gridX).fill(voltage)
   );
 
-  // Simulate IR drop based on current density
+  // First-order resistive model: IR drop = (cells in bin × current) × R.
   const violations: Point[] = [];
   let maxDrop = 0;
   let totalDrop = 0;
 
   for (let y = 0; y < gridY; y++) {
     for (let x = 0; x < gridX; x++) {
-      // Calculate current density in this region
+      // Clamp cell origins into the analysis grid so cells outside the
+      // sampled area still contribute to the bin they fall in.
       const cellsInRegion = cells.filter(c => {
         if (!c.position) return false;
-        const cx = Math.floor(c.position.x / gridSize);
-        const cy = Math.floor(c.position.y / gridSize);
+        const cx = Math.min(gridX - 1, Math.max(0, Math.floor(c.position.x / gridSize)));
+        const cy = Math.min(gridY - 1, Math.max(0, Math.floor(c.position.y / gridSize)));
         return cx === x && cy === y;
       }).length;
 

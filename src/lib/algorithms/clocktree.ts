@@ -98,7 +98,9 @@ export function hTreeClock(params: ClockTreeParams): ClockTreeResult {
   const startTime = performance.now();
   const { clockSource, sinks, chipWidth, chipHeight } = params;
 
-  // Build H-tree recursively
+  // Build H-tree recursively. Node ids are deterministic counters, not random
+  // strings, so the same inputs always produce the same tree.
+  let nodeCounter = 0;
   function buildHTree(
     center: Point,
     width: number,
@@ -107,7 +109,7 @@ export function hTreeClock(params: ClockTreeParams): ClockTreeResult {
     level: number
   ): ClockNode {
     const node: ClockNode = {
-      id: `h_node_${level}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `h_node_${level}_${nodeCounter++}`,
       position: center,
       children: [],
       delay: manhattanDistance(center, center) * 0.01, // Wire delay
@@ -187,7 +189,8 @@ export function xTreeClock(params: ClockTreeParams): ClockTreeResult {
   const startTime = performance.now();
   const { sinks, chipWidth, chipHeight } = params;
 
-  // Build X-tree with diagonal structure
+  // Build X-tree with diagonal structure. Deterministic node ids.
+  let nodeCounter = 0;
   function buildXTree(
     center: Point,
     radius: number,
@@ -195,7 +198,7 @@ export function xTreeClock(params: ClockTreeParams): ClockTreeResult {
     level: number
   ): ClockNode {
     const node: ClockNode = {
-      id: `x_node_${level}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `x_node_${level}_${nodeCounter++}`,
       position: center,
       children: [],
       delay: radius * 0.01,
@@ -327,13 +330,14 @@ export function meshClock(params: ClockTreeParams): ClockTreeResult {
   }
 
   // Connect sinks to nearest mesh nodes
-  for (const sink of sinks) {
+  for (let sinkIndex = 0; sinkIndex < sinks.length; sinkIndex++) {
+    const sink = sinks[sinkIndex];
     const i = Math.round((sink.y / chipHeight) * meshDensity);
     const j = Math.round((sink.x / chipWidth) * meshDensity);
     const nearestNode = meshNodes[Math.min(i, meshDensity)][Math.min(j, meshDensity)];
 
     const sinkNode: ClockNode = {
-      id: `sink_${Math.random().toString(36).substr(2, 9)}`,
+      id: `sink_${sinkIndex}`,
       position: sink,
       children: [],
       delay: 0.05,
@@ -390,7 +394,8 @@ export function dmeAlgorithm(params: ClockTreeParams): ClockTreeResult {
     isSink: true,
   }));
 
-  // Bottom-up merging
+  // Bottom-up merging. Deterministic id counter for merged nodes.
+  let mergeCounter = 0;
   while (nodes.length > 1) {
     // Find closest pair
     let minDist = Infinity;
@@ -417,7 +422,7 @@ export function dmeAlgorithm(params: ClockTreeParams): ClockTreeResult {
     };
 
     const mergedNode: ClockNode = {
-      id: `dme_${Math.random().toString(36).substr(2, 9)}`,
+      id: `dme_${mergeCounter++}`,
       position: mergePoint,
       children: [node1, node2],
       delay: minDist * 0.01,

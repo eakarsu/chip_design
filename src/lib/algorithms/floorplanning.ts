@@ -192,21 +192,41 @@ export function sequencePairFloorplanning(
   const { chipWidth, chipHeight, blocks } = params;
 
   const cells = JSON.parse(JSON.stringify(blocks)) as Cell[];
+  const n = cells.length;
 
-  // Create initial sequence pair
-  const positiveSeq = cells.map((_, i) => i);
-  const negativeSeq = [...positiveSeq].sort(() => Math.random() - 0.5);
+  // Sequence pair: positive sequence = input order, negative sequence = its
+  // reverse. Deterministic (the old code shuffled the negative sequence with a
+  // random comparator), and the pair defines the constraint graphs below.
+  const negOf = new Array<number>(n);
+  for (let i = 0; i < n; i++) negOf[i] = n - 1 - i;
 
-  // Compute coordinates from sequence pair
+  // Sequence-pair constraints for i before j in the positive sequence:
+  //   neg(i) < neg(j)  => i is left of j   (horizontal edge i -> j)
+  //   neg(i) > neg(j)  => i is below j     (vertical edge i -> j)
+  const horizontalPreds: number[][] = Array.from({ length: n }, () => []);
+  const verticalPreds: number[][] = Array.from({ length: n }, () => []);
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (negOf[i] < negOf[j]) horizontalPreds[j].push(i);
+      else verticalPreds[j].push(i);
+    }
+  }
+
+  // Longest-path compaction: every edge points forward in the positive
+  // sequence, so a single pass computes the earliest legal coordinates.
+  const x = new Array<number>(n).fill(0);
+  const y = new Array<number>(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    for (const p of horizontalPreds[i]) {
+      x[i] = Math.max(x[i], x[p] + cells[p].width);
+    }
+    for (const p of verticalPreds[i]) {
+      y[i] = Math.max(y[i], y[p] + cells[p].height);
+    }
+  }
+
   cells.forEach((cell, i) => {
-    const posIdx = positiveSeq.indexOf(i);
-    const negIdx = negativeSeq.indexOf(i);
-
-    // Simple coordinate assignment based on sequence
-    cell.position = {
-      x: (posIdx / cells.length) * chipWidth,
-      y: (negIdx / cells.length) * chipHeight,
-    };
+    cell.position = { x: x[i], y: y[i] };
   });
 
   const totalBlockArea = cells.reduce((sum, cell) => sum + cell.width * cell.height, 0);

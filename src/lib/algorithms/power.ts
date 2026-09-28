@@ -9,7 +9,8 @@ export function clockGating(params: PowerParams): PowerResult {
   const startTime = performance.now();
   const { cells, clockFrequency, voltage, temperature } = params;
 
-  // Simulate power analysis
+  // First-order analytic power estimate (no cell-level switching activity or
+  // liberty power tables are available, so this is a structural estimate).
   const baseClockPower = cells.length * clockFrequency * voltage * voltage * 0.001;
   const baseSwitchingPower = cells.length * 0.5;
   const baseLeakagePower = cells.length * 0.1 * Math.exp((temperature - 25) / 100);
@@ -46,7 +47,7 @@ export function voltageScaling(params: PowerParams): PowerResult {
   const startTime = performance.now();
   const { cells, clockFrequency, voltage, temperature } = params;
 
-  // Simulate voltage scaling (DVFS)
+  // Analytic DVFS scaling model (V² dynamic power, linear leakage).
   const scaledVoltage = voltage * 0.8; // 20% voltage reduction
   const scaledFrequency = clockFrequency * 0.85; // Slight frequency reduction
 

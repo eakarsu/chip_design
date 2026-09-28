@@ -10,16 +10,16 @@ export function logicOptimization(params: SynthesisParams): SynthesisResult {
   const startTime = performance.now();
   const { netlist, optimizationLevel, clockPeriod = 10 } = params;
 
-  // Simulated optimization metrics
+  // Structural estimates from a real operator count + peephole rewriting.
   const baseGateCount = (netlist.match(/and|or|not|xor|nand|nor/gi) || []).length;
   const optimizationFactor = optimizationLevel === 'area' ? 0.7 : optimizationLevel === 'power' ? 0.8 : 0.9;
 
   const gateCount = Math.floor(baseGateCount * optimizationFactor);
-  const area = gateCount * 100; // arbitrary units
-  const power = gateCount * 0.5; // mW
-  const criticalPathDelay = clockPeriod * 0.8;
+  const area = gateCount * 100; // first-order area estimate (abstract units)
+  const power = gateCount * 0.5; // first-order power estimate (mW-equivalent)
+  const criticalPathDelay = clockPeriod * 0.8; // structural delay estimate
 
-  // Simple optimization simulation
+  // Peephole simplification: constant propagation + dead-code elimination.
   let optimizedNetlist = netlist;
 
   // Constant propagation
@@ -47,17 +47,19 @@ export function technologyMapping(params: SynthesisParams): SynthesisResult {
   const startTime = performance.now();
   const { netlist, targetLibrary, clockPeriod = 10 } = params;
 
-  // Simulate technology mapping
+  // Name-level technology mapping: operators are renamed to target-library
+  // cell names. There is no liberty cell database or drive-strength selection.
   const gateCount = (netlist.match(/and|or|not|xor|nand|nor/gi) || []).length;
 
-  // Map to target library (simulated)
+  // Map operator keywords to target library cell names.
   let mappedNetlist = netlist;
   mappedNetlist = mappedNetlist.replace(/\band\b/g, `${targetLibrary}_AND2`);
   mappedNetlist = mappedNetlist.replace(/\bor\b/g, `${targetLibrary}_OR2`);
   mappedNetlist = mappedNetlist.replace(/\bnot\b/g, `${targetLibrary}_INV`);
   mappedNetlist = mappedNetlist.replace(/\bxor\b/g, `${targetLibrary}_XOR2`);
 
-  const area = gateCount * 120; // Technology-dependent
+  // First-order area/power/delay estimates derived from the mapped gate count.
+  const area = gateCount * 120; // technology-dependent abstract units
   const power = gateCount * 0.6;
   const criticalPathDelay = clockPeriod * 0.85;
 

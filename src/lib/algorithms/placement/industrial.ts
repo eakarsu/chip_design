@@ -32,37 +32,34 @@ export function runEPlace(
     Array.from({ length: numBinsX }, () => 0)
   );
 
-  // Initialize cell positions
-  cells.forEach((cell) => {
-    cell.position = {
-      x: Math.random() * (chipWidth - cell.width),
-      y: Math.random() * (chipHeight - cell.height),
-    };
-  });
+  // Deterministic grid spread: identical inputs always give the same result.
+  const placed = cells.map((c) => ({ ...c }));
+  spreadCellsDeterministically(placed, chipWidth, chipHeight);
 
   // Nesterov's method for optimization
-  const prevPositions = cells.map((c) => ({ ...c.position! }));
+  const prevPositions = placed.map((c) => ({ ...c.position! }));
+  const convergenceData: number[] = [];
 
   for (let iter = 0; iter < iterations; iter++) {
-    // Update density grid using FFT (simulated)
-    updateDensityGrid(cells, densityGrid, binSize, chipWidth, chipHeight);
+    // Simple bin splatting of cell area (no FFT is implemented here).
+    updateDensityGrid(placed, densityGrid, binSize, chipWidth, chipHeight);
 
     // Compute electrostatic forces
     const forces = computeElectrostaticForces(
-      cells,
+      placed,
       densityGrid,
       binSize,
       targetDensity
     );
 
     // Compute wirelength gradient
-    const wlGradients = computeWirelengthGradient(cells, nets);
+    const wlGradients = computeWirelengthGradient(placed, nets);
 
     // Combine forces and update positions using Nesterov's method
     const momentum = 0.9;
     const stepSize = 5.0 / (1 + iter / 100);
 
-    cells.forEach((cell, idx) => {
+    placed.forEach((cell, idx) => {
       if (cell.position) {
         // Nesterov momentum
         const vx = momentum * (cell.position.x - prevPositions[idx].x);
@@ -79,19 +76,21 @@ export function runEPlace(
         cell.position.y = Math.max(0, Math.min(chipHeight - cell.height, cell.position.y));
       }
     });
+
+    convergenceData.push(calculateWirelength(placed, nets));
   }
 
-  const wirelength = calculateWirelength(cells, nets);
+  const wirelength = calculateWirelength(placed, nets);
   const runtime = Date.now() - startTime;
 
   return {
     success: true,
-    cells,
+    cells: placed,
     totalWirelength: wirelength,
-    overlap: 0,
+    overlap: calculateOverlap(placed),
     runtime,
     iterations,
-    convergenceData: [],
+    convergenceData,
   };
 }
 
@@ -116,21 +115,24 @@ export function runNTUPlace(
   const { iterations = 300, binSize = 40 } = options;
   let lambda = options.lambda || 0.5;
 
-  // Separate fixed and movable cells
-  const movableCells = cells.filter((c) => !(c as any).fixed);
-  const fixedCells = cells.filter((c) => (c as any).fixed);
+  const placed = cells.map((c) => ({ ...c }));
 
-  // Initialize movable cells
-  movableCells.forEach((cell) => {
-    cell.position = {
-      x: Math.random() * (chipWidth - cell.width),
-      y: Math.random() * (chipHeight - cell.height),
-    };
-  });
+  // Separate fixed and movable cells
+  type MaybeFixed = Cell & { fixed?: boolean };
+  const movableCells: MaybeFixed[] = placed.filter((c) => !(c as MaybeFixed).fixed);
+  const fixedCells: MaybeFixed[] = placed.filter((c) => (c as MaybeFixed).fixed);
+
+  // Deterministic grid spread; caller-provided positions are kept.
+  spreadCellsDeterministically(
+    movableCells.filter((c) => !c.position),
+    chipWidth,
+    chipHeight
+  );
 
   // Create bins for density control
   const numBinsX = Math.ceil(chipWidth / binSize);
   const numBinsY = Math.ceil(chipHeight / binSize);
+  const convergenceData: number[] = [];
 
   for (let iter = 0; iter < iterations; iter++) {
     // Solve quadratic wirelength minimization
@@ -165,22 +167,23 @@ export function runNTUPlace(
 
     // Update lambda (gradually increase density weight)
     lambda = Math.min(1.0, lambda + 0.001);
+    convergenceData.push(calculateWirelength(placed, nets));
   }
 
   // Apply legalization
   legalizePlacement(movableCells, chipWidth, chipHeight);
 
-  const wirelength = calculateWirelength(cells, nets);
+  const wirelength = calculateWirelength(placed, nets);
   const runtime = Date.now() - startTime;
 
   return {
     success: true,
-    cells,
+    cells: placed,
     totalWirelength: wirelength,
-    overlap: 0,
+    overlap: calculateOverlap(placed),
     runtime,
     iterations,
-    convergenceData: [],
+    convergenceData,
   };
 }
 
@@ -203,11 +206,13 @@ export function runMPL(
   const startTime = Date.now();
   const { levels = 5, coarseningRatio = 2.0 } = options;
 
+  const placed = cells.map((c) => ({ ...c }));
+
   // Create multilevel hierarchy
   const hierarchy: Cell[][] = [];
   const netHierarchy: Net[][] = [];
 
-  hierarchy[0] = [...cells];
+  hierarchy[0] = placed;
   netHierarchy[0] = [...nets];
 
   // Coarsening phase
@@ -224,16 +229,12 @@ export function runMPL(
     if (coarseCells.length < 10) break;
   }
 
-  // Initial placement at coarsest level
+  // Initial placement at coarsest level (deterministic grid spread).
   const coarsestLevel = hierarchy.length - 1;
-  hierarchy[coarsestLevel].forEach((cell) => {
-    cell.position = {
-      x: Math.random() * (chipWidth - cell.width),
-      y: Math.random() * (chipHeight - cell.height),
-    };
-  });
+  spreadCellsDeterministically(hierarchy[coarsestLevel], chipWidth, chipHeight);
 
   // Refinement phase (uncoarsening)
+  const convergenceData: number[] = [];
   for (let level = coarsestLevel - 1; level >= 0; level--) {
     // Project placement from coarse to fine level
     projectPlacement(hierarchy[level + 1], hierarchy[level]);
@@ -246,24 +247,21 @@ export function runMPL(
       chipHeight,
       50
     );
+    convergenceData.push(calculateWirelength(hierarchy[level], netHierarchy[level]));
   }
 
   // Final placement is in hierarchy[0]
-  cells.forEach((cell, idx) => {
-    cell.position = hierarchy[0][idx].position;
-  });
-
-  const wirelength = calculateWirelength(cells, nets);
+  const wirelength = calculateWirelength(placed, nets);
   const runtime = Date.now() - startTime;
 
   return {
     success: true,
-    cells,
+    cells: placed,
     totalWirelength: wirelength,
-    overlap: 0,
+    overlap: calculateOverlap(placed),
     runtime,
     iterations: hierarchy.length,
-    convergenceData: [],
+    convergenceData,
   };
 }
 
@@ -284,97 +282,149 @@ export function runCapo(
   const startTime = Date.now();
   const { obstacles = [], regions = [] } = options;
 
-  // Initialize cells avoiding obstacles
-  cells.forEach((cell) => {
-    let placed = false;
-    let attempts = 0;
+  const placed = cells.map((c) => ({ ...c }));
 
-    while (!placed && attempts < 100) {
-      const x = Math.random() * (chipWidth - cell.width);
-      const y = Math.random() * (chipHeight - cell.height);
-
-      // Check if position overlaps with obstacles
-      const overlapsObstacle = obstacles.some(
-        (obs) =>
-          !(
-            x + cell.width < obs.x ||
-            x > obs.x + obs.width ||
-            y + cell.height < obs.y ||
-            y > obs.y + obs.height
-          )
-      );
-
-      // Check region constraints
-      const region = regions.find((r) => r.cells.includes(cell.id));
-      const inCorrectRegion = region
-        ? x >= region.x &&
-          x + cell.width <= region.x + region.width &&
-          y >= region.y &&
-          y + cell.height <= region.y + region.height
-        : true;
-
-      if (!overlapsObstacle && inCorrectRegion) {
-        cell.position = { x, y };
-        placed = true;
-      }
-
-      attempts++;
-    }
-
-    if (!placed) {
-      // Fallback position
-      cell.position = { x: 0, y: 0 };
-    }
-  });
-
-  // Optimize placement while respecting constraints
-  for (let iter = 0; iter < 200; iter++) {
-    cells.forEach((cell) => {
-      if (cell.position) {
-        // Try to improve position
-        const deltaX = (Math.random() - 0.5) * 20;
-        const deltaY = (Math.random() - 0.5) * 20;
-
-        const newX = cell.position.x + deltaX;
-        const newY = cell.position.y + deltaY;
-
-        // Check constraints
-        const valid = !obstacles.some(
-          (obs) =>
-            !(
-              newX + cell.width < obs.x ||
-              newX > obs.x + obs.width ||
-              newY + cell.height < obs.y ||
-              newY > obs.y + obs.height
-            )
-        );
-
-        if (
-          valid &&
-          newX >= 0 &&
-          newX + cell.width <= chipWidth &&
-          newY >= 0 &&
-          newY + cell.height <= chipHeight
-        ) {
-          cell.position.x = newX;
-          cell.position.y = newY;
-        }
-      }
-    });
+  // Deterministic constraint-aware initial placement: scan candidate slots in
+  // row-major order and take the first valid one (no sampling/retries). Each
+  // freshly placed cell is added to the occupancy set so cells do not overlap.
+  const placedCells: Cell[] = [];
+  for (const cell of placed) {
+    const region = regions.find((r) => r.cells.includes(cell.id));
+    cell.position = findFirstValidSlot(
+      cell,
+      obstacles,
+      region,
+      chipWidth,
+      chipHeight,
+      placedCells
+    );
+    placedCells.push(cell);
   }
 
-  const wirelength = calculateWirelength(cells, nets);
+  // Deterministic coordinate descent respecting obstacles and regions: a move
+  // is kept only when it lowers the true HPWL.
+  let iterationsRun = 0;
+  const convergenceData: number[] = [calculateWirelength(placed, nets)];
+  for (let iter = 0; iter < 200; iter++) {
+    iterationsRun++;
+    let improved = false;
+
+    for (const cell of placed) {
+      const region = regions.find((r) => r.cells.includes(cell.id));
+      const step = Math.max(1, Math.min(cell.width, cell.height) / 2);
+      const baseWl = calculateWirelength(placed, nets);
+      const moves = [
+        { dx: step, dy: 0 },
+        { dx: -step, dy: 0 },
+        { dx: 0, dy: step },
+        { dx: 0, dy: -step },
+      ];
+
+      for (const move of moves) {
+        const origin = { ...cell.position! };
+        const nx = origin.x + move.dx;
+        const ny = origin.y + move.dy;
+        const others = placed.filter((c) => c !== cell);
+        if (!isValidPosition(nx, ny, cell, obstacles, region, chipWidth, chipHeight, others)) {
+          continue;
+        }
+
+        cell.position = { x: nx, y: ny };
+        if (calculateWirelength(placed, nets) < baseWl - 1e-9) {
+          improved = true;
+          break;
+        }
+        cell.position = origin;
+      }
+    }
+
+    convergenceData.push(calculateWirelength(placed, nets));
+    if (!improved) break;
+  }
+
+  const wirelength = calculateWirelength(placed, nets);
   const runtime = Date.now() - startTime;
 
   return {
     success: true,
-    cells,
+    cells: placed,
     totalWirelength: wirelength,
-    overlap: 0,
+    overlap: calculateOverlap(placed),
     runtime,
-    iterations: 100,
-    convergenceData: [],
+    iterations: iterationsRun,
+    convergenceData,
   };
+}
+
+/** Obstacle / region / die-bounds / other-cell check for a cell origin. */
+function isValidPosition(
+  x: number,
+  y: number,
+  cell: Cell,
+  obstacles: Array<{ x: number; y: number; width: number; height: number }>,
+  region: { x: number; y: number; width: number; height: number } | undefined,
+  chipWidth: number,
+  chipHeight: number,
+  others: Cell[] = []
+): boolean {
+  if (x < 0 || y < 0 || x + cell.width > chipWidth || y + cell.height > chipHeight) {
+    return false;
+  }
+  for (const obs of obstacles) {
+    const overlaps =
+      x < obs.x + obs.width &&
+      x + cell.width > obs.x &&
+      y < obs.y + obs.height &&
+      y + cell.height > obs.y;
+    if (overlaps) return false;
+  }
+  for (const other of others) {
+    if (!other.position) continue;
+    const overlaps =
+      x < other.position.x + other.width &&
+      x + cell.width > other.position.x &&
+      y < other.position.y + other.height &&
+      y + cell.height > other.position.y;
+    if (overlaps) return false;
+  }
+  if (
+    region &&
+    !(
+      x >= region.x &&
+      x + cell.width <= region.x + region.width &&
+      y >= region.y &&
+      y + cell.height <= region.y + region.height
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** First valid row-major slot for a cell, or a documented fallback origin. */
+function findFirstValidSlot(
+  cell: Cell,
+  obstacles: Array<{ x: number; y: number; width: number; height: number }>,
+  region: { x: number; y: number; width: number; height: number } | undefined,
+  chipWidth: number,
+  chipHeight: number,
+  others: Cell[] = []
+): { x: number; y: number } {
+  const step = Math.max(1, Math.min(cell.width, cell.height) / 2);
+  const x0 = region ? region.x : 0;
+  const y0 = region ? region.y : 0;
+  const x1 = region ? region.x + region.width : chipWidth;
+  const y1 = region ? region.y + region.height : chipHeight;
+
+  for (let y = y0; y + cell.height <= y1 + 1e-9; y += step) {
+    for (let x = x0; x + cell.width <= x1 + 1e-9; x += step) {
+      if (isValidPosition(x, y, cell, obstacles, region, chipWidth, chipHeight, others)) {
+        return { x, y };
+      }
+    }
+  }
+  // The constraint set is infeasible for this cell; return a stable origin.
+  return { x: x0, y: y0 };
 }
 
 // ============= Helper Functions =============
@@ -567,10 +617,37 @@ function spreadCellsForDensity(
           ? densityMap[binY][binX] - binSize * binSize * 0.8
           : 0;
 
-      // Move toward target position, with spreading if overcrowded
-      const spreadFactor = overflow > 0 ? lambda : 0;
-      const spreadX = (Math.random() - 0.5) * spreadFactor * 50;
-      const spreadY = (Math.random() - 0.5) * spreadFactor * 50;
+      // Move toward target position, with a deterministic down-gradient push
+      // when the bin is overcrowded (no random jitter).
+      let spreadX = 0;
+      let spreadY = 0;
+      if (overflow > 0) {
+        let bestDensity = Infinity;
+        let bestDx = 0;
+        let bestDy = 0;
+        const directions = [
+          { dx: 0, dy: -1 },
+          { dx: 0, dy: 1 },
+          { dx: -1, dy: 0 },
+          { dx: 1, dy: 0 },
+        ];
+        for (const dir of directions) {
+          const ny = binY + dir.dy;
+          const nx = binX + dir.dx;
+          const density =
+            ny >= 0 && ny < densityMap.length && nx >= 0 && nx < densityMap[0].length
+              ? densityMap[ny][nx]
+              : 0;
+          if (density < bestDensity) {
+            bestDensity = density;
+            bestDx = dir.dx;
+            bestDy = dir.dy;
+          }
+        }
+        const push = lambda * 10;
+        spreadX = bestDx * push;
+        spreadY = bestDy * push;
+      }
 
       cell.position.x =
         (1 - lambda) * cell.position.x + lambda * targetPos.x + spreadX;
@@ -706,4 +783,43 @@ function calculateAverageDensity(grid: number[][], targetDensity: number): numbe
   );
   const maxArea = grid.length * grid[0].length * 100 * 100 * targetDensity;
   return total / maxArea;
+}
+
+/**
+ * Deterministic grid spread used for initial placement. Cells are laid out in
+ * row-major order and centred in their slot, so identical inputs always
+ * produce identical positions (the old code sampled a random position here).
+ */
+function spreadCellsDeterministically(cells: Cell[], chipWidth: number, chipHeight: number): void {
+  const n = Math.max(1, cells.length);
+  const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
+  const rows = Math.max(1, Math.ceil(n / cols));
+  const slotW = chipWidth / cols;
+  const slotH = chipHeight / rows;
+
+  cells.forEach((cell, idx) => {
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    cell.position = {
+      x: Math.max(0, Math.min(chipWidth - cell.width, col * slotW + (slotW - cell.width) / 2)),
+      y: Math.max(0, Math.min(chipHeight - cell.height, row * slotH + (slotH - cell.height) / 2)),
+    };
+  });
+}
+
+/** True total pairwise overlap area of a placement. */
+function calculateOverlap(cells: Cell[]): number {
+  let area = 0;
+  for (let i = 0; i < cells.length; i++) {
+    const a = cells[i].position;
+    if (!a) continue;
+    for (let j = i + 1; j < cells.length; j++) {
+      const b = cells[j].position;
+      if (!b) continue;
+      const w = Math.min(a.x + cells[i].width, b.x + cells[j].width) - Math.max(a.x, b.x);
+      const h = Math.min(a.y + cells[i].height, b.y + cells[j].height) - Math.max(a.y, b.y);
+      if (w > 0 && h > 0) area += w * h;
+    }
+  }
+  return area;
 }

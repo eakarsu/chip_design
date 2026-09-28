@@ -413,9 +413,23 @@ export function runNCTUGR(
 }
 
 /**
- * GNN-Based Routing - Graph neural network guided routing
- * Features: Learned congestion prediction, GNN embeddings, adaptive routing
- * Reference: "RouteNet: Routability Prediction for Mixed-Size Designs" (ICCAD 2018)
+ * Congestion-map-guided heuristic router.
+ *
+ * The historical name is kept for API compatibility (`routing.ts` and the
+ * API routes dispatch to it as "gnn_routing"), but no graph neural network is
+ * built, trained or evaluated here — the previous revision generated random
+ * "embeddings" and a stub "A*" that ignored them. This version:
+ *
+ *   1. builds a deterministic RUDY-style congestion-demand map from each
+ *      net's bounding box,
+ *   2. routes every net as a staircase of gcell steps, picking the least-used
+ *      / least-congested layer at each step (with a small via penalty),
+ *   3. runs `iterations` greedy rip-up passes that move over-capacity steps
+ *      onto a less-used layer,
+ *   4. reports the measured wirelength, via count and gcell overflow.
+ *
+ * `embeddingDim` and `usePretrained` are accepted for API compatibility and
+ * ignored: there are no embeddings and no pretrained model.
  */
 export function runGNNRouting(
   cells: Cell[],
@@ -429,119 +443,160 @@ export function runGNNRouting(
     usePretrained?: boolean;
   } = {}
 ): RoutingResult {
-  const {
-    gnnLayers = 3,
-    embeddingDim = 64,
-    iterations = 15,
-    usePretrained = true,
-  } = options;
-
+  const { gnnLayers = 3, iterations = 15 } = options;
   const startTime = performance.now();
   const routes: Array<{ netId: string; path: Array<{ x: number; y: number; layer: number }> }> = [];
 
   const gcellSize = 10;
-  const numGCellsX = Math.ceil(chipWidth / gcellSize);
-  const numGCellsY = Math.ceil(chipHeight / gcellSize);
+  const numGCellsX = Math.max(1, Math.ceil(chipWidth / gcellSize));
+  const numGCellsY = Math.max(1, Math.ceil(chipHeight / gcellSize));
+  const numLayers = Math.max(1, Math.min(8, Math.floor(gnnLayers)));
+  const gcellCapacity = 1;
 
-  // Build routing graph
-  const routingGraph = buildRoutingGraph(cells, nets, gcellSize, numGCellsX, numGCellsY);
+  const toGcell = (v: number, limit: number) =>
+    Math.max(0, Math.min(limit - 1, Math.floor(v / gcellSize)));
 
-  // Initialize GNN embeddings (simulated)
-  const nodeEmbeddings: Map<number, number[]> = new Map();
-  routingGraph.nodes.forEach(node => {
-    nodeEmbeddings.set(node.id, Array(embeddingDim).fill(0).map(() => Math.random() - 0.5));
-  });
+  // RUDY-style demand: spread each net's pin count over the gcells in its
+  // bounding box. Independent of routing order, so the map is deterministic.
+  const demand: number[][] = Array.from({ length: numGCellsY }, () =>
+    new Array<number>(numGCellsX).fill(0)
+  );
+  for (const net of nets) {
+    const members = getCellsFromNet(net, cells);
+    if (members.length < 2) continue;
+    const minX = Math.min(...members.map((c) => c.position?.x ?? 0));
+    const maxX = Math.max(...members.map((c) => (c.position?.x ?? 0) + c.width));
+    const minY = Math.min(...members.map((c) => c.position?.y ?? 0));
+    const maxY = Math.max(...members.map((c) => (c.position?.y ?? 0) + c.height));
+    const gx0 = toGcell(minX, numGCellsX);
+    const gx1 = toGcell(maxX, numGCellsX);
+    const gy0 = toGcell(minY, numGCellsY);
+    const gy1 = toGcell(maxY, numGCellsY);
+    const gcellCount = Math.max(1, (gx1 - gx0 + 1) * (gy1 - gy0 + 1));
+    const share = net.pins.length / gcellCount;
+    for (let gy = gy0; gy <= gy1; gy++) {
+      for (let gx = gx0; gx <= gx1; gx++) {
+        demand[gy][gx] += share;
+      }
+    }
+  }
+
+  // usage[layer][gy][gx]: number of routed steps through a gcell on a layer.
+  const usage: number[][][] = Array.from({ length: numLayers + 1 }, () =>
+    Array.from({ length: numGCellsY }, () => new Array<number>(numGCellsX).fill(0))
+  );
 
   let totalWirelength = 0;
   let totalVias = 0;
-  const overflow = 0;
 
-  // GNN message passing to learn congestion patterns
-  for (let layer = 0; layer < gnnLayers; layer++) {
-    const newEmbeddings: Map<number, number[]> = new Map();
-
-    routingGraph.nodes.forEach(node => {
-      const neighbors = routingGraph.edges
-        .filter(e => e.from === node.id || e.to === node.id)
-        .map(e => e.from === node.id ? e.to : e.from);
-
-      // Aggregate neighbor embeddings
-      const aggregated = Array(embeddingDim).fill(0);
-      neighbors.forEach(neighborId => {
-        const neighborEmbed = nodeEmbeddings.get(neighborId) || Array(embeddingDim).fill(0);
-        for (let i = 0; i < embeddingDim; i++) {
-          aggregated[i] += neighborEmbed[i];
-        }
-      });
-
-      if (neighbors.length > 0) {
-        for (let i = 0; i < embeddingDim; i++) {
-          aggregated[i] /= neighbors.length;
-        }
-      }
-
-      // Update with ReLU activation
-      const currentEmbed = nodeEmbeddings.get(node.id)!;
-      const updated = Array(embeddingDim);
-      for (let i = 0; i < embeddingDim; i++) {
-        updated[i] = Math.max(0, 0.5 * currentEmbed[i] + 0.5 * aggregated[i]);
-      }
-
-      newEmbeddings.set(node.id, updated);
-    });
-
-    nodeEmbeddings.clear();
-    newEmbeddings.forEach((embed, id) => nodeEmbeddings.set(id, embed));
-  }
-
-  // Predict congestion from embeddings
-  const predictedCongestion: number[][] = Array(numGCellsY)
-    .fill(0)
-    .map(() => Array(numGCellsX).fill(0));
-
-  routingGraph.nodes.forEach(node => {
-    const embedding = nodeEmbeddings.get(node.id)!;
-    // Simulate congestion prediction from embedding
-    const congestionScore = embedding.reduce((a, b) => a + Math.abs(b), 0) / embeddingDim;
-    predictedCongestion[node.y][node.x] = congestionScore;
-  });
-
-  // Route nets using GNN-predicted congestion
-  nets.forEach((net) => {
+  for (const net of nets) {
+    const members = getCellsFromNet(net, cells);
     const route: Array<{ x: number; y: number; layer: number }> = [];
 
-    const cellPositions = getCellsFromNet(net, cells);
+    if (members.length >= 2) {
+      const points = members
+        .map((c) => ({
+          x: (c.position?.x ?? 0) + c.width / 2,
+          y: (c.position?.y ?? 0) + c.height / 2,
+        }))
+        .sort((a, b) => a.x - b.x || a.y - b.y);
 
-    if (cellPositions.length < 2) {
-      routes.push({ netId: net.id, path: route });
-      return;
-    }
+      const chooseLayer = (px: number, py: number, prevLayer: number): number => {
+        const gx = toGcell(px, numGCellsX);
+        const gy = toGcell(py, numGCellsY);
+        let best = 1;
+        let bestCost = Infinity;
+        for (let layer = 1; layer <= numLayers; layer++) {
+          const cost =
+            usage[layer][gy][gx] * 10 + demand[gy][gx] + (layer === prevLayer ? 0 : 0.25);
+          if (cost < bestCost) {
+            bestCost = cost;
+            best = layer;
+          }
+        }
+        return best;
+      };
 
-    // GNN-guided A* routing
-    const path = gnnGuidedAstar(
-      cellPositions,
-      predictedCongestion,
-      nodeEmbeddings,
-      gcellSize,
-      numGCellsX,
-      numGCellsY,
-      embeddingDim
-    );
+      const pushPoint = (px: number, py: number) => {
+        const prev = route[route.length - 1];
+        const layer = chooseLayer(px, py, prev ? prev.layer : 1);
+        const gx = toGcell(px, numGCellsX);
+        const gy = toGcell(py, numGCellsY);
+        usage[layer][gy][gx] += 1;
+        if (prev) {
+          totalWirelength += Math.hypot(px - prev.x, py - prev.y);
+          if (prev.layer !== layer) totalVias++;
+        }
+        route.push({ x: px, y: py, layer });
+      };
 
-    path.forEach(point => route.push(point));
-
-    // Calculate metrics
-    for (let i = 1; i < route.length; i++) {
-      const dx = route[i].x - route[i - 1].x;
-      const dy = route[i].y - route[i - 1].y;
-      totalWirelength += Math.sqrt(dx * dx + dy * dy);
-      if (route[i].layer !== route[i - 1].layer) {
-        totalVias++;
+      const first = points[0];
+      pushPoint(first.x, first.y);
+      for (let i = 1; i < points.length; i++) {
+        const from = route[route.length - 1];
+        const to = points[i];
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const xSteps = Math.ceil(Math.abs(dx) / gcellSize);
+        const ySteps = Math.ceil(Math.abs(dy) / gcellSize);
+        for (let s = 1; s <= xSteps; s++) {
+          pushPoint(from.x + (dx * s) / xSteps, from.y);
+        }
+        for (let s = 1; s <= ySteps; s++) {
+          pushPoint(to.x, from.y + (dy * s) / ySteps);
+        }
       }
     }
 
     routes.push({ netId: net.id, path: route });
-  });
+  }
+
+  // Greedy rip-up: move steps sitting on over-capacity gcells onto the layer
+  // with the fewest wires through that gcell.
+  const passes = Math.max(0, Math.floor(iterations));
+  for (let pass = 0; pass < passes; pass++) {
+    let reassigned = 0;
+    for (const route of routes) {
+      for (const point of route.path) {
+        const gx = toGcell(point.x, numGCellsX);
+        const gy = toGcell(point.y, numGCellsY);
+        if (usage[point.layer][gy][gx] <= gcellCapacity) continue;
+        let bestLayer = point.layer;
+        let bestUse = usage[point.layer][gy][gx];
+        for (let layer = 1; layer <= numLayers; layer++) {
+          if (usage[layer][gy][gx] < bestUse) {
+            bestUse = usage[layer][gy][gx];
+            bestLayer = layer;
+          }
+        }
+        if (bestLayer !== point.layer) {
+          usage[point.layer][gy][gx] -= 1;
+          usage[bestLayer][gy][gx] += 1;
+          point.layer = bestLayer;
+          reassigned++;
+        }
+      }
+    }
+    if (reassigned === 0) break;
+  }
+
+  // Recompute vias and count gcell overflows from the measured usage map.
+  totalVias = 0;
+  let pathPoints = 0;
+  for (const route of routes) {
+    pathPoints += route.path.length;
+    for (let i = 1; i < route.path.length; i++) {
+      if (route.path[i].layer !== route.path[i - 1].layer) totalVias++;
+    }
+  }
+  let overflowCount = 0;
+  for (let layer = 1; layer <= numLayers; layer++) {
+    for (let gy = 0; gy < numGCellsY; gy++) {
+      for (let gx = 0; gx < numGCellsX; gx++) {
+        if (usage[layer][gy][gx] > gcellCapacity) overflowCount++;
+      }
+    }
+  }
 
   const endTime = performance.now();
 
@@ -550,9 +605,10 @@ export function runGNNRouting(
     metrics: {
       totalWirelength,
       viaCount: totalVias,
-      overflowCount: overflow,
+      overflowCount,
       executionTime: endTime - startTime,
-      convergence: 0.95, // GNN typically converges well
+      convergence:
+        overflowCount === 0 ? 1 : Math.max(0, 1 - overflowCount / Math.max(1, pathPoints)),
     },
   };
 }
@@ -589,7 +645,14 @@ function findLeastCongestedLayer(usedLayers: Set<number>, numLayers: number): nu
   for (let layer = 1; layer <= numLayers; layer++) {
     if (!usedLayers.has(layer)) return layer;
   }
-  return Math.floor(Math.random() * numLayers) + 1;
+  // Every layer is in use: cycle deterministically through the layers instead
+  // of drawing a random one (this helper must be reproducible).
+  if (numLayers <= 0) return 1;
+  let maxUsed = 1;
+  for (const layer of usedLayers) {
+    if (layer > maxUsed) maxUsed = layer;
+  }
+  return ((maxUsed - 1) % numLayers) + 1;
 }
 
 /** Squared distance from `p` to segment `[a,b]`. */
@@ -757,71 +820,3 @@ function multiSourceMazeRouting(
   return path;
 }
 
-function buildRoutingGraph(
-  cells: Cell[],
-  nets: Net[],
-  gcellSize: number,
-  numGCellsX: number,
-  numGCellsY: number
-): { nodes: Array<{ id: number; x: number; y: number }>; edges: Array<{ from: number; to: number }> } {
-  const nodes: Array<{ id: number; x: number; y: number }> = [];
-  const edges: Array<{ from: number; to: number }> = [];
-
-  // Create grid nodes
-  let nodeId = 0;
-  for (let y = 0; y < numGCellsY; y++) {
-    for (let x = 0; x < numGCellsX; x++) {
-      nodes.push({ id: nodeId++, x, y });
-    }
-  }
-
-  // Create grid edges (4-connected)
-  nodes.forEach(node => {
-    const neighbors = [
-      { dx: 1, dy: 0 },
-      { dx: -1, dy: 0 },
-      { dx: 0, dy: 1 },
-      { dx: 0, dy: -1 },
-    ];
-
-    neighbors.forEach(({ dx, dy }) => {
-      const nx = node.x + dx;
-      const ny = node.y + dy;
-      if (nx >= 0 && nx < numGCellsX && ny >= 0 && ny < numGCellsY) {
-        const neighborId = ny * numGCellsX + nx;
-        edges.push({ from: node.id, to: neighborId });
-      }
-    });
-  });
-
-  return { nodes, edges };
-}
-
-function gnnGuidedAstar(
-  cells: Cell[],
-  predictedCongestion: number[][],
-  nodeEmbeddings: Map<number, number[]>,
-  gcellSize: number,
-  numGCellsX: number,
-  numGCellsY: number,
-  embeddingDim: number
-): Array<{ x: number; y: number; layer: number }> {
-  const path: Array<{ x: number; y: number; layer: number }> = [];
-
-  // Simplified A* with GNN cost
-  cells.forEach(cell => {
-    const centerX = (cell.position?.x || 0) + cell.width / 2;
-    const centerY = (cell.position?.y || 0) + cell.height / 2;
-
-    const gcellX = Math.floor(centerX / gcellSize);
-    const gcellY = Math.floor(centerY / gcellSize);
-
-    // Use predicted congestion for routing cost
-    const congestion = predictedCongestion[gcellY]?.[gcellX] || 0;
-    const layer = congestion > 0.5 ? 2 : 1; // Change layer if congested
-
-    path.push({ x: centerX, y: centerY, layer });
-  });
-
-  return path;
-}

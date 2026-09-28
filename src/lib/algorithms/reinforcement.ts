@@ -11,7 +11,12 @@ import {
   Rectangle,
 } from '@/types/algorithms';
 
-// Neural Network approximator (simplified)
+// Lightweight two-layer function approximator.
+//
+// NOTE: `update()` below applies a crude output-layer nudge driven by the
+// prediction error; it is *not* full backpropagation and ignores the hidden
+// activations. It exists so the RL loops have a finite training signal; do not
+// present its weights as a trained deep network.
 class NeuralNetwork {
   private weights: number[][][];
   private biases: number[][];
@@ -75,7 +80,9 @@ class NeuralNetwork {
   }
 
   update(input: number[], target: number[], actionIndex: number) {
-    // Simple gradient descent (simplified backprop)
+    // Crude output-layer update: scale the taken action's output weights by
+    // the prediction error. No hidden-layer gradients are computed, so this is
+    // a heuristic nudge rather than backprop.
     const output = this.forward(input);
     const error = target[actionIndex] - output[actionIndex];
 
@@ -245,8 +252,9 @@ class ChipPlacementEnv {
 }
 
 /**
- * Deep Q-Network (DQN) for Floorplanning
- * Google-style chip design approach
+ * Simplified DQN-style floorplanning loop: epsilon-greedy placement with the
+ * lightweight approximator above and a Bellman target. Not the published deep
+ * architecture (no experience replay, no target network, no CNN/GNN encoder).
  */
 export function dqnFloorplanning(params: RLParams): RLResult {
   const startTime = performance.now();
@@ -697,7 +705,11 @@ export function qLearningPlacement(params: RLParams): RLResult {
 }
 
 /**
- * Policy Network for Policy Gradient methods
+ * Policy network used by the REINFORCE/PPO-style loops.
+ *
+ * NOTE: `update()` only nudges the output layer from the policy-gradient
+ * direction; the hidden layer is never trained. Treat the resulting policy as
+ * a stochastic heuristic, not a trained model.
  */
 class PolicyNetwork {
   private weights: number[][][];
@@ -842,8 +854,9 @@ class PolicyNetwork {
 }
 
 /**
- * Policy Gradient (REINFORCE) for Placement
- * Uses Monte Carlo policy gradient for chip placement
+ * Simplified REINFORCE-style placement loop: Monte-Carlo returns are computed
+ * for real, but the policy update only touches the output layer of the
+ * lightweight network above (see its class comment).
  */
 export function policyGradientPlacement(params: RLParams): RLResult {
   const startTime = performance.now();
@@ -1020,8 +1033,9 @@ export function policyGradientPlacement(params: RLParams): RLResult {
 }
 
 /**
- * Actor-Critic for Routing
- * Combines policy gradient (actor) with value function (critic)
+ * Simplified actor-critic loop: the actor is the lightweight policy network
+ * above and the critic is the output-nudge value approximator. TD errors are
+ * computed for real; hidden layers are not trained.
  */
 export function actorCriticRouting(params: RLParams): RLResult {
   const startTime = performance.now();
@@ -1254,8 +1268,9 @@ export function actorCriticRouting(params: RLParams): RLResult {
 }
 
 /**
- * PPO (Proximal Policy Optimization) for Floorplanning
- * Advanced policy gradient with clipped objective
+ * Simplified PPO-style floorplanning loop with a clipped surrogate objective.
+ * Not full PPO: no GAE, no minibatch shuffling, and only output-layer weights
+ * are updated (see the approximator class comments).
  */
 export function ppoFloorplanning(params: RLParams): RLResult {
   const startTime = performance.now();

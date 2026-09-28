@@ -464,7 +464,9 @@ export function runPlacement(params: PlacementParams): PlacementResult {
       result = forceDirectedPlacement(params);
       break;
 
-    // ML/DL-based placement algorithms
+    // Deterministic analytical/heuristic placers. The dispatch strings keep
+    // the historical "ML/DL" names for API compatibility; see mlBased.ts for
+    // what each function actually implements.
     case 'deepplace':
     case 'deep_learning':
       {
