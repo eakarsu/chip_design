@@ -13,6 +13,7 @@
  * Usage: npm run demo-data:load [-- --verify]
  */
 import { loadEnvConfig } from '@next/env';
+import { createHash } from 'node:crypto';
 
 loadEnvConfig(process.cwd(), false);
 
@@ -280,7 +281,8 @@ function seedRunHistory(db: ReturnType<typeof getRawDb>): { designs: number; run
   return { designs: 15, runs: 15 };
 }
 
-function seedMl(): { samples: number; models: number } {  const db = getRawDb();
+function seedMl(): { samples: number; models: number } {
+  const db = getRawDb();
   db.prepare("DELETE FROM ml_samples WHERE source = 'demo'").run();
   db.prepare("DELETE FROM ml_models WHERE source = 'demo'").run();
   const created = new Date().toISOString();
@@ -311,8 +313,129 @@ function seedMl(): { samples: number; models: number } {  const db = getRawDb();
   return { samples: samplesWritten, models: ML_TARGETS.length };
 }
 
-function counts() {
-  const db = getRawDb();
+/**
+ * Top up the remaining feature tables that other screens read: user designs,
+ * governed EDA projects/jobs/audit, roles and assistant feedback. Real rows are
+ * never deleted and each insert is idempotent by deterministic id.
+ */
+function seedFeatureTables(db: ReturnType<typeof getRawDb>): Record<string, number> {
+  const now = new Date().toISOString();
+  const counts: Record<string, number> = {};
+  const fill = (
+    table: string,
+    prefix: string,
+    target: number,
+    values: (index: number) => Record<string, unknown>,
+  ) => {
+    const existing = new Set(
+      (db.prepare(`SELECT id FROM "${table}"`).all() as Array<{ id: string }>).map((row) => row.id),
+    );
+    let added = 0;
+    for (let index = 0; index < target; index += 1) {
+      const id = `${prefix}-${String(index + 1).padStart(3, '0')}`;
+      if (existing.has(id)) continue;
+      const row = values(index);
+      const columns = Object.keys(row);
+      db.prepare(
+        `INSERT INTO "${table}" (${columns.map((column) => `"${column}"`).join(', ')})
+         VALUES (${columns.map(() => '?').join(', ')}) ON CONFLICT DO NOTHING`,
+      ).run(...columns.map((column) => row[column] as never));
+      added += 1;
+    }
+    counts[table] = (db.prepare(`SELECT COUNT(*) AS n FROM "${table}"`).get() as { n: number }).n;
+    return added;
+  };
+
+  const users = (db.prepare('SELECT id FROM users ORDER BY created_at LIMIT 15').all() as Array<{ id: string }>).map((row) => row.id);
+  const userId = (index: number) => users[index % Math.max(users.length, 1)] ?? 'demo-user';
+
+  fill('designs', 'demo-design', 15, (index) => ({
+    id: `demo-design-${String(index + 1).padStart(3, '0')}`,
+    owner_id: userId(index),
+    name: `DEMO design ${index + 1}`,
+    description: 'DEMO — fictional design for workspace demonstration.',
+    cells_json: '[]',
+    nets_json: '[]',
+    wires_json: '[]',
+    created_at: now,
+    updated_at: now,
+  }));
+
+  fill('eda_projects', 'demo-eda-project', 15, (index) => ({
+    id: `demo-eda-project-${String(index + 1).padStart(3, '0')}`,
+    tenant_id: 'local',
+    name: `DEMO EDA project ${index + 1}`,
+    pdk_ref: 'sky130A',
+    pdk_digest: String(index + 1).padStart(64, '0'),
+    license_ref: 'DEMO reference',
+    created_by: userId(index),
+    created_at: now,
+  }));
+
+  fill('eda_jobs', 'demo-eda-job', 15, (index) => ({
+    id: `demo-eda-job-${String(index + 1).padStart(3, '0')}`,
+    tenant_id: 'local',
+    project_id: `demo-eda-project-${String((index % 15) + 1).padStart(3, '0')}`,
+    user_id: userId(index),
+    kind: ['yosys', 'openroad', 'simulation', 'formal'][index % 4],
+    status: 'succeeded',
+    idempotency_key: `demo-eda-idem-${index + 1}`,
+    request_hash: String(index + 1).padStart(64, '0'),
+    input_manifest_json: JSON.stringify({ demo: true }),
+    tool_image: 'demo/image@sha256:' + String(index + 1).padStart(64, '0'),
+    pdk_digest: String(index + 1).padStart(64, '0'),
+    expected_cpu_seconds: 60 + index,
+    next_attempt_at: now,
+    retention_until: now,
+    created_at: now,
+    updated_at: now,
+  }));
+
+  // Audit events carry a hash chain; keep it internally consistent.
+  const existingAudit = (db.prepare('SELECT COUNT(*) AS n FROM eda_audit_events').get() as { n: number }).n;
+  let previousHash = '';
+  if (existingAudit > 0) {
+    const last = db.prepare('SELECT event_hash FROM eda_audit_events ORDER BY sequence DESC LIMIT 1').get() as { event_hash: string };
+    previousHash = last.event_hash;
+  }
+  for (let index = existingAudit; index < 15; index += 1) {
+    const details = JSON.stringify({ demo: true, index: index + 1 });
+    const eventHash = createHash('sha256').update(`${previousHash}:${details}:${index}`).digest('hex');
+    db.prepare(
+      `INSERT INTO eda_audit_events (tenant_id, job_id, actor_id, action, details_json, previous_hash, event_hash, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run('local', null, userId(index), 'DEMO_EVENT', details, previousHash, eventHash, now);
+    previousHash = eventHash;
+  }
+  counts.eda_audit_events = (db.prepare('SELECT COUNT(*) AS n FROM eda_audit_events').get() as { n: number }).n;
+
+  fill('roles', 'demo-role', 15, (index) => ({
+    id: `demo-role-${String(index + 1).padStart(3, '0')}`,
+    name: `demo_role_${index + 1}`,
+    display_name: `DEMO role ${index + 1}`,
+    description: 'DEMO — fictional role for interface demonstration.',
+    permissions_json: JSON.stringify(['read']),
+    user_count: 0,
+    created_at: now,
+    updated_at: now,
+  }));
+
+  fill('ai_feedback', 'demo-ai-feedback', 15, (index) => ({
+    id: `demo-ai-feedback-${String(index + 1).padStart(3, '0')}`,
+    user_id: userId(index),
+    tenant_id: 'local',
+    rating: index % 3 === 0 ? 'down' : 'up',
+    mode: 'chat',
+    page: '/analog',
+    question: `DEMO question ${index + 1}`,
+    answer: `DEMO answer ${index + 1}`,
+    created_at: now,
+  }));
+
+  return counts;
+}
+
+function counts() {  const db = getRawDb();
   const one = (sql: string) => (db.prepare(sql).get() as { n: number }).n;
   return {
     analog_projects: one('SELECT COUNT(*) AS n FROM analog_projects'),
@@ -320,7 +443,14 @@ function counts() {
     ml_samples: one('SELECT COUNT(*) AS n FROM ml_samples'),
     ml_models: one('SELECT COUNT(*) AS n FROM ml_models'),
     openlane_runs: one('SELECT COUNT(*) AS n FROM openlane_runs'),
+    openlane_designs: one('SELECT COUNT(*) AS n FROM openlane_designs'),
     algorithm_runs: one('SELECT COUNT(*) AS n FROM algorithm_runs'),
+    designs: one('SELECT COUNT(*) AS n FROM designs'),
+    eda_projects: one('SELECT COUNT(*) AS n FROM eda_projects'),
+    eda_jobs: one('SELECT COUNT(*) AS n FROM eda_jobs'),
+    eda_audit_events: one('SELECT COUNT(*) AS n FROM eda_audit_events'),
+    roles: one('SELECT COUNT(*) AS n FROM roles'),
+    ai_feedback: one('SELECT COUNT(*) AS n FROM ai_feedback'),
   };
 }
 
@@ -353,6 +483,9 @@ async function main() {
   console.log('Seeding ML demo samples and model…');
   const ml = seedMl();
   console.log(`  ml: ${ml.samples} samples, ${ml.models} models`);
+
+  const featureCounts = seedFeatureTables(db);
+  console.log('Seeded remaining feature tables:', JSON.stringify(featureCounts));
 
   const result = counts();
   console.log(JSON.stringify(result, null, 2));
