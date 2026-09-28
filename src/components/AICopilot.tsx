@@ -233,7 +233,7 @@ function CopilotContent({
   const [searchOpen, setSearchOpen] = useState(false);
   const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null);
   const [modelAnchor, setModelAnchor] = useState<HTMLElement | null>(null);
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [zeroDataRetention, setZeroDataRetention] = useState(true);
   const [listening, setListening] = useState(false);
   const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -287,11 +287,10 @@ function CopilotContent({
   };
   const openModels = async (event: React.MouseEvent<HTMLElement>) => {
     setModelAnchor(event.currentTarget);
-    if (availableModels.length) return;
     try {
       const response = await fetch('/api/ai/copilot');
       const data = await response.json();
-      if (Array.isArray(data.models)) setAvailableModels(data.models.filter((item: unknown) => typeof item === 'string'));
+      if (typeof data.zeroDataRetention === 'boolean') setZeroDataRetention(data.zeroDataRetention);
     } catch {
       /* The default model remains available. */
     }
@@ -300,6 +299,29 @@ function CopilotContent({
   useEffect(() => {
     if (initialMode) setMode(initialMode);
   }, [initialMode, setMode]);
+  // Confirm the assistant's zero-data-retention posture for the header. The
+  // provider and model are internal details and are never displayed. Any
+  // failure (including an environment without fetch) must not affect the chat.
+  useEffect(() => {
+    let cancelled = false;
+    try {
+      if (typeof fetch !== 'function') return;
+      fetch('/api/ai/copilot')
+        .then((response) => (response.ok ? response.json() : null))
+        .then((data) => {
+          if (cancelled || !data) return;
+              if (typeof data.zeroDataRetention === 'boolean') setZeroDataRetention(data.zeroDataRetention);
+        })
+        .catch(() => {
+          /* Identity is informational; the chat still works. */
+        });
+    } catch {
+      /* Identity is informational; the chat still works. */
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   useEffect(() => {
     if (configuredPhase) {
       setActivePhaseId(configuredPhase);
@@ -404,17 +426,17 @@ function CopilotContent({
       >
         <Typography variant="caption" color="text.secondary" noWrap sx={{ flex: 1 }}>
           {chat.mode === 'chat'
-            ? 'App-wide answers · follows your current page'
+            ? `App-wide answers · follows your current page${zeroDataRetention ? ' · zero data retention' : ''}`
             : `Phase ${phase.order}: ${phase.title}`}
         </Typography>
-        <Tooltip title={chat.selectedModel ? `Model: ${chat.selectedModel}` : 'Choose AI model'}>
+        <Tooltip title={zeroDataRetention ? 'Zero data retention enforced' : 'Assistant settings'}>
           <Button
             size="small"
-            aria-label="Choose AI model"
+            aria-label="Assistant settings"
             onClick={openModels}
             sx={{ minWidth: 0, textTransform: 'none' }}
           >
-            {chat.selectedModel ? chat.selectedModel.split('/').pop() : 'Auto'}
+            Assistant
           </Button>
         </Tooltip>
         <Tooltip title="Search conversation">
@@ -622,7 +644,6 @@ function CopilotContent({
                   <Stack direction="row" alignItems="center" gap={0.25} sx={{ mt: 0.5 }}>
                     <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
                       {[
-                        [message.provider, message.model].filter(Boolean).join(' · '),
                         typeof message.durationMs === 'number'
                           ? `${(message.durationMs / 1000).toFixed(1)}s`
                           : '',
@@ -840,27 +861,11 @@ function CopilotContent({
         </MenuItem>
       </Menu>
       <Menu anchorEl={modelAnchor} open={Boolean(modelAnchor)} onClose={() => setModelAnchor(null)}>
-        <MenuItem
-          selected={!chat.selectedModel}
-          onClick={() => {
-            chat.setSelectedModel('');
-            setModelAnchor(null);
-          }}
-        >
-          Auto (configured default)
+        <MenuItem disabled sx={{ opacity: 1 }}>
+          <Typography variant="caption" color="text.secondary">
+            The assistant model is managed by this deployment and is not shown here.
+          </Typography>
         </MenuItem>
-        {availableModels.map((model) => (
-          <MenuItem
-            key={model}
-            selected={chat.selectedModel === model}
-            onClick={() => {
-              chat.setSelectedModel(model);
-              setModelAnchor(null);
-            }}
-          >
-            {model}
-          </MenuItem>
-        ))}
       </Menu>
     </Box>
   );

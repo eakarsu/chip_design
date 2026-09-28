@@ -39,6 +39,14 @@ afterEach(() => {
   global.fetch = originalFetch;
 });
 
+/** Chat turns POST to /api/ai/copilot; the component may also issue GETs, so
+ *  index only the POST calls and read their JSON string bodies. */
+function chatCalls(fetchMock: jest.Mock): Array<[string, RequestInit, string]> {
+  return (fetchMock.mock.calls as Array<[string, RequestInit]>)
+    .filter(([url, init]) => url === '/api/ai/copilot' && init?.method === 'POST')
+    .map(([url, init]) => [url, init, String(init.body)] as [string, RequestInit, string]);
+}
+
 it('keeps a bounded deadline for longer engineering reviews', () => {
   expect(CHAT_REQUEST_TIMEOUT_MS).toBeGreaterThan(120_000);
   expect(CHAT_REQUEST_TIMEOUT_MS).toBeLessThan(300_000);
@@ -71,15 +79,15 @@ it('sends arbitrary questions, follows the current page and retains the conversa
   fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
   await screen.findByText('Open Workspace and choose ECO & approvals.');
   expect(screen.getByRole('link', { name: 'Design Workspace' })).toHaveAttribute('href', '/workspace');
-  const first = JSON.parse(fetchMock.mock.calls[0][1].body);
+  const first = JSON.parse(chatCalls(fetchMock)[0][2]);
   expect(first.mode).toBe('chat');
   expect(first.pageContext.pathname).toBe('/workspace');
   expect(first.designContext).toBeUndefined();
   expect(first.messages).toEqual([{ role: 'user', content: 'Where can I request approval for my ECO?' }]);
   fireEvent.change(screen.getByLabelText('Your question'), { target: { value: 'Can I approve my own request?' } });
   fireEvent.keyDown(screen.getByLabelText('Your question'), { key: 'Enter' });
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-  const followup = JSON.parse(fetchMock.mock.calls[1][1].body);
+  await waitFor(() => expect(chatCalls(fetchMock)).toHaveLength(2));
+  const followup = JSON.parse(chatCalls(fetchMock)[1][2]);
   expect(followup.messages).toHaveLength(3);
   expect(followup.messages[1].content).toContain('ECO & approvals');
   expect(followup.messages[2].content).toBe('Can I approve my own request?');
@@ -94,7 +102,7 @@ it('keeps complete-chip reviews at the preset requirements gate', async () => {
   fireEvent.click(screen.getByRole('button', { name: '28nm IoT SoC' }));
   fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
   await screen.findByText('Review evidence before advancing.');
-  const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
+  const payload = JSON.parse(chatCalls(fetchMock)[0][2]);
   expect(payload.mode).toBe('review');
   expect(payload.designContext.currentParams.phaseId).toBe('requirements');
   expect(screen.getByRole('link', { name: 'Open this phase' })).toHaveAttribute(
@@ -178,7 +186,7 @@ it('cancels an in-flight answer when clearing and ignores its late response', as
   fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
   expect(screen.getByRole('button', { name: 'Stop AI response' })).toBeEnabled();
   fireEvent.click(screen.getByRole('button', { name: 'Clear AI conversation' }));
-  expect((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].signal?.aborted).toBe(true);
+  expect(chatCalls(fetchMock)[0][1].signal?.aborted).toBe(true);
   await act(async () => resolve(reply('This stale answer must not return.')));
   expect(screen.queryByText('This stale answer must not return.')).not.toBeInTheDocument();
   expect(screen.getByText('What would you like to know?')).toBeVisible();
@@ -213,13 +221,13 @@ it('attaches current tool results to one shared chat and releases them when leav
   fireEvent.change(screen.getByLabelText('Your question'), { target: { value: 'Explain this placement result' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
   await screen.findByText('Use the Design Workspace.');
-  expect(JSON.parse(fetchMock.mock.calls[0][1].body).designContext).toEqual(toolContext);
+  expect(JSON.parse(chatCalls(fetchMock)[0][2]).designContext).toEqual(toolContext);
   mockPathname = '/learn';
   view.rerender(content(false));
   fireEvent.change(screen.getByLabelText('Your question'), { target: { value: 'Where can I learn routing?' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-  expect(JSON.parse(fetchMock.mock.calls[1][1].body).designContext).toBeUndefined();
+  await waitFor(() => expect(chatCalls(fetchMock)).toHaveLength(2));
+  expect(JSON.parse(chatCalls(fetchMock)[1][2]).designContext).toBeUndefined();
   await waitFor(() => expect(screen.getByRole('button', { name: 'Send question' })).toBeInTheDocument());
 });
 
@@ -241,7 +249,7 @@ it('keeps a large tool result within the request limit and marks omitted context
   fireEvent.change(screen.getByLabelText('Your question'), { target: { value: 'Explain this result' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
   await screen.findByText('Use the Design Workspace.');
-  const body = fetchMock.mock.calls[0][1].body;
+  const body = chatCalls(fetchMock)[0][2];
   expect(body.length).toBeLessThan(120_000);
   const context = JSON.parse(body).designContext;
   expect(context.currentParams.contextTruncated).toBe(true);
@@ -277,7 +285,7 @@ it('preserves page context when initial authentication resolves and clears conve
   fireEvent.change(screen.getByLabelText('Your question'), { target: { value: 'Explain the current routing' } });
   fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
   await screen.findByText('Use the Design Workspace.');
-  expect(JSON.parse(fetchMock.mock.calls[0][1].body).designContext).toEqual(toolContext);
+  expect(JSON.parse(chatCalls(fetchMock)[0][2]).designContext).toEqual(toolContext);
   fireEvent.change(screen.getByLabelText('Your question'), { target: { value: 'Private follow-up' } });
   view.rerender(content(false, false));
   expect(screen.queryByText('Use the Design Workspace.')).not.toBeInTheDocument();
@@ -306,8 +314,8 @@ it('regenerates the last answer by re-asking the same question', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
   await screen.findByText('First answer.');
   fireEvent.click(screen.getByRole('button', { name: 'Regenerate answer' }));
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-  const second = JSON.parse(fetchMock.mock.calls[1][1].body);
+  await waitFor(() => expect(chatCalls(fetchMock)).toHaveLength(2));
+  const second = JSON.parse(chatCalls(fetchMock)[1][2]);
   expect(second.messages.filter((message: { role: string }) => message.role === 'user')).toEqual([
     { role: 'user', content: 'Explain CDC.' },
   ]);
@@ -321,9 +329,9 @@ it('records an answer rating through the feedback endpoint', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
   await screen.findByText('Rate me.');
   fireEvent.click(screen.getByRole('button', { name: 'Mark answer helpful' }));
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-  expect(fetchMock.mock.calls[1][0]).toBe('/api/ai/feedback');
-  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({ rating: 'up', answer: 'Rate me.' });
+  await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url === '/api/ai/feedback')).toBe(true));
+  const feedbackCall = fetchMock.mock.calls.find(([url]) => url === '/api/ai/feedback')!;
+  expect(JSON.parse(feedbackCall[1].body!)).toMatchObject({ rating: 'up', answer: 'Rate me.' });
 });
 
 it('restores the conversation for the same reader after a remount', async () => {

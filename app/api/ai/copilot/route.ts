@@ -134,12 +134,13 @@ function boundedTimeout(name: string, fallback: number): number {
   return Math.min(120_000, Math.max(10_000, Math.round(configured)));
 }
 
-/** Models the chat may request: the configured specialist, optional extras from
- *  OPENROUTER_COPILOT_MODELS (comma separated) and the approved fallback. */
+/** Assistant capabilities. The underlying provider/model are an internal
+ *  implementation detail and are not exposed to clients. */
 export async function GET() {
   return NextResponse.json({
-    models: copilotModels(),
-    default: process.env.OPENROUTER_MODEL || 'anthropic/claude-3.5-sonnet',
+    zeroDataRetention: process.env.OPENROUTER_REQUIRE_ZDR !== 'false',
+    appWide: true,
+    followsCurrentPage: true,
   });
 }
 
@@ -401,7 +402,6 @@ They must be questions this user would plausibly ask next, grounded in the answe
           'Cache-Control': 'no-cache',
           Connection: 'keep-alive',
           'X-Copilot-Sources': Buffer.from(JSON.stringify(sources)).toString('base64'),
-          'X-Copilot-Model': model,
           'X-Copilot-Mode': mode,
         },
       });

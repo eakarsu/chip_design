@@ -38,7 +38,9 @@ type RecordValue = Record<string, unknown>;
 
 const headlineKeys = ['headline', 'title', 'name'];
 const summaryKeys = ['executiveSummary', 'summary', 'overview', 'diagnosis', 'analysis', 'result', 'message', 'documentation'];
-const metaKeys = new Set(['provider', 'model', 'risk', 'confidence', 'status', 'verdict', 'success', 'promptVersion', 'reviewMode']);
+// Provider and model are internal implementation details: they are never
+// rendered as result chips.
+const metaKeys = new Set(['risk', 'confidence', 'status', 'verdict', 'success', 'promptVersion', 'reviewMode']);
 const codeKeys = /(^|_)(code|verilog|vhdl|systemverilog|testbench|script|source)$/i;
 const importantLists = /actions|recommendations|solutions|findings|risks|warnings|gaps|assumptions|steps|tests|issues|conflicts|suggestions|improvements|evidence/i;
 

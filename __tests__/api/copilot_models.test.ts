@@ -29,13 +29,18 @@ describe('copilot model allowlist', () => {
     expect(copilotModels()).toEqual(['primary/model', 'extra/one', 'extra/two', 'fallback/model']);
   });
 
-  it('returns the default and allowlist from GET', async () => {
+  it('does not expose the provider or model names from GET', async () => {
     process.env.OPENROUTER_MODEL = 'primary/model';
     process.env.OPENROUTER_COPILOT_MODELS = 'extra/model';
     delete process.env.OPENROUTER_COPILOT_FALLBACK_MODEL;
     const response = await GET();
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ models: ['primary/model', 'extra/model'], default: 'primary/model' });
+    const body = await response.json();
+    expect(body).not.toHaveProperty('models');
+    expect(body).not.toHaveProperty('default');
+    expect(body).not.toHaveProperty('displayName');
+    expect(JSON.stringify(body)).not.toContain('primary/model');
+    expect(JSON.stringify(body)).not.toContain('extra/model');
   });
 
   it('rejects a model outside the allowlist before calling the provider', async () => {
@@ -50,7 +55,7 @@ describe('copilot model allowlist', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('forwards an allowed model and stamps stream metadata headers', async () => {
+  it('forwards an allowed model without leaking it in response headers', async () => {
     process.env.OPENROUTER_MODEL = 'primary/model';
     process.env.OPENROUTER_COPILOT_MODELS = 'extra/model';
     const streamBody = 'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\ndata: [DONE]\n\n';
@@ -62,7 +67,7 @@ describe('copilot model allowlist', () => {
       request({ mode: 'chat', model: 'extra/model', stream: true, pageContext: { pathname: '/workspace' } }) as never
     );
     expect(response.status).toBe(200);
-    expect(response.headers.get('x-copilot-model')).toBe('extra/model');
+    expect(response.headers.get('x-copilot-model')).toBeNull();
     expect(response.headers.get('x-copilot-mode')).toBe('chat');
     expect(response.headers.get('x-copilot-sources')).toBeTruthy();
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe('extra/model');

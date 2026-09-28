@@ -213,12 +213,10 @@ function useChatSession() {
     meta: { startedAt: number; contextChars: number; contextTruncated: boolean }
   ) => {
     const sources = decodeSourcesHeader(response.headers?.get?.('x-copilot-sources'));
-    let provider: string | undefined;
-    let model = response.headers?.get?.('x-copilot-model') ?? undefined;
     let content = '';
     setMessages((current) => [
       ...current,
-      { role: 'assistant', content: '', mode: context.mode, timestamp: new Date().toISOString(), model },
+      { role: 'assistant', content: '', mode: context.mode, timestamp: new Date().toISOString() },
     ]);
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
@@ -236,12 +234,8 @@ function useChatSession() {
           if (!payload || payload === '[DONE]') continue;
           try {
             const chunk = JSON.parse(payload) as {
-              provider?: string;
-              model?: string;
               choices?: Array<{ delta?: { content?: string } }>;
             };
-            if (chunk.provider) provider = chunk.provider;
-            if (chunk.model) model = chunk.model;
             const delta = chunk.choices?.[0]?.delta?.content;
             if (delta) {
               content += delta;
@@ -261,8 +255,6 @@ function useChatSession() {
     applyToLastAssistant((message) => ({
       ...message,
       content: answer,
-      provider,
-      model,
       sources: sources.length ? sources : undefined,
       followUps: followUps.length ? followUps : undefined,
       durationMs: Date.now() - meta.startedAt,
@@ -325,8 +317,6 @@ function useChatSession() {
           content: answer,
           mode: context.mode,
           timestamp: new Date().toISOString(),
-          provider: data.provider,
-          model: data.model,
           sources: sourcesFrom(data.sources),
           followUps: followUps.length ? followUps : undefined,
           durationMs: Date.now() - startedAt,

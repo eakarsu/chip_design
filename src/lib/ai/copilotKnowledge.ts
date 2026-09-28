@@ -87,6 +87,36 @@ const corePages: CopilotSource[] = [
     href: '/flow',
     description: 'Explore the chip implementation flow and its algorithm steps.',
   },
+  {
+    title: 'Analog Power Design Studio',
+    href: '/analog',
+    description:
+      'Buck-converter workflow: requirements review with missing-condition flags, ranked converter-IC selection from a curated datasheet snapshot, datasheet-style component sizing (inductor, DC-bias-derated output capacitance, input RMS, diode, E96 feedback divider, loss/efficiency estimates), ngspice simulation with automatic Type-II compensator tuning (averaged transient and AC loop), SVG schematic/BOM/wiring/netlist exports, a PCB review checklist, an independent AI challenge and run/cost history. Switching ripple and EMI are not simulated; PSpice, EasyEDA and PCB placement/routing are not automated."',
+  },
+  {
+    title: 'HLS Workspace',
+    href: '/hls',
+    description:
+      'High-level synthesis workspace: parse a restricted C kernel into an IR, enumerate a bounded pragma design space (parallel, pipeline, unroll, tile) and rank it by Pareto dominance, estimate latency/resources/memory with an analytical model, generate a Verilog scaffold checked with Yosys (elaboration only) and Icarus (smoke run), and scan source for synthesizability issues (recursion, function pointers, dynamic allocation) plus an LLM refactor draft. There is no commercial HLS tool here; pragma results and the cost model are estimates, not synthesis evidence.',
+  },
+  {
+    title: 'ML Predictor',
+    href: '/ml',
+    description:
+      'Ridge-regression performance predictor trained on stored OpenLane/EDA run metrics (deterministic, seeded). It reports R², RMSE, a ±1σ uncertainty proxy and an explicit insufficient-data state; training requires stored runs and refuses to fabricate a model when none exist.',
+  },
+  {
+    title: 'Systolic and Polyhedral Workspace',
+    href: '/accelerator',
+    description:
+      'Generate synthesizable systolic GEMM RTL (output-stationary or weight-stationary) with self-checking testbenches, cycle/utilization formulas and Icarus/Yosys verification, and explore legal tilings and loop orders for an affine loop nest with a documented memory-traffic model, dependence vectors and a Pareto front.',
+  },
+  {
+    title: 'AI Systems Models',
+    href: '/ai-systems',
+    description:
+      'Analytical models and planners for efficient AI: hierarchical memory budgeting (HMT-style), quantization footprint and energy (including vector quantization and rotation), LUT-based inference, GPU+FPGA pipeline splitting with interconnect latency and cost, and embedded-DRAM projections. Every response is labelled analytical-estimate with explicit assumptions and limitations; none is a measurement.',
+  },
 ];
 
 const catalog: CopilotSource[] = [
@@ -158,9 +188,39 @@ const defaultPrompts = [
 ];
 
 /** Page-aware starter questions for the chat empty state. */
+const pagePrompts: Record<string, string[]> = {
+  '/analog': [
+    'What does the Analog Power Design Studio simulate, and with which tool?',
+    'How are the buck-converter components calculated and what must I re-verify?',
+    'What does the PCB checklist cover, and what is not automated?',
+  ],
+  '/hls': [
+    'Is the HLS cost model synthesis evidence, and what actually ran?',
+    'Which C constructs are unsupported and how does the refactor draft help?',
+    'Why is the generated Verilog scaffold not proven equivalent to my kernel?',
+  ],
+  '/ml': [
+    'What data trains the performance predictor, and how is uncertainty reported?',
+    'Why can training fail with "no usable samples"?',
+    'What do R² and the residual standard deviation mean here?',
+  ],
+  '/accelerator': [
+    'Compare output-stationary and weight-stationary for my GEMM shapes.',
+    'How were the systolic cycle and utilization formulas verified?',
+    'Which tiling minimizes memory traffic, and what are the model assumptions?',
+  ],
+  '/ai-systems': [
+    'What are the assumptions and limitations of the HMT memory model?',
+    'How does the hybrid planner decide which stages run on the FPGA?',
+    'Why is the token-per-second figure a projection and not a measurement?',
+  ],
+};
+
 export function suggestedPrompts(pathname = '/'): string[] {
   const route = pathname.split(/[?#]/)[0];
   if (route === '/' || route === '') return defaultPrompts;
+  const specific = pagePrompts[route];
+  if (specific) return specific;
   const page =
     corePages.find((item) => item.href.split(/[?#]/)[0] === route) ??
     corePages.find((item) => {
