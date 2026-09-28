@@ -1,6 +1,8 @@
 import { getRawDb, ensureTables } from '../src/lib/db/connection';
 import { ensureEdaSchema } from '../src/lib/eda/store';
 import { ensureCommercialSchema } from '../src/lib/commercial/database';
+import { ensureAnalogSchema } from '../src/lib/analog/store';
+import { ensureMlSchema } from '../src/lib/ml/store';
 
 async function main(): Promise<void> {
 
@@ -10,8 +12,10 @@ if (process.env.NODE_ENV === 'production' && process.env.CHIP_ALLOW_SCHEMA_MIGRA
 const database = getRawDb();
 ensureTables(database);
 ensureEdaSchema(database);
+ensureAnalogSchema(database);
+ensureMlSchema(database);
 await ensureCommercialSchema();
-console.log('Core, governed EDA, commercial workspace, and Academy migrations applied');
+console.log('Core, governed EDA, commercial workspace, Academy, and analog studio migrations applied');
 }
 
 main().catch(error => {

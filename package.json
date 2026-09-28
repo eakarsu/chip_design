@@ -29,6 +29,8 @@
     "migrate": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --conditions=react-server\" ./scripts/run-compatible-node.sh node_modules/tsx/dist/cli.mjs scripts/migrate.ts",
     "create-admin": "./scripts/run-compatible-node.sh node_modules/tsx/dist/cli.mjs scripts/create-admin.ts",
     "backup:eda": "tsx scripts/eda-backup.ts",
+    "demo-data:load": "tsx scripts/load-demo-data.ts",
+    "demo-data:verify": "tsx scripts/load-demo-data.ts --verify",
     "restore:verify": "tsx scripts/verify-restore.ts",
     "audit:production": "tsx scripts/audit-production-routes.ts"
   },
