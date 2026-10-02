@@ -47,12 +47,38 @@ function LoginForm() {
 
   const loginAction = `/api/auth/login?redirect=${encodeURIComponent(redirect)}`;
 
-  const handleDemoLogin = () => {
-    if (!demoCredentials) return;
+  const handleDemoLogin = async () => {
+    if (!demoCredentials) {
+      setError('Demo credentials are not available.');
+      return;
+    }
 
-    setEmail(demoCredentials.email);
-    setPassword(demoCredentials.password);
+    const { email: demoEmail, password: demoPassword } = demoCredentials;
+    setEmail(demoEmail);
+    setPassword(demoPassword);
     setError('');
+    setLoading(true);
+
+    try {
+      const response = await fetch(loginAction, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: demoEmail, password: demoPassword }),
+        credentials: 'same-origin',
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { error?: string };
+        setError(data.error || 'Invalid email or password');
+        setLoading(false);
+        return;
+      }
+
+      window.location.href = redirect;
+    } catch {
+      setError('An error occurred. Please try again.');
+      setLoading(false);
+    }
   };
 
   return (
