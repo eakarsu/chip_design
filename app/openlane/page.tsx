@@ -38,8 +38,11 @@ export default function OpenlaneDashboard() {
         fetch('/api/openlane/designs').then(x => x.json()),
         fetch('/api/openlane/runs').then(x => x.json()),
       ]);
-      setDesigns(d.designs ?? []);
-      setRuns(r.runs ?? []);
+      if (!Array.isArray(d.designs) || !Array.isArray(r.runs)) {
+        throw new Error('OpenLane response is missing a designs or runs array');
+      }
+      setDesigns(d.designs);
+      setRuns(r.runs);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }

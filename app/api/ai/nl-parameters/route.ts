@@ -2,6 +2,7 @@
  * Natural Language Parameter Configuration
  */
 
+import { fetchAiProvider, providerUnavailableResult } from '@/lib/aiProviderAvailability';
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { openRouterProviderPreferences } from '@/lib/openrouter';
@@ -46,7 +47,7 @@ Command: "${nlCommand}"
 
 Convert this to parameter changes.`;
 
-    const response = await fetch(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
+    const response = await fetchAiProvider(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -72,6 +73,8 @@ Convert this to parameter changes.`;
 
     return NextResponse.json(result);
   } catch (error) {
+    const unavailable = providerUnavailableResult(error);
+    if (unavailable) return unavailable;
     console.error('NL parameters error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

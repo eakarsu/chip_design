@@ -2,6 +2,7 @@
  * Collaborative Design with AI
  */
 
+import { fetchAiProvider, providerUnavailableResult } from '@/lib/aiProviderAvailability';
 import { NextRequest, NextResponse } from 'next/server';
 import { openRouterProviderPreferences } from '@/lib/openrouter';
 
@@ -46,7 +47,7 @@ Choose the best option and explain why.`;
         break;
     }
 
-    const response = await fetch(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
+    const response = await fetchAiProvider(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -71,6 +72,8 @@ Choose the best option and explain why.`;
 
     return NextResponse.json({ result, action });
   } catch (error) {
+    const unavailable = providerUnavailableResult(error);
+    if (unavailable) return unavailable;
     console.error('Collaborative design error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

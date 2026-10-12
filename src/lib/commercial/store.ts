@@ -445,12 +445,15 @@ export async function createFeatureRecord(identity: EdaIdentity, input: Omit<Fea
   });
 }
 
-export async function saveDecisionBrief(identity: EdaIdentity, brief: Omit<DecisionBrief, 'id' | 'createdAt'>, requestId: string): Promise<DecisionBrief> {
+export async function saveDecisionBrief(identity: EdaIdentity, brief: Omit<DecisionBrief, 'id' | 'createdAt'>, requestId: string, signal?: AbortSignal): Promise<DecisionBrief> {
+  signal?.throwIfAborted();
   return commercialTransaction(async () => {
-  await lockCommercialProject(identity.tenantId, brief.projectId); const id = randomUUID(); const timestamp = await nextWorkflowTimestamp(identity, brief.projectId);
+  signal?.throwIfAborted();
+  await lockCommercialProject(identity.tenantId, brief.projectId); signal?.throwIfAborted(); const id = randomUUID(); const timestamp = await nextWorkflowTimestamp(identity, brief.projectId);
   const stored: Omit<DecisionBrief, 'id' | 'createdAt'> = { ...brief, requestedBy: identity.userId, humanStatus: 'pending', humanDecision: undefined };
   await run('INSERT INTO commercial_ai_reviews (id, tenant_id, project_id, feature, brief_json, provider, model, human_status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', [id, identity.tenantId, brief.projectId, brief.feature, json(stored), brief.provider, brief.model, 'pending', timestamp]);
   await audit(identity, 'create', 'ai_review', id, { projectId: brief.projectId, feature: brief.feature, risk: brief.risk }, requestId);
+  signal?.throwIfAborted();
   return { ...stored, id, createdAt: timestamp };
   });
 }

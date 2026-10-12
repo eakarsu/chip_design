@@ -197,6 +197,7 @@ const COLLAB_SAMPLES: Array<{ action: 'merge' | 'resolve' | 'review'; label: str
       { owner: 'alice', algorithm: 'simulated_annealing', wirelength: 34000 },
       { owner: 'bob',   algorithm: 'force_directed',      wirelength: 35500 },
     ],
+    conflictData: { objective: 'Minimize routed wirelength', constraint: 'Preserve both owners\' macro keepouts' },
   },
   {
     label: 'Resolve floorplan conflict',
@@ -208,6 +209,7 @@ const COLLAB_SAMPLES: Array<{ action: 'merge' | 'resolve' | 'review'; label: str
     label: 'Review routing diff',
     action: 'review',
     designs: [{ before: { viaCount: 400 } }, { after: { viaCount: 412 } }],
+    conflictData: { reviewFocus: 'Explain the 12 added vias and check timing and DRC evidence before approval' },
   },
 ];
 
@@ -233,10 +235,28 @@ const DIAGNOSE_SAMPLES: Array<{ error: string; algorithm: string; category: stri
   },
 ];
 
+const LAYOUT_SAMPLES = [
+  { label: 'Routing congestion', analysisType: 'congestion', question: 'Identify the most congested channels and their likely routing causes.' },
+  { label: 'Thermal hotspots', analysisType: 'hotspots', question: 'Locate likely power or thermal hotspots and suggest measurements to confirm them.' },
+  { label: 'DRC review', analysisType: 'violations', question: 'Identify visible spacing or enclosure concerns for manual DRC follow-up.' },
+] as const;
+
+const RECOMMENDATION_SAMPLES = [
+  { label: 'Annealing placement', algorithm: 'simulated_annealing', category: 'placement', params: { iterations: 500, initialTemp: 1000, coolingRate: 0.95 } },
+  { label: 'Genetic placement', algorithm: 'genetic', category: 'placement', params: { populationSize: 100, generations: 250, mutationRate: 0.08 } },
+  { label: 'A* routing', algorithm: 'a_star', category: 'routing', params: { gridSpacing: 0.2, layers: 4, viaPenalty: 3 } },
+] as const;
+
 interface TabPanelProps {
   children: React.ReactNode;
   value: number;
   index: number;
+}
+
+function PresetButtons({ labels, onSelect, disabled = false }: { labels: readonly string[]; onSelect: (index: number) => void; disabled?: boolean }) {
+  return <Box data-testid="sample-preset-buttons" sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap', mb: 1.5 }}>
+    {labels.map((label, index) => <Button key={label} type="button" size="small" variant="outlined" disabled={disabled} onClick={() => onSelect(index)}>{label}</Button>)}
+  </Box>;
 }
 
 async function readAIResponse(response: Response): Promise<unknown> {
@@ -333,6 +353,7 @@ export default function AIFeaturesPage() {
   const [collabIdx, setCollabIdx] = useState(0);
   const [collabAction, setCollabAction] = useState<string>(COLLAB_SAMPLES[0].action);
   const [collabDesigns, setCollabDesigns] = useState<string>(JSON.stringify(COLLAB_SAMPLES[0].designs, null, 2));
+  const [collabConflict, setCollabConflict] = useState<string>('');
   const [collabBusy, setCollabBusy] = useState(false);
   const [collabResult, setCollabResult] = useState<any>(null);
 
@@ -346,6 +367,7 @@ export default function AIFeaturesPage() {
   // Smart Recommendations demo: POST /api/ai/smart-recommendations
   //   { currentParams, category, algorithm }
   const [recAlgo, setRecAlgo] = useState<string>('simulated_annealing');
+  const [recIdx, setRecIdx] = useState(0);
   const [recCategory, setRecCategory] = useState<string>('placement');
   const [recParams, setRecParams] = useState<string>(
     JSON.stringify({ iterations: 500, initialTemp: 1000, coolingRate: 0.95 }, null, 2)
@@ -356,6 +378,7 @@ export default function AIFeaturesPage() {
 
   // Analyze Layout demo: POST /api/ai/analyze-layout { image (base64 dataURL ok), question?, analysisType }
   const [layoutFile, setLayoutFile] = useState<File | null>(null);
+  const [layoutIdx, setLayoutIdx] = useState(0);
   const [layoutDataUrl, setLayoutDataUrl] = useState<string>('');
   const [layoutType, setLayoutType] = useState<'general' | 'congestion' | 'hotspots' | 'violations' | 'comparison'>('general');
   const [layoutQuestion, setLayoutQuestion] = useState<string>('');
@@ -363,85 +386,102 @@ export default function AIFeaturesPage() {
   const [layoutResult, setLayoutResult] = useState<any>(null);
   const [layoutError, setLayoutError] = useState<string>('');
 
-  const loadPerfSample = () => {
-    const next = (perfIdx + 1) % PERF_SAMPLES.length;
+  const loadPerfSample = (selected?: number) => {
+    const next = selected ?? (perfIdx + 1) % PERF_SAMPLES.length;
     const s = PERF_SAMPLES[next];
     setPerfIdx(next);
     setPerfAlgo(s.algorithm);
     setPerfCells(s.cellCount);
     setPerfIters(s.iterations);
   };
-  const loadCodeSample = () => {
-    const next = (codeIdx + 1) % CODE_SAMPLES.length;
+  const loadCodeSample = (selected?: number) => {
+    const next = selected ?? (codeIdx + 1) % CODE_SAMPLES.length;
     const s = CODE_SAMPLES[next];
     setCodeIdx(next);
     setCodeSpec(s.specification);
     setCodeLang(s.language);
   };
-  const loadBugSample = () => {
-    const next = (bugIdx + 1) % BUG_SAMPLES.length;
+  const loadBugSample = (selected?: number) => {
+    const next = selected ?? (bugIdx + 1) % BUG_SAMPLES.length;
     setBugIdx(next);
     setBugCode(BUG_SAMPLES[next]);
   };
-  const loadTestSample = () => {
-    const next = (testIdx + 1) % TEST_SAMPLES.length;
+  const loadTestSample = (selected?: number) => {
+    const next = selected ?? (testIdx + 1) % TEST_SAMPLES.length;
     const s = TEST_SAMPLES[next];
     setTestIdx(next);
     setTestDesc(s.description);
     setTestType(s.testType);
   };
-  const loadSearchSample = () => {
-    const next = (searchIdx + 1) % SEARCH_SAMPLES.length;
+  const loadSearchSample = (selected?: number) => {
+    const next = selected ?? (searchIdx + 1) % SEARCH_SAMPLES.length;
     const s = SEARCH_SAMPLES[next];
     setSearchIdx(next);
     setSearchQuery(s.query);
     setSearchContext(s.context);
   };
-  const loadNlSample = () => {
-    const next = (nlIdx + 1) % NL_SAMPLES.length;
+  const loadNlSample = (selected?: number) => {
+    const next = selected ?? (nlIdx + 1) % NL_SAMPLES.length;
     const s = NL_SAMPLES[next];
     setNlIdx(next);
     setNlCommand(s.nlCommand);
     setNlAlgorithm(s.algorithm);
     setNlCategory(s.category);
   };
-  const loadDocsSample = () => {
-    const next = (docsIdx + 1) % DOCS_SAMPLES.length;
+  const loadDocsSample = (selected?: number) => {
+    const next = selected ?? (docsIdx + 1) % DOCS_SAMPLES.length;
     const s = DOCS_SAMPLES[next];
     setDocsIdx(next);
     setDocsFormat(s.format);
     setDocsJson(JSON.stringify(s.designData, null, 2));
   };
-  const loadMoSample = () => {
-    const next = (moIdx + 1) % MULTI_OBJ_SAMPLES.length;
+  const loadMoSample = (selected?: number) => {
+    const next = selected ?? (moIdx + 1) % MULTI_OBJ_SAMPLES.length;
     const s = MULTI_OBJ_SAMPLES[next];
     setMoIdx(next);
     setMoObjectives(s.objectives.join(', '));
     setMoConstraints(JSON.stringify(s.constraints, null, 2));
     setMoPoints(s.numPoints);
   };
-  const loadTutSample = () => {
-    const next = (tutIdx + 1) % TUTORIAL_SAMPLES.length;
+  const loadTutSample = (selected?: number) => {
+    const next = selected ?? (tutIdx + 1) % TUTORIAL_SAMPLES.length;
     const s = TUTORIAL_SAMPLES[next];
     setTutIdx(next);
     setTutTopic(s.topic);
     setTutLevel(s.userLevel);
     setTutGoal(s.learningGoal);
   };
-  const loadCollabSample = () => {
-    const next = (collabIdx + 1) % COLLAB_SAMPLES.length;
+  const loadCollabSample = (selected?: number) => {
+    const next = selected ?? (collabIdx + 1) % COLLAB_SAMPLES.length;
     const s = COLLAB_SAMPLES[next];
     setCollabIdx(next);
     setCollabAction(s.action);
     setCollabDesigns(JSON.stringify(s.designs, null, 2));
+    setCollabConflict(s.conflictData === undefined ? '' : JSON.stringify(s.conflictData, null, 2));
   };
-  const loadDiagSample = () => {
-    const next = (diagIdx + 1) % DIAGNOSE_SAMPLES.length;
+  const loadDiagSample = (selected?: number) => {
+    const next = selected ?? (diagIdx + 1) % DIAGNOSE_SAMPLES.length;
     const s = DIAGNOSE_SAMPLES[next];
     setDiagIdx(next);
     setDiagError(s.error);
     setDiagAlgo(s.algorithm);
     setDiagCategory(s.category);
+  };
+  const loadLayoutSample = (selected?: number) => {
+    const next = selected ?? (layoutIdx + 1) % LAYOUT_SAMPLES.length;
+    const sample = LAYOUT_SAMPLES[next];
+    setLayoutIdx(next);
+    setLayoutType(sample.analysisType);
+    setLayoutQuestion(sample.question);
+    // The image is a genuine prerequisite; keep any selected file and its data URL.
+  };
+  const loadRecommendationSample = (selected?: number) => {
+    const next = selected ?? (recIdx + 1) % RECOMMENDATION_SAMPLES.length;
+    const sample = RECOMMENDATION_SAMPLES[next];
+    setRecIdx(next);
+    setRecAlgo(sample.algorithm);
+    setRecCategory(sample.category);
+    setRecParams(JSON.stringify(sample.params, null, 2));
   };
 
   const handleFeatureSelect = (featureId: string) => {
@@ -612,6 +652,13 @@ export default function AIFeaturesPage() {
           {/* Interactive demo: vision-capable POST /api/ai/analyze-layout */}
           <Box sx={{ mt: 3 }}>
             <Typography variant="h6" gutterBottom>Try it</Typography>
+            <Button type="button" size="small" startIcon={<ShuffleIcon />} onClick={() => loadLayoutSample()} disabled={layoutBusy} sx={{ mb: 1 }}>
+              Load Sample ({layoutIdx + 1}/{LAYOUT_SAMPLES.length})
+            </Button>
+            <PresetButtons labels={LAYOUT_SAMPLES.map(sample => sample.label)} onSelect={loadLayoutSample} disabled={layoutBusy} />
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              {LAYOUT_SAMPLES[layoutIdx].label}. Upload a real layout image to run analysis; presets preserve any selected image.
+            </Typography>
 
             <FormControl fullWidth size="small" sx={{ mb: 2 }}>
               <InputLabel>Analysis Type</InputLabel>
@@ -751,12 +798,13 @@ export default function AIFeaturesPage() {
             <Button
               size="small"
               startIcon={<ShuffleIcon />}
-              onClick={loadDocsSample}
+              onClick={() => loadDocsSample()}
               aria-label="load next documentation sample"
             >
               Load Sample ({docsIdx + 1}/{DOCS_SAMPLES.length})
             </Button>
           </Box>
+          <PresetButtons labels={DOCS_SAMPLES.map(sample => sample.label)} onSelect={loadDocsSample} disabled={docsBusy} />
           <Typography variant="caption" color="text.secondary">
             {DOCS_SAMPLES[docsIdx].label}
           </Typography>
@@ -862,10 +910,11 @@ export default function AIFeaturesPage() {
                 <CardContent>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                     <Typography variant="h6">🔎 Semantic Search</Typography>
-                    <Button size="small" startIcon={<ShuffleIcon />} onClick={loadSearchSample}>
+                    <Button size="small" startIcon={<ShuffleIcon />} onClick={() => loadSearchSample()}>
                       Load Sample ({searchIdx + 1}/{SEARCH_SAMPLES.length})
                     </Button>
                   </Box>
+                  <PresetButtons labels={SEARCH_SAMPLES.map(sample => sample.query)} onSelect={loadSearchSample} disabled={searching} />
                   <TextField
                     fullWidth
                     multiline
@@ -920,10 +969,11 @@ export default function AIFeaturesPage() {
                 <CardContent>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                     <Typography variant="h6">🗣️ NL Parameter Config</Typography>
-                    <Button size="small" startIcon={<ShuffleIcon />} onClick={loadNlSample}>
+                    <Button size="small" startIcon={<ShuffleIcon />} onClick={() => loadNlSample()}>
                       Load Sample ({nlIdx + 1}/{NL_SAMPLES.length})
                     </Button>
                   </Box>
+                  <PresetButtons labels={NL_SAMPLES.map(sample => sample.nlCommand)} onSelect={loadNlSample} disabled={nlBusy} />
                   <TextField
                     fullWidth
                     multiline
@@ -1026,12 +1076,13 @@ export default function AIFeaturesPage() {
                   <Button
                     size="small"
                     startIcon={<ShuffleIcon />}
-                    onClick={loadPerfSample}
+                    onClick={() => loadPerfSample()}
                     aria-label="load next performance sample"
                   >
                     Load Sample ({perfIdx + 1}/{PERF_SAMPLES.length})
                   </Button>
                 </Box>
+                <PresetButtons labels={PERF_SAMPLES.map(sample => `${sample.algorithm} · ${sample.cellCount} cells`)} onSelect={loadPerfSample} disabled={predicting} />
                 <Typography variant="body2" color="text.secondary" paragraph>
                   Predict algorithm runtime before execution
                 </Typography>
@@ -1120,12 +1171,13 @@ export default function AIFeaturesPage() {
                   <Button
                     size="small"
                     startIcon={<ShuffleIcon />}
-                    onClick={loadCodeSample}
+                    onClick={() => loadCodeSample()}
                     aria-label="load next code generation sample"
                   >
                     Load Sample ({codeIdx + 1}/{CODE_SAMPLES.length})
                   </Button>
                 </Box>
+                <PresetButtons labels={CODE_SAMPLES.map(sample => sample.specification.split("\n")[0])} onSelect={loadCodeSample} disabled={generatingCode} />
                 <Typography variant="body2" color="text.secondary" paragraph>
                   Generate Verilog/VHDL from specifications
                 </Typography>
@@ -1204,12 +1256,13 @@ export default function AIFeaturesPage() {
                   <Button
                     size="small"
                     startIcon={<ShuffleIcon />}
-                    onClick={loadBugSample}
+                    onClick={() => loadBugSample()}
                     aria-label="load next bug detection sample"
                   >
                     Load Sample ({bugIdx + 1}/{BUG_SAMPLES.length})
                   </Button>
                 </Box>
+                <PresetButtons labels={["Blocking assignment", "Multiple drivers", "Latch inference", "Counter reset"]} onSelect={loadBugSample} disabled={detectingBugs} />
                 <Typography variant="body2" color="text.secondary" paragraph>
                   Detect design issues and violations
                 </Typography>
@@ -1277,12 +1330,13 @@ export default function AIFeaturesPage() {
                   <Button
                     size="small"
                     startIcon={<ShuffleIcon />}
-                    onClick={loadTestSample}
+                    onClick={() => loadTestSample()}
                     aria-label="load next test generation sample"
                   >
                     Load Sample ({testIdx + 1}/{TEST_SAMPLES.length})
                   </Button>
                 </Box>
+                <PresetButtons labels={TEST_SAMPLES.map(sample => sample.description)} onSelect={loadTestSample} disabled={generatingTests} />
                 <Typography variant="body2" color="text.secondary" paragraph>
                   Generate comprehensive test cases
                 </Typography>
@@ -1354,10 +1408,11 @@ export default function AIFeaturesPage() {
               <CardContent>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                   <Typography variant="h6">🎯 Multi-Objective Optimization</Typography>
-                  <Button size="small" startIcon={<ShuffleIcon />} onClick={loadMoSample}>
+                  <Button size="small" startIcon={<ShuffleIcon />} onClick={() => loadMoSample()}>
                     Load Sample ({moIdx + 1}/{MULTI_OBJ_SAMPLES.length})
                   </Button>
                 </Box>
+                <PresetButtons labels={MULTI_OBJ_SAMPLES.map(sample => sample.label)} onSelect={loadMoSample} disabled={moBusy} />
                 <Typography variant="caption" color="text.secondary" paragraph>
                   {MULTI_OBJ_SAMPLES[moIdx].label}
                 </Typography>
@@ -1405,10 +1460,11 @@ export default function AIFeaturesPage() {
               <CardContent>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                   <Typography variant="h6">📚 Tutorial Generation</Typography>
-                  <Button size="small" startIcon={<ShuffleIcon />} onClick={loadTutSample}>
+                  <Button size="small" startIcon={<ShuffleIcon />} onClick={() => loadTutSample()}>
                     Load Sample ({tutIdx + 1}/{TUTORIAL_SAMPLES.length})
                   </Button>
                 </Box>
+                <PresetButtons labels={TUTORIAL_SAMPLES.map(sample => sample.topic)} onSelect={loadTutSample} disabled={tutBusy} />
                 <TextField fullWidth size="small" label="Topic"
                   value={tutTopic} onChange={(e) => setTutTopic(e.target.value)} sx={{ mb: 2 }} />
                 <FormControl fullWidth size="small" sx={{ mb: 2 }}>
@@ -1455,10 +1511,11 @@ export default function AIFeaturesPage() {
               <CardContent>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                   <Typography variant="h6">🤝 Collaborative Design</Typography>
-                  <Button size="small" startIcon={<ShuffleIcon />} onClick={loadCollabSample}>
+                  <Button size="small" startIcon={<ShuffleIcon />} onClick={() => loadCollabSample()}>
                     Load Sample ({collabIdx + 1}/{COLLAB_SAMPLES.length})
                   </Button>
                 </Box>
+                <PresetButtons labels={COLLAB_SAMPLES.map(sample => sample.label)} onSelect={loadCollabSample} disabled={collabBusy} />
                 <Typography variant="caption" color="text.secondary" paragraph>
                   {COLLAB_SAMPLES[collabIdx].label}
                 </Typography>
@@ -1472,6 +1529,8 @@ export default function AIFeaturesPage() {
                 </FormControl>
                 <TextField fullWidth multiline rows={4} label="Designs (JSON array)"
                   value={collabDesigns} onChange={(e) => setCollabDesigns(e.target.value)} sx={{ mb: 2 }} />
+                <TextField fullWidth multiline minRows={2} label="Conflict data (optional JSON)"
+                  value={collabConflict} onChange={(e) => setCollabConflict(e.target.value)} sx={{ mb: 2 }} />
                 <Button fullWidth variant="contained"
                   startIcon={collabBusy ? <CircularProgress size={20} /> : <PlayArrowIcon />}
                   disabled={collabBusy}
@@ -1480,10 +1539,11 @@ export default function AIFeaturesPage() {
                     setAiError('');
                     try {
                       const designs = JSON.parse(collabDesigns);
+                      const conflictData = collabConflict.trim() ? JSON.parse(collabConflict) : undefined;
                       const resp = await fetch('/api/ai/collaborative-design', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: collabAction, designs }),
+                        body: JSON.stringify({ action: collabAction, designs, conflictData }),
                       });
                       setCollabResult(await readAIResponse(resp));
                     } catch (e) {
@@ -1506,10 +1566,11 @@ export default function AIFeaturesPage() {
               <CardContent>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                   <Typography variant="h6">🩺 Error Diagnosis</Typography>
-                  <Button size="small" startIcon={<ShuffleIcon />} onClick={loadDiagSample}>
+                  <Button size="small" startIcon={<ShuffleIcon />} onClick={() => loadDiagSample()}>
                     Load Sample ({diagIdx + 1}/{DIAGNOSE_SAMPLES.length})
                   </Button>
                 </Box>
+                <PresetButtons labels={DIAGNOSE_SAMPLES.map(sample => sample.error)} onSelect={loadDiagSample} disabled={diagBusy} />
                 <TextField fullWidth multiline rows={2} label="Error message"
                   value={diagError} onChange={(e) => setDiagError(e.target.value)} sx={{ mb: 2 }} />
                 <TextField fullWidth size="small" label="Algorithm"
@@ -1555,6 +1616,13 @@ export default function AIFeaturesPage() {
               <CardContent>
                 <Typography variant="h6" gutterBottom>
                   💡 Smart Recommendations
+                </Typography>
+                <Button type="button" size="small" startIcon={<ShuffleIcon />} onClick={() => loadRecommendationSample()} disabled={recBusy} sx={{ mb: 1 }}>
+                  Load Sample ({recIdx + 1}/{RECOMMENDATION_SAMPLES.length})
+                </Button>
+                <PresetButtons labels={RECOMMENDATION_SAMPLES.map(sample => sample.label)} onSelect={loadRecommendationSample} disabled={recBusy} />
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
+                  {RECOMMENDATION_SAMPLES[recIdx].label}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" paragraph>
                   Suggest parameter changes for the chosen algorithm based on historical analytics.

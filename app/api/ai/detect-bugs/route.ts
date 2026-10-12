@@ -2,6 +2,7 @@
  * AI-Powered Bug Detection
  */
 
+import { fetchAiProvider, providerUnavailableResult } from '@/lib/aiProviderAvailability';
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { openRouterProviderPreferences } from '@/lib/openrouter';
@@ -74,7 +75,7 @@ Respond with JSON:
   "riskScore": 0-100
 }`;
 
-    const response = await fetch(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
+    const response = await fetchAiProvider(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -100,6 +101,8 @@ Respond with JSON:
 
     return NextResponse.json(result_parsed);
   } catch (error) {
+    const unavailable = providerUnavailableResult(error);
+    if (unavailable) return unavailable;
     console.error('Bug detection error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

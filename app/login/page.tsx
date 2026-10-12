@@ -47,38 +47,15 @@ function LoginForm() {
 
   const loginAction = `/api/auth/login?redirect=${encodeURIComponent(redirect)}`;
 
-  const handleDemoLogin = async () => {
+  const fillDemoCredentials = () => {
     if (!demoCredentials) {
       setError('Demo credentials are not available.');
       return;
     }
 
-    const { email: demoEmail, password: demoPassword } = demoCredentials;
-    setEmail(demoEmail);
-    setPassword(demoPassword);
+    setEmail(demoCredentials.email);
+    setPassword(demoCredentials.password);
     setError('');
-    setLoading(true);
-
-    try {
-      const response = await fetch(loginAction, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: demoEmail, password: demoPassword }),
-        credentials: 'same-origin',
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({})) as { error?: string };
-        setError(data.error || 'Invalid email or password');
-        setLoading(false);
-        return;
-      }
-
-      window.location.href = redirect;
-    } catch {
-      setError('An error occurred. Please try again.');
-      setLoading(false);
-    }
   };
 
   return (
@@ -132,14 +109,14 @@ function LoginForm() {
               type="button"
               variant="outlined"
               fullWidth
-              onClick={handleDemoLogin}
+              onClick={fillDemoCredentials}
               disabled={demoCredentialsLoading || !demoCredentials || loading}
-              aria-label="Auto Fill Demo Credentials"
+              aria-label="Fill Demo Credentials"
               sx={{ mb: 1.5 }}
             >
               {demoCredentialsLoading
                 ? 'Loading Demo Credentials…'
-                : 'Auto Fill Demo Credentials'}
+                : 'Fill Demo Credentials'}
             </Button>
             <Button
               type="submit"

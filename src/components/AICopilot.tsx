@@ -615,7 +615,9 @@ function CopilotContent({
                       result={message.content}
                     />
                   ) : message.content ? (
-                    <ChatAnswer content={message.content} />
+                    /^(?:```json\s*)?[{[]/i.test(message.content.trim())
+                      ? <ProfessionalAIResult compact showDisclaimer={false} title="AI answer" result={message.content} />
+                      : <ChatAnswer content={message.content} />
                   ) : null}
                   {Boolean(message.sources?.length) && (
                     <Box sx={{ mt: 1.5 }}>

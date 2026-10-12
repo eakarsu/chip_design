@@ -274,7 +274,7 @@ describe('/api/ai/copilot', () => {
     }
   );
 
-  it('returns a retryable 504 when both providers time out while reading their response bodies', async () => {
+  it('returns a readable unavailable result when both providers time out while reading their response bodies', async () => {
     const stalled = () => {
       const response = new Response(' ', { status: 200 });
       jest.spyOn(response, 'json').mockRejectedValueOnce(new DOMException('body deadline exceeded', 'TimeoutError'));
@@ -285,7 +285,7 @@ describe('/api/ai/copilot', () => {
     const response = await POST(request({ messages: [{ role: 'user', content: 'Explain the app' }] }) as never);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(response.status).toBe(504);
+    expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ code: 'AI_PROVIDER_TIMEOUT', retryable: true });
   });
 
@@ -307,7 +307,7 @@ describe('/api/ai/copilot', () => {
       .mockResolvedValueOnce(fallback);
 
     const response = await POST(request() as never);
-    expect(response.status).toBe(504);
+    expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ code: 'AI_PROVIDER_TIMEOUT', retryable: true });
   });
 
@@ -339,7 +339,7 @@ describe('/api/ai/copilot', () => {
       .mockResolvedValueOnce(recovery);
 
     const response = await POST(request() as never);
-    expect(response.status).toBe(504);
+    expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ code: 'AI_PROVIDER_TIMEOUT', retryable: true });
   });
 
@@ -362,10 +362,10 @@ describe('/api/ai/copilot', () => {
     expect((await response.json()).choices[0].message.content).toBe('Recovered answer');
   });
 
-  it('reports exhausted malformed provider responses as 502 instead of invalid user JSON', async () => {
+  it('reports exhausted malformed provider responses as unavailable instead of invalid user JSON', async () => {
     global.fetch = jest.fn().mockImplementation(async () => new Response('not valid JSON'));
     const response = await POST(request() as never);
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ code: 'AI_PROVIDER_UNAVAILABLE', retryable: true });
   });
 
@@ -383,7 +383,7 @@ describe('/api/ai/copilot', () => {
       global.fetch = fetchMock;
 
       const response = await POST(request() as never);
-      expect(response.status).toBe(502);
+      expect(response.status).toBe(200);
       expect(await response.json()).toMatchObject({ code: 'AI_PROVIDER_CONFIGURATION', retryable: false });
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(cancel).toHaveBeenCalledTimes(1);

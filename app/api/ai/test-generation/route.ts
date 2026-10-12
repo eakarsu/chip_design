@@ -2,6 +2,7 @@
  * Automated Testing & Validation
  */
 
+import { fetchAiProvider, providerUnavailableResult } from '@/lib/aiProviderAvailability';
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { openRouterProviderPreferences } from '@/lib/openrouter';
@@ -76,7 +77,7 @@ Return ONLY valid JSON in this shape:
   "summary": "one-paragraph overview"
 }`;
 
-    const response = await fetch(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
+    const response = await fetchAiProvider(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -131,6 +132,8 @@ Return ONLY valid JSON in this shape:
       );
     }
   } catch (error) {
+    const unavailable = providerUnavailableResult(error);
+    if (unavailable) return unavailable;
     console.error('Test generation error:', error);
     return NextResponse.json(
       { error: 'Internal server error', message: error instanceof Error ? error.message : String(error) },

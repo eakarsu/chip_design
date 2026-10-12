@@ -61,8 +61,8 @@ export default function AIAlgorithmSelector({
   const [sampleIdx, setSampleIdx] = useState(-1);
   const [loading, setLoading] = useState(false);
 
-  const loadSample = () => {
-    const next = (sampleIdx + 1) % QUERY_SAMPLES.length;
+  const loadSample = (selected?: number) => {
+    const next = selected ?? (sampleIdx + 1) % QUERY_SAMPLES.length;
     setSampleIdx(next);
     setQuery(QUERY_SAMPLES[next]);
   };
@@ -137,12 +137,17 @@ export default function AIAlgorithmSelector({
             <Button
               size="small"
               startIcon={<ShuffleIcon />}
-              onClick={loadSample}
+              onClick={() => loadSample()}
               disabled={loading}
               aria-label="load next query sample"
             >
               Load Sample ({Math.max(0, sampleIdx) + 1}/{QUERY_SAMPLES.length})
             </Button>
+          </Box>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1 }}>
+            {['Placement', 'Routing', 'Partitioning', 'Low power', 'Timing', 'Thermal'].map((label, index) => (
+              <Button key={label} type="button" size="small" variant="outlined" disabled={loading} onClick={() => loadSample(index)}>{label}</Button>
+            ))}
           </Box>
           <TextField
             fullWidth

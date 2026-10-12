@@ -3,6 +3,7 @@
  * Uses OpenRouter AI to analyze historical data and suggest optimizations
  */
 
+import { fetchAiProvider, providerUnavailableResult } from '@/lib/aiProviderAvailability';
 import { NextRequest, NextResponse } from 'next/server';
 import { getEvents } from '@/lib/analytics';
 import { rateLimit } from '@/lib/rateLimit';
@@ -106,7 +107,7 @@ Provide general best-practice recommendations for these parameters based on:
     prompt += `\n\nReturn ONLY valid JSON, no markdown formatting.`;
 
     // Call OpenRouter with Claude Sonnet for analysis
-    const openrouterResponse = await fetch(
+    const openrouterResponse = await fetchAiProvider(
       `${process.env.OPENROUTER_BASE_URL}/chat/completions`,
       {
         method: 'POST',
@@ -163,6 +164,8 @@ Provide general best-practice recommendations for these parameters based on:
 
     return NextResponse.json(result);
   } catch (error) {
+    const unavailable = providerUnavailableResult(error);
+    if (unavailable) return unavailable;
     console.error('Smart recommendations error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

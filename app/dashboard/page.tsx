@@ -295,7 +295,8 @@ export default function DashboardPage() {
         if (!r.ok) throw new Error(`history returned ${r.status}`);
         const j = await r.json();
         if (cancelled) return;
-        const list: RecentRun[] = (j.runs ?? []).slice(0, 5);
+        if (!Array.isArray(j.runs)) throw new Error('History response is missing its runs array');
+        const list: RecentRun[] = j.runs.slice(0, 15);
         setRuns(list);
       } catch (e) {
         if (cancelled) return;
@@ -356,7 +357,7 @@ export default function DashboardPage() {
         </Box>
       )}
 
-      {/* Recent Runs — shows the 5 most recent entries from /api/history. */}
+      {/* Recent Runs — shows up to 15 entries from /api/history. */}
       <Box sx={{ mb: 5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
           <Typography variant="h5" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>

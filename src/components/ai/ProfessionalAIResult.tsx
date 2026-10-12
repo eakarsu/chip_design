@@ -77,7 +77,8 @@ function parseResult(value: unknown): unknown {
 }
 
 function displayScalar(value: unknown): string {
-  if (value === null || value === undefined || value === '') return 'Not provided';
+  if (value === null || value === undefined) return 'Not provided';
+  if (value === '') return 'Empty string';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'number') return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 4 });
   return String(value);
@@ -219,6 +220,7 @@ function FieldValue({ label, value, depth = 0 }: { label: string; value: unknown
   const parsed = parseResult(value);
   if (depth > 5) return <Typography variant="body2">Additional detail available.</Typography>;
   if (typeof parsed === 'string') {
+    if (parsed === '') return <Typography variant="body2" fontWeight={650}>Empty string</Typography>;
     if (codeKeys.test(label) || parsed.includes('\nmodule ') || parsed.includes('\nentity ')) {
       return <Box component="pre" sx={{ m: 0, p: 1.5, borderRadius: 1, bgcolor: '#0f172a', color: '#e2e8f0', overflowX: 'auto', whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.6 }}>{parsed}</Box>;
     }
@@ -236,7 +238,7 @@ function FieldValue({ label, value, depth = 0 }: { label: string; value: unknown
 }
 
 function metaChip(key: string, value: unknown): ReactNode {
-  if (value === undefined || value === null || value === '') return null;
+  if (value === undefined || value === null) return null;
   const confidence = key === 'confidence' && typeof value === 'number'
     ? `${Math.round((value <= 1 ? value * 100 : value) * 10) / 10}% confidence`
     : null;
@@ -251,7 +253,7 @@ function ObjectResult({ value }: { value: RecordValue }) {
   const summaryEntry = summaryKeys.find(key => typeof value[key] === 'string' && String(value[key]).trim() && key !== headlineEntry);
   const metricsEntry = Object.entries(value).find(([key]) => /metrics|measurements|scores|statistics/i.test(key));
   const consumed = new Set([headlineEntry, summaryEntry, metricsEntry?.[0], ...metaKeys].filter(Boolean));
-  const remaining = Object.entries(value).filter(([key, item]) => !consumed.has(key) && item !== undefined && item !== null && item !== '');
+  const remaining = Object.entries(value).filter(([key, item]) => !consumed.has(key) && item !== undefined && item !== null);
 
   return <Stack gap={2}>
     {headlineEntry && <Typography variant="h5" fontWeight={850}>{String(value[headlineEntry])}</Typography>}
@@ -276,7 +278,7 @@ export default function ProfessionalAIResult({ title = 'AI analysis', result, co
   showDisclaimer?: boolean;
 }) {
   const parsed = parseResult(result);
-  if (parsed === null || parsed === undefined || parsed === '') return null;
+  if (parsed === null || parsed === undefined) return null;
   const malformedStructuredText = typeof result === 'string'
     && parsed === result
     && /(?:^|\n)\s*(?:```json\s*)?[{[]/.test(result.trim());

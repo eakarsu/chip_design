@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   Alert,
@@ -105,6 +105,10 @@ export default function AiDesignStudio({
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const aiRequest = useRef<AbortController | null>(null);
+  const cancelAI = () => { aiRequest.current?.abort(); aiRequest.current = null; setBusy(''); setNotice('AI challenge cancelled. Retained design evidence is unchanged.'); };
+  useEffect(() => () => { aiRequest.current?.abort(); aiRequest.current = null; }, []);
+  useEffect(() => { if (aiRequest.current) cancelAI(); }, [projectId, workflowId, stepId]);
 
   useEffect(() => {
     const nextWorkflow = assessments.find((item) => item.id === workflowId) ?? assessments[0];
@@ -158,6 +162,7 @@ export default function AiDesignStudio({
   };
 
   const runAiChallenge = async () => {
+    if (aiRequest.current) return;
     const records = workflow.steps.flatMap((item) => item.records);
     const uniqueRecords = [...new Map(records.map((record) => [record.id, record])).values()];
     const evidenceReferences = [...new Set(uniqueRecords.flatMap((record) => record.evidence))].slice(0, 20);
@@ -165,11 +170,13 @@ export default function AiDesignStudio({
       setError('Retain primary evidence in an earlier step before requesting the AI challenge.');
       return;
     }
+    const controller = new AbortController(); aiRequest.current = controller;
     setBusy(selectedStep.id);
     setError('');
     setNotice('');
     try {
       const response = await fetch('/api/workspace/ai-review', {
+        signal: controller.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -208,14 +215,15 @@ export default function AiDesignStudio({
         }),
       });
       const data = await response.json();
+      if (controller.signal.aborted) return;
       if (!response.ok) throw new Error(data.message ?? data.error ?? 'AI design challenge failed');
       onBrief(data.brief);
       setNotice('AI challenge completed. Its evidence-backed brief now requires a human disposition.');
       await onReload();
     } catch (reviewError) {
-      setError(reviewError instanceof Error ? reviewError.message : 'AI design challenge failed');
+      if (!controller.signal.aborted) setError(reviewError instanceof Error ? reviewError.message : 'AI design challenge failed');
     } finally {
-      setBusy('');
+      if (aiRequest.current === controller) { aiRequest.current = null; setBusy(''); }
     }
   };
 
@@ -223,6 +231,7 @@ export default function AiDesignStudio({
 
   return (
     <Box id="ai-design-studio" sx={{ scrollMarginTop: 24 }}>
+      {aiRequest.current && <Button variant="outlined" onClick={cancelAI}>Cancel AI request</Button>}
       <Paper
         variant="outlined"
         sx={{

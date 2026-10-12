@@ -6,6 +6,17 @@ import {
   Box, Container, Typography, Paper, Alert, CircularProgress,
   Table, TableHead, TableRow, TableCell, TableBody, Chip, MenuItem, TextField,
 } from '@mui/material';
+import ProfessionalAIResult from '@/components/ai/ProfessionalAIResult';
+
+function DisplayValue({ value }: { value: unknown }) {
+  if (value !== null && typeof value === 'object') {
+    return <ProfessionalAIResult compact showDisclaimer={false} title="Details" result={value} />;
+  }
+  const label = value === undefined || value === null ? 'Not provided'
+    : value === '' ? 'Empty string'
+      : typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value);
+  return <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{label}</Typography>;
+}
 
 interface RunRow {
   id: string;
@@ -57,9 +68,10 @@ function CompareContent() {
         const r = await fetch('/api/history');
         const j = await r.json();
         if (!r.ok) throw new Error(j.message ?? 'Load failed');
-        setRuns(j.runs ?? []);
-        if (!aId && j.runs?.[0]) setAId(j.runs[0].id);
-        if (!bId && j.runs?.[1]) setBId(j.runs[1].id);
+        if (!Array.isArray(j.runs)) throw new Error('History response is missing its runs array');
+        setRuns(j.runs);
+        if (!aId && j.runs[0]) setAId(j.runs[0].id);
+        if (!bId && j.runs[1]) setBId(j.runs[1].id);
       } catch (e) {
         setErr(e instanceof Error ? e.message : String(e));
       } finally {
@@ -94,8 +106,8 @@ function CompareContent() {
               return (
                 <TableRow key={k} hover sx={d.changed ? { backgroundColor: 'action.selected' } : undefined}>
                   <TableCell sx={{ fontFamily: 'monospace' }}>{k}</TableCell>
-                  <TableCell>{JSON.stringify(aFlat[k] ?? null)}</TableCell>
-                  <TableCell>{JSON.stringify(bFlat[k] ?? null)}</TableCell>
+                  <TableCell><DisplayValue value={aFlat[k]} /></TableCell>
+                  <TableCell><DisplayValue value={bFlat[k]} /></TableCell>
                   <TableCell align="right">
                     {d.changed
                       ? <Chip size="small" label={d.pct ?? 'changed'} color={d.pct ? 'primary' : 'default'} />

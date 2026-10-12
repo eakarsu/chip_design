@@ -2,6 +2,7 @@
  * Predictive Performance Modeling
  */
 
+import { fetchAiProvider, providerUnavailableResult } from '@/lib/aiProviderAvailability';
 import { NextRequest, NextResponse } from 'next/server';
 import { getEvents } from '@/lib/analytics';
 import { rateLimit } from '@/lib/rateLimit';
@@ -55,7 +56,7 @@ Predict:
   "recommendations": ["suggestions to improve"]
 }`;
 
-    const response = await fetch(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
+    const response = await fetchAiProvider(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -81,6 +82,8 @@ Predict:
 
     return NextResponse.json({ ...result, sampleSize: historicalRuns.length });
   } catch (error) {
+    const unavailable = providerUnavailableResult(error);
+    if (unavailable) return unavailable;
     console.error('Performance prediction error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

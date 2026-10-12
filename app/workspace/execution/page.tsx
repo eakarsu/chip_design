@@ -83,8 +83,11 @@ export default function GovernedExecutionPage() {
   const load = useCallback(async () => {
     if (!token) return;
     const [projectData, jobData] = await Promise.all([request('/api/eda/projects'), request('/api/eda/jobs')]);
-    setProjects(projectData.projects ?? []);
-    setJobs(jobData.jobs ?? []);
+    if (!Array.isArray(projectData.projects) || !Array.isArray(jobData.jobs)) {
+      throw new Error('EDA response is missing a projects or jobs array');
+    }
+    setProjects(projectData.projects);
+    setJobs(jobData.jobs);
   }, [request, token]);
 
   useEffect(() => {

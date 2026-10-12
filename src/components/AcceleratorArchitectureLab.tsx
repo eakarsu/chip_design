@@ -69,6 +69,12 @@ const bottleneckLabel: Record<AcceleratorArchitectureResult['bottleneck'], strin
   'feedback-loop-timing': 'Feedback-loop timing',
 };
 
+const ARCHITECTURE_PRESETS: Array<{ label: string; input: AcceleratorArchitectureInput }> = [
+  { label: 'Edge inference', input: { ...DEFAULT_ACCELERATOR_ARCHITECTURE_INPUT, matrixM: 256, matrixK: 512, matrixN: 256, batchSize: 1, precisionBits: 8, arrayRows: 32, arrayColumns: 32, arrayCount: 2, clockGhz: 0.6, voltage: 0.7, activityFactor: 0.4, localMemoryMib: 4, offChipBandwidthGBps: 64, logicDepthGates: 60, recurrenceDepthGates: 16, targetLatencyMs: 5, reconfigurationDays: 90, productionVolume: 500_000, targetHardware: 'asic', organization: 'coarse-tpu', dataflow: 'weight-stationary', memoryPolicy: 'scratchpad' } },
+  { label: 'Cloud GEMM', input: { ...DEFAULT_ACCELERATOR_ARCHITECTURE_INPUT, matrixM: 4096, matrixK: 4096, matrixN: 4096, batchSize: 8, precisionBits: 16, arrayRows: 128, arrayColumns: 128, arrayCount: 8, clockGhz: 1.2, voltage: 0.9, activityFactor: 0.75, localMemoryMib: 32, offChipBandwidthGBps: 1024, logicDepthGates: 100, recurrenceDepthGates: 24, targetLatencyMs: 20, reconfigurationDays: 30, productionVolume: 20_000, targetHardware: 'auto', organization: 'splittable', dataflow: 'output-stationary', memoryPolicy: 'cache' } },
+  { label: 'FPGA prototype', input: { ...DEFAULT_ACCELERATOR_ARCHITECTURE_INPUT, matrixM: 512, matrixK: 1024, matrixN: 512, batchSize: 2, precisionBits: 4, arrayRows: 32, arrayColumns: 64, arrayCount: 2, clockGhz: 0.3, voltage: 0.85, activityFactor: 0.5, localMemoryMib: 8, offChipBandwidthGBps: 32, logicDepthGates: 70, recurrenceDepthGates: 20, targetLatencyMs: 12, reconfigurationDays: 7, productionVolume: 100, targetHardware: 'fpga', organization: 'fine-gpu', dataflow: 'weight-stationary', memoryPolicy: 'scratchpad' } },
+];
+
 type NumericInputKey = {
   [K in keyof AcceleratorArchitectureInput]: AcceleratorArchitectureInput[K] extends number ? K : never;
 }[keyof AcceleratorArchitectureInput];
@@ -326,6 +332,9 @@ Identify invalid assumptions, the dominant bottleneck, the most useful next arch
         <Grid size={{ xs: 12, lg: 5 }}>
           <Paper variant="outlined" sx={{ p: 2.5 }}>
             <Typography variant="h6" fontWeight={900}>Workload and implementation contract</Typography>
+            <Stack direction="row" gap={1} flexWrap="wrap" useFlexGap sx={{ my: 1.5 }}>
+              {ARCHITECTURE_PRESETS.map((preset) => <Button key={preset.label} type="button" size="small" variant="outlined" disabled={reviewing || retaining} onClick={() => { setInput({ ...preset.input }); setAiResult(''); setAiError(''); }}>{preset.label}</Button>)}
+            </Stack>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               GEMM shape is M × K multiplied by K × N. All values remain editable assumptions until measured.
             </Typography>

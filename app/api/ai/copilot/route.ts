@@ -72,6 +72,16 @@ class CopilotProviderError extends Error {
   }
 }
 
+function unavailableCopilotResponse(message: string, code: string, retryable: boolean) {
+  return NextResponse.json({
+    unavailable: true,
+    message,
+    code,
+    retryable,
+    choices: [{ message: { content: message } }],
+  });
+}
+
 function isProviderTimeout(error: unknown): boolean {
   return (
     (typeof error === 'object' && error !== null && 'name' in error && error.name === 'TimeoutError') ||
@@ -473,28 +483,21 @@ They must be questions this user would plausibly ask next, grounded in the answe
       );
     if (isProviderTimeout(error)) {
       console.warn('Copilot provider deadline exceeded after automatic recovery');
-      return NextResponse.json(
-        {
-          error: 'AI provider timed out',
-          message: 'The AI service took too long to respond. Your question has been kept; please try again.',
-          code: 'AI_PROVIDER_TIMEOUT',
-          retryable: true,
-        },
-        { status: 504 }
+      return unavailableCopilotResponse(
+        'The AI provider timed out. Your question was not answered; please try again later.',
+        'AI_PROVIDER_TIMEOUT',
+        true,
       );
     }
     if (error instanceof CopilotProviderError) {
       console.warn('Copilot provider request failed with status', error.status);
       const configurationError = [401, 403].includes(error.status);
-      return NextResponse.json(
-        {
-          error: configurationError
-            ? 'AI service authentication or policy error'
-            : 'AI service temporarily unavailable',
-          code: configurationError ? 'AI_PROVIDER_CONFIGURATION' : 'AI_PROVIDER_UNAVAILABLE',
-          retryable: !configurationError,
-        },
-        { status: 502 }
+      return unavailableCopilotResponse(
+        configurationError
+          ? 'The AI provider configuration is unavailable. Your question was not answered.'
+          : 'The AI provider is temporarily unavailable. Your question was not answered; please try again later.',
+        configurationError ? 'AI_PROVIDER_CONFIGURATION' : 'AI_PROVIDER_UNAVAILABLE',
+        !configurationError,
       );
     }
     if (error instanceof z.ZodError)

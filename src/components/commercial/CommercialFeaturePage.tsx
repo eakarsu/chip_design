@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Alert, Box, Button, Card, CardContent, CircularProgress, Container, FormControl, InputLabel, MenuItem, Select, Stack, TextField, Typography } from '@mui/material';
 import Grid from '@mui/material/Grid2';
@@ -280,6 +280,10 @@ export default function CommercialFeaturePage({ feature }: { feature: Commercial
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const aiRequest = useRef<AbortController | null>(null);
+  const cancelAI = () => { aiRequest.current?.abort(); aiRequest.current = null; setAnalyzing(false); setBrief(null); setNotice('AI request cancelled. Your engineering evidence and review inputs are preserved.'); };
+  useEffect(() => () => { aiRequest.current?.abort(); aiRequest.current = null; }, []);
+  useEffect(() => { if (aiRequest.current) cancelAI(); }, [projectId, feature]);
 
   const load = useCallback(async () => {
     try {
@@ -335,10 +339,12 @@ export default function CommercialFeaturePage({ feature }: { feature: Commercial
   };
 
   const analyze = async () => {
-    if (!saved) return;
+    if (!saved || aiRequest.current) return;
+    const controller = new AbortController(); aiRequest.current = controller;
     setAnalyzing(true); setError('');
     try {
       const response = await fetch('/api/workspace/ai-review', {
+        signal: controller.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -357,10 +363,11 @@ export default function CommercialFeaturePage({ feature }: { feature: Commercial
         }),
       });
       const data = await response.json();
+      if (controller.signal.aborted) return;
       if (!response.ok) throw new Error(data.message ?? data.error ?? 'AI review failed');
       setBrief(data.brief);
-    } catch (analysisError) { setError(analysisError instanceof Error ? analysisError.message : 'AI review failed'); }
-    finally { setAnalyzing(false); }
+    } catch (analysisError) { if (!controller.signal.aborted) setError(analysisError instanceof Error ? analysisError.message : 'AI review failed'); }
+    finally { if (aiRequest.current === controller) { aiRequest.current = null; setAnalyzing(false); } }
   };
 
   const decideReview = async (status: 'accepted' | 'rejected', rationale: string) => {
@@ -393,27 +400,29 @@ export default function CommercialFeaturePage({ feature }: { feature: Commercial
                 color={scenario.color}
                 variant={selectedScenario === scenario.key ? 'contained' : 'outlined'}
                 startIcon={<Science />}
+                disabled={saving || analyzing}
                 onClick={() => fillScenario(scenario.key, scenario.label)}
               >
                 {scenario.label}
               </Button>
             ))}
-            <Button color="inherit" variant="outlined" startIcon={<DeleteSweep />} onClick={() => { setValues({}); setSelectedScenario(null); setSaved(null); setBrief(null); setError(''); setNotice('All engineering and optional AI fields cleared.'); }}>Clear all fields</Button>
+            <Button disabled={saving || analyzing} color="inherit" variant="outlined" startIcon={<DeleteSweep />} onClick={() => { setValues({}); setSelectedScenario(null); setSaved(null); setBrief(null); setError(''); setNotice('All engineering and optional AI fields cleared.'); }}>Clear all fields</Button>
           </Stack>
-          <FormControl fullWidth sx={{ mb: 2 }}><InputLabel>Workspace project</InputLabel><Select value={projectId} label="Workspace project" onChange={event => setProjectId(event.target.value)}>{workspace.projects.map(item => <MenuItem key={item.id} value={item.id}>{item.name} · {item.pdkRef}</MenuItem>)}</Select></FormControl>
-          <Grid container spacing={2}>{config.fields.map(field => <Grid key={field.key} size={{ xs: 12, md: field.type === 'multiline' ? 12 : 6 }}><TextField fullWidth required value={values[field.key] ?? ''} label={field.label} type={field.type === 'number' ? 'number' : 'text'} multiline={field.type === 'multiline'} minRows={field.type === 'multiline' ? 3 : undefined} helperText={field.helper} onChange={event => { setValues(current => ({ ...current, [field.key]: event.target.value })); setSelectedScenario(null); }} /></Grid>)}</Grid>
+          <FormControl fullWidth sx={{ mb: 2 }}><InputLabel>Workspace project</InputLabel><Select disabled={saving || analyzing} value={projectId} label="Workspace project" onChange={event => setProjectId(event.target.value)}>{workspace.projects.map(item => <MenuItem key={item.id} value={item.id}>{item.name} · {item.pdkRef}</MenuItem>)}</Select></FormControl>
+          <Grid container spacing={2}>{config.fields.map(field => <Grid key={field.key} size={{ xs: 12, md: field.type === 'multiline' ? 12 : 6 }}><TextField disabled={saving || analyzing} fullWidth required value={values[field.key] ?? ''} label={field.label} type={field.type === 'number' ? 'number' : 'text'} multiline={field.type === 'multiline'} minRows={field.type === 'multiline' ? 3 : undefined} helperText={field.helper} onChange={event => { setValues(current => ({ ...current, [field.key]: event.target.value })); setSelectedScenario(null); }} /></Grid>)}</Grid>
           <Card variant="outlined" sx={{ mt: 3, bgcolor: 'action.hover' }}>
             <CardContent>
               <Typography variant="h6" fontWeight={750}>Optional AI review instructions</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, mb: 2 }}>
                 These fields focus the AI request but never override measured evidence, signoff tools, or the accountable human decision.
               </Typography>
-              <Grid container spacing={2}>{AI_CONTEXT_FIELDS.map(field => <Grid key={field.key} size={{ xs: 12, md: field.type === 'multiline' ? 12 : 6 }}><TextField fullWidth value={values[field.key] ?? ''} label={field.label} multiline={field.type === 'multiline'} minRows={field.type === 'multiline' ? 3 : undefined} helperText={field.helper} onChange={event => { setValues(current => ({ ...current, [field.key]: event.target.value })); setSelectedScenario(null); }} /></Grid>)}</Grid>
+              <Grid container spacing={2}>{AI_CONTEXT_FIELDS.map(field => <Grid key={field.key} size={{ xs: 12, md: field.type === 'multiline' ? 12 : 6 }}><TextField disabled={saving || analyzing} fullWidth value={values[field.key] ?? ''} label={field.label} multiline={field.type === 'multiline'} minRows={field.type === 'multiline' ? 3 : undefined} helperText={field.helper} onChange={event => { setValues(current => ({ ...current, [field.key]: event.target.value })); setSelectedScenario(null); }} /></Grid>)}</Grid>
             </CardContent>
           </Card>
           <Stack direction={{ xs: 'column', sm: 'row' }} gap={1.5} sx={{ mt: 3 }}>
-            <Button variant="contained" size="large" startIcon={<Save />} disabled={saving || !projectId} onClick={submit}>{saving ? 'Saving…' : config.action}</Button>
-            <Button variant="contained" color="secondary" size="large" startIcon={<AutoAwesome />} disabled={!saved || analyzing} onClick={analyze}>{analyzing ? 'OpenRouter is analyzing…' : 'Generate governed AI brief'}</Button>
+            <Button variant="contained" size="large" startIcon={<Save />} disabled={saving || analyzing || !projectId} onClick={submit}>{saving ? 'Saving…' : config.action}</Button>
+            <Button variant="contained" color="secondary" size="large" startIcon={<AutoAwesome />} disabled={!saved || analyzing} onClick={analyze}>{analyzing ? 'OpenRouter is analyzing…' : 'Generate with OpenRouter'}</Button>
+            {analyzing && <Button color="inherit" variant="outlined" onClick={cancelAI}>Cancel request</Button>}
           </Stack>
           {notice && <Alert severity="success" sx={{ mt: 2 }}>{notice}</Alert>}
           {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}

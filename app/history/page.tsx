@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import {
   Box, Container, Typography, Paper, Table, TableBody, TableCell,
   TableHead, TableRow, Chip, TextField, MenuItem, Alert, CircularProgress,
@@ -8,6 +8,7 @@ import {
 } from '@mui/material';
 import { ExpandMore, ExpandLess, Refresh, CompareArrows, Download } from '@mui/icons-material';
 import Link from 'next/link';
+import ProfessionalAIResult from '@/components/ai/ProfessionalAIResult';
 
 interface RunRow {
   id: string;
@@ -66,7 +67,8 @@ export default function HistoryPage() {
       const r = await fetch('/api/history');
       const j = await r.json();
       if (!r.ok) throw new Error(j.message ?? 'Failed to load');
-      setRuns(j.runs ?? []);
+      if (!Array.isArray(j.runs)) throw new Error('History response is missing its runs array');
+      setRuns(j.runs);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -164,7 +166,7 @@ export default function HistoryPage() {
             </TableHead>
             <TableBody>
               {filtered.map((r) => (
-                <>
+                <Fragment key={r.id}>
                   <TableRow key={r.id} hover>
                     <TableCell>
                       <IconButton
@@ -214,32 +216,14 @@ export default function HistoryPage() {
                   <TableRow>
                     <TableCell colSpan={8} sx={{ py: 0, border: 0 }}>
                       <Collapse in={!!expanded[r.id]}>
-                        <Box sx={{ p: 2, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-                          <Box>
-                            <Typography variant="caption" color="text.secondary">Parameters</Typography>
-                            <Box component="pre" sx={{
-                              fontSize: 12, p: 1, mt: 0.5, m: 0,
-                              bgcolor: 'action.hover', borderRadius: 1,
-                              maxHeight: 200, overflow: 'auto',
-                            }}>
-                              {JSON.stringify(r.parameters, null, 2)}
-                            </Box>
-                          </Box>
-                          <Box>
-                            <Typography variant="caption" color="text.secondary">Result summary</Typography>
-                            <Box component="pre" sx={{
-                              fontSize: 12, p: 1, mt: 0.5, m: 0,
-                              bgcolor: 'action.hover', borderRadius: 1,
-                              maxHeight: 200, overflow: 'auto',
-                            }}>
-                              {JSON.stringify(r.result, null, 2)}
-                            </Box>
-                          </Box>
+                        <Box sx={{ p: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+                          <ProfessionalAIResult compact showDisclaimer={false} title="Parameters" result={r.parameters} />
+                          <ProfessionalAIResult compact showDisclaimer={false} title="Result summary" result={r.result} />
                         </Box>
                       </Collapse>
                     </TableCell>
                   </TableRow>
-                </>
+                </Fragment>
               ))}
             </TableBody>
           </Table>

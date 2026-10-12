@@ -346,6 +346,22 @@ it('restores the conversation for the same reader after a remount', async () => 
   await waitFor(() => expect(screen.getByText('Persisted answer.')).toBeVisible());
 });
 
+it('renders returned and saved JSON answers as labeled facts', async () => {
+  global.fetch = jest.fn().mockResolvedValue(reply('{"summary":"Clock report","accepted":false,"count":0,"note":""}')) as typeof fetch;
+  const view = render(wrapper({ embedded: true }));
+  fireEvent.change(screen.getByLabelText('Your question'), { target: { value: 'Summarize the clock report' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send question' }));
+  await screen.findByText('Clock report');
+  expect(screen.getByText('Accepted')).toBeInTheDocument();
+  expect(screen.getByText('Empty string')).toBeInTheDocument();
+  await waitFor(() => expect(localStorage.getItem('neuralchip-chat-history-v1:guest')).toContain('Clock report'));
+  view.unmount();
+  render(wrapper({ embedded: true }));
+  await screen.findByText('Clock report');
+  expect(screen.getByText('Count')).toBeInTheDocument();
+  expect(screen.queryByText(/\{"summary"/)).not.toBeInTheDocument();
+});
+
 it('renders a streamed answer and its follow-ups', async () => {
   const stream = [
     'data: {"model":"stream/model","provider":"Stream provider","choices":[{"delta":{"content":"Check the "}}]}\n\n',

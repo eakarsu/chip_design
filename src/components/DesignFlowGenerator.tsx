@@ -119,8 +119,8 @@ export default function DesignFlowGenerator({ onExecuteFlow }: DesignFlowGenerat
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const loadSample = () => {
-    const next = (sampleIdx + 1) % FLOW_SAMPLES.length;
+  const loadSample = (selected?: number) => {
+    const next = selected ?? (sampleIdx + 1) % FLOW_SAMPLES.length;
     const s = FLOW_SAMPLES[next];
     setSampleIdx(next);
     setRequirements(s.requirements);
@@ -239,11 +239,17 @@ export default function DesignFlowGenerator({ onExecuteFlow }: DesignFlowGenerat
         <Button
           size="small"
           startIcon={<ShuffleIcon />}
-          onClick={loadSample}
+          onClick={() => loadSample()}
           aria-label="load next design flow sample"
         >
           Load Sample ({Math.max(0, sampleIdx) + 1}/{FLOW_SAMPLES.length})
         </Button>
+      </Box>
+
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+        {['IoT sensor', 'ML accelerator', 'General ASIC', 'CPU control'].map((label, index) => (
+          <Button key={label} type="button" size="small" variant="outlined" disabled={loading} onClick={() => loadSample(index)}>{label}</Button>
+        ))}
       </Box>
 
       {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}

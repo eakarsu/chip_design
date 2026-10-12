@@ -2,6 +2,7 @@
  * AI-Powered Documentation Generator
  */
 
+import { fetchAiProvider, providerUnavailableResult } from '@/lib/aiProviderAvailability';
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { openRouterProviderPreferences } from '@/lib/openrouter';
@@ -42,7 +43,7 @@ Include:
 
 Format: Professional ${format}`;
 
-    const response = await fetch(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
+    const response = await fetchAiProvider(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -67,6 +68,8 @@ Format: Professional ${format}`;
 
     return NextResponse.json({ documentation, format });
   } catch (error) {
+    const unavailable = providerUnavailableResult(error);
+    if (unavailable) return unavailable;
     console.error('Documentation generation error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

@@ -55,7 +55,10 @@ export default function AnalogLandingPage() {
       if (cancelled) return;
       if (catalogResult.status === 'fulfilled') setCatalog(catalogResult.value);
       else setCatalogError(catalogResult.reason instanceof Error ? catalogResult.reason.message : 'Catalog unavailable');
-      if (projectsResult.status === 'fulfilled') setProjects(projectsResult.value);
+      if (projectsResult.status === 'fulfilled') {
+        if (Array.isArray(projectsResult.value)) setProjects(projectsResult.value);
+        else setProjectsError('Analog projects response is not a list');
+      }
       else if (isUnauthorized(projectsResult.reason)) setProjectsUnauthorized(true);
       else {
         setProjectsError(

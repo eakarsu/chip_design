@@ -168,8 +168,10 @@ export async function generateJSONCompletion<T = unknown>(
     reasoningMaxTokens?: number;
     timeoutMs?: number;
     preferJsonObject?: boolean;
+    signal?: AbortSignal;
   }
 ): Promise<T> {
+  options?.signal?.throwIfAborted();
   const model = options?.model ?? MODELS.CLAUDE_SONNET;
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
   if (options?.systemPrompt) messages.push({ role: 'system', content: options.systemPrompt });
@@ -203,9 +205,16 @@ export async function generateJSONCompletion<T = unknown>(
     : 60_000;
   const deadline = Date.now() + totalTimeoutMs;
   const createStructuredCompletion = async (payload: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) => {
+    options?.signal?.throwIfAborted();
     const remainingMs = Math.floor(deadline - Date.now());
     if (remainingMs <= 0) throw new Error('OpenRouter chip-design review timed out before a complete structured response was available.');
     const controller = new AbortController();
+    const cancel = () => controller.abort(options?.signal?.reason);
+    options?.signal?.addEventListener('abort', cancel, { once: true });
+    let rejectCancelled: ((cause: Error) => void) | undefined;
+    const cancelled = new Promise<never>((_resolve, reject) => { rejectCancelled = reject; });
+    const rejectAbort = () => { const error = new Error('AI request cancelled'); error.name = 'AbortError'; rejectCancelled?.(error); };
+    options?.signal?.addEventListener('abort', rejectAbort, { once: true });
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const deadlineReached = new Promise<never>((_resolve, reject) => {
       timeout = setTimeout(() => {
@@ -221,9 +230,12 @@ export async function generateJSONCompletion<T = unknown>(
           signal: controller.signal,
         }),
         deadlineReached,
+        cancelled,
       ]);
     } finally {
       if (timeout) clearTimeout(timeout);
+      options?.signal?.removeEventListener('abort', cancel);
+      options?.signal?.removeEventListener('abort', rejectAbort);
     }
   };
 
@@ -241,6 +253,7 @@ export async function generateJSONCompletion<T = unknown>(
   try {
     completion = await createStructuredCompletion(request);
   } catch (error) {
+    options?.signal?.throwIfAborted();
     const message = error instanceof Error ? error.message : '';
     if (options?.jsonSchema && !options.preferJsonObject && /no endpoints found.*requested parameters/i.test(message)) {
       const compatibleRequest = {
@@ -276,6 +289,7 @@ export async function generateJSONCompletion<T = unknown>(
     }
   }
 
+  options?.signal?.throwIfAborted();
   let response = messageText(completion.choices[0]?.message as OpenRouterMessage | undefined);
   let firstFailure = response ? 'AI returned invalid JSON' : 'AI returned an empty structured response';
   if (response) {

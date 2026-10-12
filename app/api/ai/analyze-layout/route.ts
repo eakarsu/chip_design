@@ -3,6 +3,7 @@
  * Multimodal AI for analyzing chip layout images
  */
 
+import { fetchAiProvider, providerUnavailableResult } from '@/lib/aiProviderAvailability';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { openRouterProviderPreferences } from '@/lib/openrouter';
@@ -49,7 +50,7 @@ Provide specific, actionable recommendations with coordinates when possible.`;
         userPrompt = question || 'Analyze this chip layout and provide insights about quality, issues, and optimization opportunities.';
     }
 
-    const openrouterResponse = await fetch(
+    const openrouterResponse = await fetchAiProvider(
       `${process.env.OPENROUTER_BASE_URL}/chat/completions`,
       {
         method: 'POST',
@@ -106,6 +107,8 @@ Provide specific, actionable recommendations with coordinates when possible.`;
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    const unavailable = providerUnavailableResult(error);
+    if (unavailable) return unavailable;
     console.error('Layout analysis error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

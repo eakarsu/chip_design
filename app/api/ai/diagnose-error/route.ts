@@ -3,6 +3,7 @@
  * Uses OpenRouter AI to diagnose algorithm errors and suggest fixes
  */
 
+import { fetchAiProvider, providerUnavailableResult } from '@/lib/aiProviderAvailability';
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { openRouterProviderPreferences } from '@/lib/openrouter';
@@ -90,7 +91,7 @@ Analyze this error and provide:
 Return ONLY valid JSON, no markdown formatting.`;
 
     // Call OpenRouter with Claude Sonnet for better diagnosis
-    const openrouterResponse = await fetch(
+    const openrouterResponse = await fetchAiProvider(
       `${process.env.OPENROUTER_BASE_URL}/chat/completions`,
       {
         method: 'POST',
@@ -145,6 +146,8 @@ Return ONLY valid JSON, no markdown formatting.`;
 
     return NextResponse.json(result);
   } catch (error) {
+    const unavailable = providerUnavailableResult(error);
+    if (unavailable) return unavailable;
     console.error('Error diagnosis error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },

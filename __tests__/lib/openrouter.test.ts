@@ -67,4 +67,23 @@ describe('OpenRouter structured response recovery', () => {
     expect(create).toHaveBeenCalledTimes(2);
     expect(create.mock.calls[1][1]?.timeout).toBeLessThanOrEqual(30);
   });
+
+  it('passes operator cancellation into the provider and prevents recovery requests', async () => {
+    const controller = new AbortController();
+    const create = jest.spyOn(openrouter.chat.completions, 'create').mockImplementation(() => new Promise(() => undefined) as never);
+    const request = generateJSONCompletion('Actual retained evidence', { signal:controller.signal });
+    const rejected = expect(request).rejects.toMatchObject({name:'AbortError'});
+    await new Promise(resolve => setTimeout(resolve,5));
+    const providerSignal = create.mock.calls[0][1]?.signal;
+    controller.abort(); await rejected;
+    expect(providerSignal?.aborted).toBe(true);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not call the provider for a request cancelled before generation', async () => {
+    const controller = new AbortController(); controller.abort();
+    const create = jest.spyOn(openrouter.chat.completions,'create');
+    await expect(generateJSONCompletion('Actual evidence',{signal:controller.signal})).rejects.toMatchObject({name:'AbortError'});
+    expect(create).not.toHaveBeenCalled();
+  });
 });

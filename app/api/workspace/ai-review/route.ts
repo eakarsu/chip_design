@@ -27,8 +27,9 @@ const decisionSchema = z.object({
 export async function POST(request: Request) {
   return workspaceOperation(request, 'workspace.ai.review', async (identity, id) => {
     const input = schema.parse(await request.json());
+    request.signal.throwIfAborted();
     const workspaceContext = await projectReviewContext(identity, input.projectId, input.feature);
-    return { brief: await saveDecisionBrief(identity, await createAiDecisionBrief({ ...input, workspaceContext }), id) };
+    return { brief: await saveDecisionBrief(identity, await createAiDecisionBrief({ ...input, workspaceContext }, request.signal), id, request.signal) };
   }, ['admin', 'editor']);
 }
 

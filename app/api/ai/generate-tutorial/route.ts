@@ -2,6 +2,7 @@
  * AI-Generated Tutorials & Learning Paths
  */
 
+import { fetchAiProvider, providerUnavailableResult } from '@/lib/aiProviderAvailability';
 import { NextRequest, NextResponse } from 'next/server';
 import { openRouterProviderPreferences } from '@/lib/openrouter';
 
@@ -60,7 +61,7 @@ Format as JSON:
   "nextSteps": ["..."]
 }`;
 
-    const response = await fetch(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
+    const response = await fetchAiProvider(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -86,6 +87,8 @@ Format as JSON:
 
     return NextResponse.json(tutorial);
   } catch (error) {
+    const unavailable = providerUnavailableResult(error);
+    if (unavailable) return unavailable;
     console.error('Tutorial generation error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }

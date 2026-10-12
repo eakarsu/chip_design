@@ -19,6 +19,7 @@ export async function workspaceOperation<T>(request: Request, operation: string,
     const result = await observed(operation, id, () => task(identity, id));
     return NextResponse.json(result, { headers: { 'X-Request-Id': id } });
   } catch (error) {
+    if (request.signal.aborted) return NextResponse.json({ error: 'AI request cancelled' }, { status: 499, headers: { 'X-Request-Id': id } });
     const validation = error instanceof ZodError;
     const message = error instanceof Error ? error.message : 'Workspace operation failed';
     const providerFailure = /OpenRouter|AI provider|AI model|structured response|output budget|rate or credit limit|timed out/i.test(message);

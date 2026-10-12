@@ -348,7 +348,7 @@ async function requestValidatedBrief(input: {
   role: 'specialist' | 'challenger';
   schemaName: string;
   temperature: number;
-}): Promise<BriefPayload> {
+}, signal?: AbortSignal): Promise<BriefPayload> {
   const configuredReasoning = Number(process.env.OPENROUTER_CHIP_REVIEW_REASONING_TOKENS ?? 0);
   const candidate = await generateJSONCompletion<unknown>(input.prompt, {
     model: input.model,
@@ -361,6 +361,7 @@ async function requestValidatedBrief(input: {
     jsonSchema: briefJsonSchema,
     schemaName: input.schemaName,
     preferJsonObject: true,
+    signal,
   });
   const first = briefSchema.safeParse(candidate);
   if (first.success) return first.data;
@@ -385,7 +386,8 @@ export async function createAiDecisionBrief(input: {
     reviewerContext: string;
   };
   workspaceContext: Record<string, unknown>;
-}): Promise<Omit<DecisionBrief, 'id' | 'createdAt'>> {
+}, signal?: AbortSignal): Promise<Omit<DecisionBrief, 'id' | 'createdAt'>> {
+  signal?.throwIfAborted();
   const deepReviewModel =
     process.env.OPENROUTER_CHIP_REVIEW_MODEL ?? process.env.OPENROUTER_MODEL ?? 'anthropic/claude-sonnet-4.5';
   const interactiveModel = process.env.OPENROUTER_CHIP_REVIEW_INTERACTIVE_MODEL ?? deepReviewModel;
@@ -419,7 +421,7 @@ export async function createAiDecisionBrief(input: {
     role: 'specialist',
     temperature: 0.08,
     schemaName: 'chip_design_specialist_brief',
-  });
+  }, signal);
 
   const challenged = twoPass
     ? await requestValidatedBrief({
@@ -428,9 +430,10 @@ export async function createAiDecisionBrief(input: {
         role: 'challenger',
         temperature: 0.05,
         schemaName: 'chip_design_challenger_brief',
-      })
+      }, signal)
     : specialist;
 
+  signal?.throwIfAborted();
   return {
     projectId: input.projectId,
     feature: input.feature,

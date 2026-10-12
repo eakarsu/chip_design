@@ -2,6 +2,7 @@
  * Intelligent Semantic Search
  */
 
+import { fetchAiProvider, providerUnavailableResult } from '@/lib/aiProviderAvailability';
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@/lib/rateLimit';
 import { openRouterProviderPreferences } from '@/lib/openrouter';
@@ -53,7 +54,7 @@ Respond with JSON:
   "suggestions": ["related search suggestions"]
 }`;
 
-    const response = await fetch(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
+    const response = await fetchAiProvider(`${process.env.OPENROUTER_BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -79,6 +80,8 @@ Respond with JSON:
 
     return NextResponse.json(result);
   } catch (error) {
+    const unavailable = providerUnavailableResult(error);
+    if (unavailable) return unavailable;
     console.error('Semantic search error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
