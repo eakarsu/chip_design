@@ -103,6 +103,7 @@ export default function RootLayout({
         />
       </head>
       <body>
+<script src="/feature-pack/feature-pack.js" defer />
         <ThemeRegistry>
           <AuthProvider>
             <ErrorBoundary>

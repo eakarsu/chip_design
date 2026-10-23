@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
 
     // CORS check
     const origin = request.headers.get('origin') || '';
-    const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['*'];
+    const allowedOrigins = (process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000']).map((o) => o.trim()).filter((o) => Boolean(o) && o !== '*');
 
     if (allowedOrigins[0] !== '*' && !allowedOrigins.includes(origin)) {
       logAbuse(clientId, `Unauthorized origin: ${origin}`);
@@ -213,11 +213,11 @@ export async function OPTIONS(request: NextRequest) {
   const origin = request.headers.get('origin') || '';
   const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['*'];
 
-  if (allowedOrigins[0] === '*' || allowedOrigins.includes(origin)) {
+  if (allowedOrigins.includes(origin)) {
     return new NextResponse(null, {
       status: 204,
       headers: {
-        'Access-Control-Allow-Origin': allowedOrigins[0] === '*' ? '*' : origin,
+        'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         'Access-Control-Max-Age': '86400',
